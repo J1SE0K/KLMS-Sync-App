@@ -463,6 +463,9 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dashboard-detail-root-\(kind.rawValue)")
         .onChange(of: fileDataRenderSignature) { _, signature in
             rebuildFileDataIfNeeded(signature)
         }
@@ -1559,6 +1562,85 @@ private extension DashboardDetailKind {
     }
 }
 
+private struct DashboardResponsiveFlowLayout: Layout {
+    var horizontalSpacing: CGFloat = 8
+    var verticalSpacing: CGFloat = 8
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        let proposedWidth = finiteWidth(proposal.width)
+        let availableWidth = proposedWidth ?? .greatestFiniteMagnitude
+        var rowWidth: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var measuredWidth: CGFloat = 0
+        var measuredHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = fittedSize(for: subview, maximumWidth: proposedWidth)
+            let nextWidth = rowWidth == 0 ? size.width : rowWidth + horizontalSpacing + size.width
+            if rowWidth > 0, nextWidth > availableWidth {
+                measuredWidth = max(measuredWidth, rowWidth)
+                measuredHeight += rowHeight + verticalSpacing
+                rowWidth = size.width
+                rowHeight = size.height
+            } else {
+                rowWidth = nextWidth
+                rowHeight = max(rowHeight, size.height)
+            }
+        }
+
+        measuredWidth = max(measuredWidth, rowWidth)
+        measuredHeight += rowHeight
+        return CGSize(width: proposedWidth ?? measuredWidth, height: measuredHeight)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        var x = bounds.minX
+        var y = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = fittedSize(for: subview, maximumWidth: bounds.width)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                x = bounds.minX
+                y += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            subview.place(
+                at: CGPoint(x: x, y: y),
+                anchor: .topLeading,
+                proposal: ProposedViewSize(width: size.width, height: size.height)
+            )
+            x += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+
+    private func fittedSize(for subview: LayoutSubview, maximumWidth: CGFloat?) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard let maximumWidth, ideal.width > maximumWidth else {
+            return ideal
+        }
+        let constrained = subview.sizeThatFits(
+            ProposedViewSize(width: maximumWidth, height: nil)
+        )
+        return CGSize(width: min(maximumWidth, constrained.width), height: constrained.height)
+    }
+
+    private func finiteWidth(_ width: CGFloat?) -> CGFloat? {
+        guard let width, width.isFinite else { return nil }
+        return max(0, width)
+    }
+}
+
 private struct DashboardFilterBarView: View {
     @Binding var searchText: String
     @Binding var selectedCourse: String
@@ -1590,6 +1672,37 @@ private struct DashboardFilterBarView: View {
     }
 
     private var compactFilterLine: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 8) {
+                filterIdentity
+                    .frame(minWidth: 138, maxWidth: 230, alignment: .leading)
+                searchField
+                    .frame(minWidth: 180)
+                filterActions
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 8) {
+                    filterIdentity
+                    Spacer(minLength: 8)
+                    filterActions
+                }
+                searchField
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+        .overlay {
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(Color.klmsMacBorder.opacity(0.78), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dashboard-filter-bar")
+    }
+
+    private var filterIdentity: some View {
         HStack(alignment: .center, spacing: 8) {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.caption.weight(.bold))
@@ -1605,13 +1718,16 @@ private struct DashboardFilterBarView: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(1)
             }
-            .frame(minWidth: 138, maxWidth: 230, alignment: .leading)
+        }
+    }
 
-            TextField("검색", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(minWidth: 180)
-                .layoutPriority(1)
+    private var searchField: some View {
+        TextField("검색", text: $searchText)
+            .textFieldStyle(.roundedBorder)
+    }
 
+    private var filterActions: some View {
+        HStack(spacing: 8) {
             if hasActiveFilter {
                 Button {
                     resetFilters()
@@ -1635,14 +1751,7 @@ private struct DashboardFilterBarView: View {
             .help(isAdvancedFiltersExpanded ? "연도, 학기, 과목, 표시 조건 접기" : "연도, 학기, 과목, 표시 조건 펼치기")
             .accessibilityLabel("상세 필터 \(isAdvancedFiltersExpanded ? "접기" : "펼치기")")
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
-        .overlay {
-            RoundedRectangle(cornerRadius: 9)
-                .stroke(Color.klmsMacBorder.opacity(0.78), lineWidth: 1)
-        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var searchControl: some View {
@@ -1650,7 +1759,7 @@ private struct DashboardFilterBarView: View {
             HStack(spacing: 8) {
                 TextField("검색", text: $searchText)
                     .textFieldStyle(.roundedBorder)
-                    .frame(minWidth: 180)
+                    .frame(maxWidth: .infinity)
             }
         }
     }
@@ -1658,9 +1767,15 @@ private struct DashboardFilterBarView: View {
     private var rangeControl: some View {
         DashboardControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    yearPickerField
-                    semesterPickerField
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        yearPickerField
+                        semesterPickerField
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        yearPickerField
+                        semesterPickerField
+                    }
                 }
                 coursePickerField
             }
@@ -1705,7 +1820,7 @@ private struct DashboardFilterBarView: View {
 
     private var displayControl: some View {
         DashboardControlBox(title: "표시", systemImage: "slider.horizontal.3") {
-            HStack(spacing: 10) {
+            DashboardResponsiveFlowLayout(horizontalSpacing: 14, verticalSpacing: 8) {
                 if supportsNewOnly {
                     Toggle("새 항목만", isOn: $newOnly)
                 }
@@ -1715,7 +1830,6 @@ private struct DashboardFilterBarView: View {
                 if supportsHiddenToggle {
                     Toggle("숨김 포함", isOn: $showHidden)
                 }
-                Spacer(minLength: 0)
             }
             .font(.caption)
             .toggleStyle(.checkbox)
@@ -2166,7 +2280,7 @@ private struct StateItemRowView: View {
                                 if editor == .assignmentRecord, !item.recordDisplayStatus.isEmpty {
                                     Text(item.recordDisplayStatus)
                                         .font(.caption2)
-                                        .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessBorder : Color.klmsMacSecondaryText)
+                                        .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessForeground : Color.klmsMacSecondaryText)
                                 }
                             }
                             Text([item.academicTerm?.displayName ?? "", item.course, item.due].filter { !$0.isEmpty }.joined(separator: " · "))
@@ -2218,7 +2332,7 @@ private struct StateItemRowView: View {
                 if didRequestSync {
                     MacInlinePendingActionView(message: "과제/시험 동기화 반영을 시작했습니다.")
                 } else {
-                    HStack(spacing: 8) {
+                    DashboardResponsiveFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
                         if editor == .exam {
                             Button {
                                 approveExam()
@@ -2268,7 +2382,6 @@ private struct StateItemRowView: View {
                             .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                             .help("\(item.course) 과목의 과제, 시험, 공지, 파일을 앱에서 숨깁니다.")
                         }
-                        Spacer()
                     }
                     .font(.caption)
                 }
@@ -2337,7 +2450,7 @@ private struct RecordStatusView: View {
         HStack(spacing: 8) {
             Label(item.recordDisplayStatus.isEmpty ? "기록" : item.recordDisplayStatus, systemImage: "clock.arrow.circlepath")
                 .font(.caption)
-                .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessBorder : Color.klmsMacSecondaryText)
+                .foregroundStyle(item.recordStatus == "completed" ? Color.klmsMacSuccessForeground : Color.klmsMacSecondaryText)
             if !item.submission.isEmpty {
                 Text(item.submission)
                     .font(.caption2)
@@ -2835,12 +2948,28 @@ private struct NoticeCategoryPickerView: View {
     var counts: [NoticeListCategory: Int]
 
     var body: some View {
-        Picker("공지 분류", selection: $category) {
-            ForEach(NoticeListCategory.allCases) { item in
-                Text("\(item.title) \(counts[item, default: 0])").tag(item)
+        ViewThatFits(in: .horizontal) {
+            Picker("공지 분류", selection: $category) {
+                categoryOptions
             }
+            .pickerStyle(.segmented)
+            .fixedSize(horizontal: true, vertical: false)
+
+            Picker("공지 분류", selection: $category) {
+                categoryOptions
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .pickerStyle(.segmented)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("notice-category-picker")
+    }
+
+    @ViewBuilder
+    private var categoryOptions: some View {
+        ForEach(NoticeListCategory.allCases) { item in
+            Text("\(item.title) \(counts[item, default: 0])").tag(item)
+        }
     }
 }
 
@@ -2955,18 +3084,17 @@ private struct NoticeRowView: View {
                 }
 
                 DashboardActionCaption("수정")
-                HStack {
+                DashboardResponsiveFlowLayout(horizontalSpacing: 14, verticalSpacing: 8) {
                     Toggle("읽음", isOn: readBinding)
                     Toggle("중요", isOn: importantBinding)
                     Toggle("숨김", isOn: hiddenBinding)
-                    Spacer()
                 }
                 .toggleStyle(.checkbox)
 
                 if didRequestSync {
                     MacInlinePendingActionView(message: "공지 메모 반영을 시작했습니다.")
                 } else {
-                    HStack(spacing: 8) {
+                    DashboardResponsiveFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
                         Button {
                             didRequestSync = true
                             Task { await model.run(.noticeSync) }
@@ -2990,7 +3118,6 @@ private struct NoticeRowView: View {
                             .buttonStyle(KLMSMacActionButtonStyle(tone: .destructive))
                             .help("\(notice.course) 과목의 과제, 시험, 공지, 파일을 앱에서 숨깁니다.")
                         }
-                        Spacer()
                     }
                     .font(.caption)
                 }
@@ -3444,7 +3571,7 @@ private struct FileSortPickerView: View {
 
     var body: some View {
         DashboardControlBox(title: "정렬", systemImage: "arrow.up.arrow.down") {
-            HStack(spacing: 4) {
+            DashboardResponsiveFlowLayout(horizontalSpacing: 4, verticalSpacing: 6) {
                 ForEach(DashboardFileSortOption.allCases) { option in
                     DashboardControlChip(
                         title: option.title,
@@ -3521,9 +3648,9 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         case .primary:
             return Color.klmsMacCommandButtonForeground
         case .destructive:
-            return Color.klmsMacDangerBorder
+            return Color.klmsMacDangerForeground
         case .success:
-            return Color.klmsMacSecondaryCommandButtonForeground
+            return Color.klmsMacSuccessForeground
         case .accent(let color):
             return color
         }
@@ -4193,7 +4320,7 @@ private struct FileRowView: View {
     @ViewBuilder
     private func actionBar(hidden: Bool, pathExists: Bool) -> some View {
         if let model, kind != .pruned {
-            HStack(spacing: 8) {
+            DashboardResponsiveFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
                 if pathExists {
                     Button {
                         NSWorkspace.shared.open(URL(fileURLWithPath: item.path))
@@ -4249,7 +4376,6 @@ private struct FileRowView: View {
                     .help("로컬 파일을 휴지통으로 이동")
                     .accessibilityLabel("로컬 파일 휴지통으로 이동")
                 }
-                Spacer()
             }
             .font(.caption)
             .padding(.top, 8)
@@ -4304,7 +4430,7 @@ private struct DashboardFileKindStyle {
             if Self.hasAssignmentSignal(in: context) {
                 label = "과제 공지 첨부"
                 icon = "checklist"
-                color = Color.klmsMacSuccessBorder
+                color = Color.klmsMacSuccessForeground
                 return
             }
             if Self.hasExamSignal(in: context) {
@@ -4319,7 +4445,7 @@ private struct DashboardFileKindStyle {
         case "assignment-attachments":
             label = "과제 첨부"
             icon = "checklist"
-            color = Color.klmsMacSuccessBorder
+            color = Color.klmsMacSuccessForeground
         case "resources":
             label = "강의 자료"
             icon = "books.vertical"
@@ -4335,7 +4461,7 @@ private struct DashboardFileKindStyle {
         case "quarantine":
             label = "격리"
             icon = "exclamationmark.triangle"
-            color = Color.klmsMacWarningBorder
+            color = Color.klmsMacWarningForeground
         case "deleted":
             label = "삭제 기록"
             icon = "trash"
@@ -4344,7 +4470,7 @@ private struct DashboardFileKindStyle {
             if Self.hasAssignmentSignal(in: context) {
                 label = "과제 관련"
                 icon = "checklist"
-                color = Color.klmsMacSuccessBorder
+                color = Color.klmsMacSuccessForeground
                 return
             }
             if Self.hasExamSignal(in: context) {
@@ -4529,7 +4655,7 @@ private struct CalendarActionGuideView: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.title3.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacWarningBorder)
+                    .foregroundStyle(Color.klmsMacWarningForeground)
                     .frame(width: 28, height: 28)
                     .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 3) {
@@ -4557,7 +4683,7 @@ private struct CalendarActionGuideView: View {
                 CalendarActionButton(
                     title: "캘린더에서 열기",
                     systemImage: "calendar",
-                    tint: Color.klmsMacWarningBorder
+                    tint: Color.klmsMacWarningForeground
                 ) {
                     openSystemCalendar()
                 }
@@ -4631,17 +4757,16 @@ private struct CalendarSummaryListView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
                 ForEach(result.summaries) { summary in
-                    HStack(spacing: 8) {
-                        Text(summary.calendar.isEmpty ? "캘린더" : summary.calendar)
-                            .font(.caption.weight(.semibold))
-                        Text(bucketLabel(summary.bucket))
-                            .font(.caption2)
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                        Spacer()
-                        Text("생성 \(summary.created)")
-                        Text("수정 \(summary.updated)")
-                        Text("삭제 \(summary.deleted)")
-                        Text("전체 \(summary.total)")
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) {
+                            summaryIdentity(summary)
+                            Spacer(minLength: 8)
+                            summaryCounts(summary)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            summaryIdentity(summary)
+                            summaryCounts(summary)
+                        }
                     }
                     .font(.caption2)
                     .padding(8)
@@ -4652,6 +4777,27 @@ private struct CalendarSummaryListView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func summaryIdentity(_ summary: CalendarSyncSummary) -> some View {
+        HStack(spacing: 8) {
+            Text(summary.calendar.isEmpty ? "캘린더" : summary.calendar)
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+            Text(bucketLabel(summary.bucket))
+                .font(.caption2)
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    private func summaryCounts(_ summary: CalendarSyncSummary) -> some View {
+        DashboardResponsiveFlowLayout(horizontalSpacing: 8, verticalSpacing: 4) {
+            Text("생성 \(summary.created)")
+            Text("수정 \(summary.updated)")
+            Text("삭제 \(summary.deleted)")
+            Text("전체 \(summary.total)")
         }
     }
 
@@ -4792,7 +4938,7 @@ private struct CalendarChangeRowView: View {
                     if !change.parseError.isEmpty {
                         Text("파싱 오류: \(change.parseError)")
                             .font(.caption2)
-                            .foregroundStyle(Color.klmsMacWarningBorder)
+                            .foregroundStyle(Color.klmsMacWarningForeground)
                             .lineLimit(2)
                     }
                     CalendarChangeExplanationView(change: change)
@@ -4802,7 +4948,7 @@ private struct CalendarChangeRowView: View {
             if let editStatusText {
                 MacInlinePendingActionView(message: editStatusText)
             } else {
-                HStack(spacing: 8) {
+                DashboardResponsiveFlowLayout(horizontalSpacing: 8, verticalSpacing: 8) {
                     Button {
                         editStatusText = "캘린더 일정을 등록하는 중입니다."
                         Task {
@@ -4871,7 +5017,6 @@ private struct CalendarChangeRowView: View {
                     }
                     .buttonStyle(KLMSMacActionButtonStyle())
                     .help("캘린더 앱에서 이 이벤트를 바로 선택합니다.")
-                    Spacer()
                 }
                 .font(.caption)
             }
@@ -4929,11 +5074,11 @@ private struct CalendarChangeRowView: View {
     private var actionColor: Color {
         switch change.action {
         case "created":
-            Color.klmsMacSuccessBorder
+            Color.klmsMacSuccessForeground
         case "updated":
             Color.klmsMacCommandAccent
         case "deleted":
-            Color.klmsMacDangerBorder
+            Color.klmsMacDangerForeground
         default:
             Color.klmsMacSecondaryText
         }
@@ -5261,8 +5406,8 @@ private struct MacMailPasteAnalysisResultView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
                     MacMailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
                     MacMailAnalysisPill(title: "과목", value: analysis.course.nilIfBlank ?? "미확인", tint: Color.klmsMacCommandAccent)
-                    MacMailAnalysisPill(title: "일시", value: analysis.dueText.nilIfBlank ?? "미확인", tint: Color.klmsMacWarningBorder)
-                    MacMailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? Color.klmsMacSuccessBorder : Color.klmsMacWarningBorder)
+                    MacMailAnalysisPill(title: "일시", value: analysis.dueText.nilIfBlank ?? "미확인", tint: Color.klmsMacWarningForeground)
+                    MacMailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? Color.klmsMacSuccessForeground : Color.klmsMacWarningForeground)
                 }
 
                 MacMailAnalysisProcessView(steps: analysis.analysisSteps)
@@ -5334,7 +5479,7 @@ private struct MacMailPasteAnalysisResultView: View {
                             HStack(spacing: 7) {
                                 Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                     .font(.caption.weight(.semibold))
-                                    .foregroundStyle(Color.klmsMacSuccessBorder)
+                                    .foregroundStyle(Color.klmsMacSuccessForeground)
                                 Spacer(minLength: 0)
                                 Button {
                                     dashboardEditItem = editableItem
@@ -5755,9 +5900,9 @@ private enum MacMailPasteDetectedKind: String {
         case .none:
             Color.klmsMacSecondaryText
         case .assignment:
-            Color.klmsMacWarningBorder
+            Color.klmsMacWarningForeground
         case .exam:
-            Color.klmsMacSuccessBorder
+            Color.klmsMacSuccessForeground
         case .notice:
             Color.klmsMacCommandAccent
         case .file:
@@ -5982,10 +6127,10 @@ private enum MacMailPasteAnalyzer {
     private static func searchableItems(from snapshot: EngineSnapshot) -> [MacMailPasteMatchedItem] {
         let content = snapshot.legacyState?.content
         var items: [MacMailPasteMatchedItem] = []
-        items += (content?.assignments ?? []).map { matchedItem($0, kindLabel: "과제", tint: Color.klmsMacWarningBorder) }
-        items += (content?.assignmentCandidates ?? []).map { matchedItem($0, kindLabel: "과제 후보", tint: Color.klmsMacWarningBorder) }
-        items += (content?.examItems ?? []).map { matchedItem($0, kindLabel: "시험", tint: Color.klmsMacSuccessBorder) }
-        items += (content?.examCandidates ?? []).map { matchedItem($0, kindLabel: "시험 후보", tint: Color.klmsMacSuccessBorder) }
+        items += (content?.assignments ?? []).map { matchedItem($0, kindLabel: "과제", tint: Color.klmsMacWarningForeground) }
+        items += (content?.assignmentCandidates ?? []).map { matchedItem($0, kindLabel: "과제 후보", tint: Color.klmsMacWarningForeground) }
+        items += (content?.examItems ?? []).map { matchedItem($0, kindLabel: "시험", tint: Color.klmsMacSuccessForeground) }
+        items += (content?.examCandidates ?? []).map { matchedItem($0, kindLabel: "시험 후보", tint: Color.klmsMacSuccessForeground) }
         items += (content?.helpDeskItems ?? []).map { matchedItem($0, kindLabel: "헬프데스크", tint: Color.klmsMacCommandAccent) }
         items += snapshot.courseFileManifest.map { file in
             MacMailPasteMatchedItem(
@@ -6148,12 +6293,12 @@ private enum MacMailPasteAnalyzer {
         } else {
             dateDetail = "날짜 문구 \(dueText)는 찾았지만 캘린더 시간으로 변환하지 못했습니다."
         }
-        steps.append(MacMailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tint: Color.klmsMacWarningBorder))
+        steps.append(MacMailAnalysisStep(id: "date", title: "일정 해석", detail: dateDetail, systemImage: "calendar.badge.clock", tint: Color.klmsMacWarningForeground))
 
         let matchDetail = matchedItems.isEmpty
             ? "현재 동기화된 KLMS 항목과 직접 연결되는 항목은 아직 없습니다."
             : "현재 동기화된 KLMS 항목 \(matchedItems.count)개와 제목, 과목, 일정 정보가 겹칩니다."
-        steps.append(MacMailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tint: matchedItems.isEmpty ? Color.klmsMacSecondaryText : Color.klmsMacSuccessBorder))
+        steps.append(MacMailAnalysisStep(id: "match", title: "기존 항목 비교", detail: matchDetail, systemImage: "link", tint: matchedItems.isEmpty ? Color.klmsMacSecondaryText : Color.klmsMacSuccessForeground))
 
         if !urls.isEmpty {
             steps.append(MacMailAnalysisStep(id: "links", title: "링크 감지", detail: "본문에서 URL \(urls.count)개를 찾았습니다. KLMS 링크가 있으면 다음 동기화와 대조할 수 있습니다.", systemImage: "link.circle", tint: Color.klmsMacCommandAccent))

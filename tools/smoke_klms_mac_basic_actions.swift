@@ -41,6 +41,7 @@ private let appPath = ((environment["KLMS_MAC_APP_PATH"] ?? "~/Applications/KLMS
     .expandingTildeInPath
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
 private let verifyCommandQ = environment["KLMS_MAC_SMOKE_SKIP_CMD_Q"] != "1"
+private let allowDestructiveLogActions = environment["KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS"] == "1"
 private let requiredDashboardControls = [
     "전체 동기화",
 ]
@@ -153,12 +154,10 @@ private func verifyDashboardActions(appElement: AXUIElement) throws {
 private func verifyLogActions(appElement: AXUIElement) throws {
     try pressWorkspaceButton("workspace-activityLogs", appElement: appElement)
     for label in requiredLogControls {
-        guard waitForText(label, in: appElement, timeout: timeout) else {
-            throw SmokeFailure.expectedControlMissing(label)
-        }
-        try pressControl(label, appElement: appElement)
+        try verifyControl(label, appElement: appElement, press: allowDestructiveLogActions)
     }
-    print("ok: log action controls")
+    let mode = allowDestructiveLogActions ? "pressed by explicit opt-in" : "reachable without clearing logs"
+    print("ok: log action controls (\(mode))")
 }
 
 private func pressWorkspaceButton(_ identifier: String, appElement: AXUIElement) throws {
@@ -173,10 +172,19 @@ private func pressWorkspaceButton(_ identifier: String, appElement: AXUIElement)
     }
 }
 
-private func pressControl(_ label: String, appElement: AXUIElement) throws {
+private func verifyControl(_ label: String, appElement: AXUIElement, press: Bool) throws {
     guard let button = waitForButton(containing: label, in: appElement, timeout: timeout) else {
         throw SmokeFailure.expectedControlMissing(label)
     }
+
+    var actionNames: CFArray?
+    let actionError = AXUIElementCopyActionNames(button, &actionNames)
+    let actions = actionNames as? [String] ?? []
+    guard actionError == .success, actions.contains(kAXPressAction as String) else {
+        throw SmokeFailure.expectedControlNotActionable(label)
+    }
+
+    guard press else { return }
     let error = AXUIElementPerformAction(button, kAXPressAction as CFString)
     guard error == .success else {
         throw SmokeFailure.expectedControlNotActionable(label)
@@ -189,7 +197,7 @@ private func workspaceContentIdentifier(for buttonIdentifier: String) -> String?
     guard buttonIdentifier.hasPrefix(prefix) else {
         return nil
     }
-    return "workspace-content-\(buttonIdentifier.dropFirst(prefix.count))"
+    return "workspace-container-\(buttonIdentifier.dropFirst(prefix.count))"
 }
 
 private func verifyCommandQTerminatesAndReopens(app: NSRunningApplication) throws {

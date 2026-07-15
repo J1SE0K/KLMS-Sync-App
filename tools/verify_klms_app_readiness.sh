@@ -9,6 +9,7 @@ RUN_IOS_BUILD="${KLMS_READINESS_IOS_BUILD:-1}"
 RUN_IOS_LAUNCH="${KLMS_READINESS_IOS_LAUNCH:-1}"
 MAC_APP_PATH="${KLMS_MAC_APP_PATH:-$HOME/Applications/KLMS Sync.app}"
 MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-2}"
+ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"
 
 sanitize_output() {
   KLMS_REPO_ROOT="$ROOT_DIR" /usr/bin/perl -pe '
@@ -86,8 +87,13 @@ fi
 if [[ "$RUN_MAC_CHECKS" == "1" ]]; then
   record_step "mac-build" "$ROOT_DIR/tools/build_klms_mac_app.sh"
   record_step "mac-relaunch" relaunch_mac_app
-  record_step "mac-accessibility-smoke" swift "$ROOT_DIR/tools/smoke_klms_mac_accessibility.swift"
-  record_step "mac-basic-actions" swift "$ROOT_DIR/tools/smoke_klms_mac_basic_actions.swift"
+  record_step "mac-accessibility-smoke" /usr/bin/env \
+    KLMS_MAC_AX_VERIFY_ADAPTIVE_RESIZE=1 \
+    swift "$ROOT_DIR/tools/smoke_klms_mac_accessibility.swift"
+  record_step "mac-resize-hit-area" swift "$ROOT_DIR/tools/smoke_klms_mac_resize_hit_area.swift"
+  record_step "mac-basic-actions" /usr/bin/env \
+    KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS="$ALLOW_DESTRUCTIVE_ACTIONS" \
+    swift "$ROOT_DIR/tools/smoke_klms_mac_basic_actions.swift"
   record_step "mac-tab-response" /usr/bin/env \
     KLMS_MAC_TAB_PROBE_RUNS=3 \
     KLMS_MAC_TAB_AVERAGE_LIMIT_MS=100 \
@@ -128,7 +134,7 @@ for failed_step in "${failed_steps[@]}"; do
     swift-tests)
       swift_state="failed"
       ;;
-    mac-build|mac-relaunch|mac-accessibility-smoke|mac-basic-actions|mac-tab-response)
+    mac-build|mac-relaunch|mac-accessibility-smoke|mac-resize-hit-area|mac-basic-actions|mac-tab-response)
       mac_state="failed"
       ;;
     ios-signed-build)

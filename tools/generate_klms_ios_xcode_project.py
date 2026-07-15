@@ -34,6 +34,7 @@ SHARED_SOURCES = [
     "JSONDefaults.swift",
     "KLMSEngineCommand.swift",
     "KLMSPaths.swift",
+    "LiveStatePolicies.swift",
     "RemoteCommandModels.swift",
     "StateModels.swift",
     "StatusModels.swift",

@@ -317,7 +317,7 @@ private struct KLMSAuthDigitsOverlayView: View {
         HStack(spacing: 12) {
             Image(systemName: "iphone.radiowaves.left.and.right")
                 .font(.title3.weight(.semibold))
-                .foregroundStyle(Color.klmsMacWarningBorder)
+                .foregroundStyle(Color.klmsMacWarningForeground)
                 .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 2) {
                 Text("KAIST 인증 번호")
@@ -338,7 +338,7 @@ private struct KLMSAuthDigitsOverlayView: View {
                     .frame(width: 34, height: 34)
             }
             .buttonStyle(.plain)
-            .foregroundStyle(Color.klmsMacWarningBorder)
+            .foregroundStyle(Color.klmsMacWarningForeground)
             .help("인증 번호 복사")
             .accessibilityLabel("KAIST 인증 번호 복사")
         }
@@ -612,6 +612,7 @@ private final class KLMSDashboardWindowCoordinator {
 
     private(set) var model: KLMSMacModel?
     private var window: NSWindow?
+    private var resizeOverlay: KLMSDashboardWindowResizeOverlay?
     private var bootstrapTask: Task<Void, Never>?
     private var pendingDashboardWindowOpen = false
 
@@ -676,13 +677,24 @@ private final class KLMSDashboardWindowCoordinator {
         hostingController.view.setAccessibilityIdentifier("klms-dashboard-root")
         window.contentViewController = hostingController
         window.setContentSize(initialSize)
+        installResizeOverlay(in: window)
         restoreDashboardFrameIfNeeded(window, size: initialSize)
         self.window = window
 
         window.makeKeyAndOrderFront(nil)
         window.orderFrontRegardless()
         activateDashboardApplication()
-        scheduleBootstrapIfNeeded(delay: 2.5)
+        scheduleBootstrapIfNeeded()
+    }
+
+    private func installResizeOverlay(in window: NSWindow) {
+        guard let contentView = window.contentView else { return }
+        let overlay = KLMSDashboardWindowResizeOverlay()
+        overlay.translatesAutoresizingMaskIntoConstraints = true
+        overlay.frame = contentView.bounds
+        overlay.autoresizingMask = [.width, .height]
+        contentView.addSubview(overlay, positioned: .above, relativeTo: nil)
+        resizeOverlay = overlay
     }
 
     private func activateDashboardApplication() {
@@ -705,13 +717,11 @@ private final class KLMSDashboardWindowCoordinator {
         window.setFrame(NSRect(origin: origin, size: NSSize(width: width, height: height)), display: true)
     }
 
-    func scheduleBootstrapIfNeeded(delay: TimeInterval = 0.2) {
+    func scheduleBootstrapIfNeeded() {
         guard bootstrapTask == nil else {
             return
         }
         bootstrapTask = Task { @MainActor [weak self] in
-            let nanoseconds = UInt64(delay * 1_000_000_000)
-            try? await Task.sleep(nanoseconds: nanoseconds)
             guard !Task.isCancelled, let self, let model = self.model else {
                 return
             }
@@ -732,7 +742,7 @@ private final class KLMSDashboardWindowCoordinator {
 private enum KLMSWindowMetrics {
     static let initialWidth: CGFloat = 1080
     static let initialHeight: CGFloat = 760
-    static let minWidth: CGFloat = 900
+    static let minWidth: CGFloat = 640
     static let minHeight: CGFloat = 520
 
     private static var visibleFrame: CGRect {

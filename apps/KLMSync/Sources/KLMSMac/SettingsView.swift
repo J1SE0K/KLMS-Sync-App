@@ -110,6 +110,8 @@ struct SettingsView: View {
             settingsContentPanel
         }
         .frame(maxWidth: .infinity, minHeight: 520, alignment: .topLeading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings-content-root")
     }
 
     private var settingsTabBar: some View {
@@ -141,29 +143,15 @@ struct SettingsView: View {
 
     private var settingsContentPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: selectedTab.systemImage)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(Color.klmsMacCommandAccent)
-                    .frame(width: 24)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedTab.title)
-                        .font(.headline.weight(.bold))
-                        .foregroundStyle(Color.klmsMacPrimaryText)
-                    Text(selectedTab.detail)
-                        .font(.caption)
-                        .foregroundStyle(Color.klmsMacSecondaryText)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 10) {
+                    settingsHeaderIdentity
+                    Spacer(minLength: 8)
+                    settingsHeaderBadges
                 }
-                Spacer()
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) {
-                        settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
-                        settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
-                    }
-                    VStack(alignment: .trailing, spacing: 4) {
-                        settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
-                        settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
-                    }
+                VStack(alignment: .leading, spacing: 8) {
+                    settingsHeaderIdentity
+                    settingsHeaderBadges
                 }
             }
             .padding(.horizontal, 12)
@@ -176,6 +164,37 @@ struct SettingsView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
+        }
+    }
+
+    private var settingsHeaderIdentity: some View {
+        HStack(spacing: 10) {
+            Image(systemName: selectedTab.systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.klmsMacCommandAccent)
+                .frame(width: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selectedTab.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(Color.klmsMacPrimaryText)
+                Text(selectedTab.detail)
+                    .font(.caption)
+                    .foregroundStyle(Color.klmsMacSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var settingsHeaderBadges: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
+                settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
+                settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
+            }
         }
     }
 
@@ -217,8 +236,9 @@ struct SettingsView: View {
                 Text(tab.title)
                     .font(.caption.weight(isSelected ? .bold : .semibold))
                     .foregroundStyle((isSelected || isHovered) ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.86)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 9)
             .padding(.vertical, 8)
@@ -263,8 +283,8 @@ struct SettingsView: View {
         Text(text)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(primary ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText)
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(Color.klmsMacSubtleCardBackground, in: Capsule())
@@ -568,7 +588,7 @@ struct SettingsView: View {
                             Text(model.appDiagnostics.codeSigning.statusTitle)
                             Text(model.appDiagnostics.codeSigning.statusDetail)
                                 .font(.caption)
-                                .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningBorder : Color.klmsMacSecondaryText)
+                                .foregroundStyle(model.appDiagnostics.codeSigning.isAdHoc ? Color.klmsMacWarningForeground : Color.klmsMacSecondaryText)
                                 .multilineTextAlignment(.trailing)
                         }
                     }
@@ -591,7 +611,7 @@ struct SettingsView: View {
                     LabeledContent("최근 백업") {
                         Text(model.latestBackup.map { "\($0.id) · \($0.fileCount)개" } ?? "없음")
                     }
-                    HStack {
+                    LazyVGrid(columns: settingsActionColumns, alignment: .leading, spacing: 8) {
                         Button {
                             model.createBackup()
                         } label: {
@@ -945,32 +965,47 @@ private struct SettingsDisclosureLabel: View {
                 .frame(width: 26, height: 26)
                 .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.klmsMacPrimaryText)
-                    if let badge = badge?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !badge.isEmpty {
-                        Text(badge)
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsMacSecondaryText)
-                            .lineLimit(1)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(Color.klmsMacCardBackground.opacity(0.72), in: Capsule())
-                            .overlay {
-                                Capsule()
-                                    .stroke(Color.klmsMacBorder.opacity(0.52), lineWidth: 1)
-                            }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        disclosureTitle
+                        disclosureBadge
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        disclosureTitle
+                        disclosureBadge
                     }
                 }
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(2)
-                    .minimumScaleFactor(0.88)
                     .fixedSize(horizontal: false, vertical: true)
             }
+        }
+    }
+
+    private var disclosureTitle: some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.klmsMacPrimaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var disclosureBadge: some View {
+        if let badge = badge?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !badge.isEmpty {
+            Text(badge)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(Color.klmsMacSecondaryText)
+                .lineLimit(1)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(Color.klmsMacCardBackground.opacity(0.72), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(Color.klmsMacBorder.opacity(0.52), lineWidth: 1)
+                }
         }
     }
 }
@@ -1144,13 +1179,31 @@ private struct SettingsFieldRow<Content: View>: View {
     }
 
     private var headerContent: some View {
-        HStack(alignment: .center, spacing: 10) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.klmsMacPrimaryText)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 10) {
+                fieldTitle
+                Spacer(minLength: 8)
+                fieldTrailingContent
             }
-            Spacer(minLength: 8)
+            VStack(alignment: .leading, spacing: 6) {
+                fieldTitle
+                fieldTrailingContent
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: 9))
+    }
+
+    private var fieldTitle: some View {
+        Text(title)
+            .font(.caption.weight(.bold))
+            .foregroundStyle(Color.klmsMacPrimaryText)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder
+    private var fieldTrailingContent: some View {
+        HStack(spacing: 8) {
             if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                !summary.isEmpty {
                 SettingsCurrentValueBadge(value: summary)
@@ -1159,8 +1212,6 @@ private struct SettingsFieldRow<Content: View>: View {
                 SettingsExpansionBadge(isExpanded: isExpanded)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 9))
     }
 }
 
@@ -1175,8 +1226,8 @@ private struct SettingsCurrentValueBadge: View {
             Text(value)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsMacPrimaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -1468,7 +1519,7 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
         case .soft:
             return Color.klmsMacSecondaryCommandButtonForeground
         case .destructive:
-            return Color.klmsMacDangerBorder
+            return Color.klmsMacDangerForeground
         }
     }
 

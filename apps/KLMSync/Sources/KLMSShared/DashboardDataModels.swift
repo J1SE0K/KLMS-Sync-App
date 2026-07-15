@@ -37,8 +37,18 @@ public struct ManualOverridesSnapshot: Sendable, Equatable {
             url,
             !url.isEmpty && !title.isEmpty ? "\(url)::\(title)" : "",
             !course.isEmpty && !title.isEmpty && !due.isEmpty ? "\(course)::\(title)::\(due)" : "",
-            !course.isEmpty && !title.isEmpty ? "\(course)::\(title)" : "",
         ].filter { !$0.isEmpty }
+    }
+
+    /// The old course/title-only key is intentionally excluded from passive
+    /// matching because it can cover multiple assignments with different due
+    /// dates. Callers may use this key only to perform an explicit, item-scoped
+    /// migration to a canonical URL or course/title/due key.
+    public static func legacyBroadAssignmentOverrideKey(for item: StateItem) -> String? {
+        let title = oneLine(item.title)
+        let course = oneLine(item.course)
+        guard !course.isEmpty, !title.isEmpty else { return nil }
+        return "\(course)::\(title)"
     }
 
     public func examOverride(for item: StateItem) -> ExamOverride {
@@ -246,7 +256,13 @@ public struct ManualOverrideStore: Sendable {
         var object = try loadJSONObject()
         var assignments = object["assignments"] as? [String: Any] ?? legacyAssignmentObject(from: object)
         let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let removableKeys = Set(ManualOverridesSnapshot.assignmentOverrideCandidateKeys(for: item) + [currentKey ?? ""])
+        let removableKeys = Set(
+            ManualOverridesSnapshot.assignmentOverrideCandidateKeys(for: item)
+                + [
+                    ManualOverridesSnapshot.legacyBroadAssignmentOverrideKey(for: item) ?? "",
+                    currentKey ?? "",
+                ]
+        )
         if normalized.isEmpty {
             for removableKey in removableKeys where !removableKey.isEmpty {
                 assignments.removeValue(forKey: removableKey)
@@ -259,6 +275,30 @@ public struct ManualOverrideStore: Sendable {
         }
         object["assignments"] = assignments
         try saveJSONObject(object)
+    }
+
+    /// Migrates one deliberately selected assignment away from the ambiguous
+    /// legacy course/title key. This is never called as part of passive state
+    /// rendering, so two same-title assignments cannot both inherit one value.
+    @discardableResult
+    public func migrateLegacyAssignmentOverride(for item: StateItem) throws -> Bool {
+        guard let legacyKey = ManualOverridesSnapshot.legacyBroadAssignmentOverrideKey(for: item) else {
+            return false
+        }
+        let canonicalKey = ManualOverridesSnapshot.preferredAssignmentOverrideKey(for: item)
+        guard !canonicalKey.isEmpty, canonicalKey != legacyKey else { return false }
+
+        var object = try loadJSONObject()
+        var assignments = object["assignments"] as? [String: Any] ?? legacyAssignmentObject(from: object)
+        guard let legacyValue = assignments[legacyKey] else { return false }
+        if assignments[canonicalKey] == nil {
+            assignments[canonicalKey] = legacyValue
+        }
+        assignments.removeValue(forKey: legacyKey)
+        object.removeValue(forKey: legacyKey)
+        object["assignments"] = assignments
+        try saveJSONObject(object)
+        return true
     }
 
     public func saveExamOverride(_ override: ExamOverride, for item: StateItem, currentKey: String? = nil) throws {

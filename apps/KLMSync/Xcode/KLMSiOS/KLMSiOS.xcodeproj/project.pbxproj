@@ -16,6 +16,7 @@
 		A2FB44896AC5A3E93E1C0C20 /* JSONDefaults.swift in Sources */ = {isa = PBXBuildFile; fileRef = B527DB490021021AA98854C3 /* JSONDefaults.swift */; };
 		CD081BE5F5542A72BB2E1A80 /* KLMSEngineCommand.swift in Sources */ = {isa = PBXBuildFile; fileRef = F246C506CC84D5668F04AA5C /* KLMSEngineCommand.swift */; };
 		E29BC1E4076D65755AC920D7 /* KLMSPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1CB33DB3DC3038C739B1939 /* KLMSPaths.swift */; };
+		DB53201F407A0FD904EB2B9B /* LiveStatePolicies.swift in Sources */ = {isa = PBXBuildFile; fileRef = E691962DB465A22D592394CC /* LiveStatePolicies.swift */; };
 		64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */; };
 		0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6709D4B7C4D5248C468873FD /* StateModels.swift */; };
 		FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C3A8268D3376FED887FD75 /* StatusModels.swift */; };
@@ -45,6 +46,7 @@
 		B527DB490021021AA98854C3 /* JSONDefaults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "JSONDefaults.swift"; path = "../../Sources/KLMSShared/JSONDefaults.swift"; sourceTree = "<group>"; };
 		F246C506CC84D5668F04AA5C /* KLMSEngineCommand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSEngineCommand.swift"; path = "../../Sources/KLMSShared/KLMSEngineCommand.swift"; sourceTree = "<group>"; };
 		E1CB33DB3DC3038C739B1939 /* KLMSPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSPaths.swift"; path = "../../Sources/KLMSShared/KLMSPaths.swift"; sourceTree = "<group>"; };
+		E691962DB465A22D592394CC /* LiveStatePolicies.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "LiveStatePolicies.swift"; path = "../../Sources/KLMSShared/LiveStatePolicies.swift"; sourceTree = "<group>"; };
 		6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteCommandModels.swift"; path = "../../Sources/KLMSShared/RemoteCommandModels.swift"; sourceTree = "<group>"; };
 		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
 		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
@@ -90,6 +92,7 @@
 				B527DB490021021AA98854C3 /* JSONDefaults.swift */,
 				F246C506CC84D5668F04AA5C /* KLMSEngineCommand.swift */,
 				E1CB33DB3DC3038C739B1939 /* KLMSPaths.swift */,
+				E691962DB465A22D592394CC /* LiveStatePolicies.swift */,
 				6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */,
 				6709D4B7C4D5248C468873FD /* StateModels.swift */,
 				11C3A8268D3376FED887FD75 /* StatusModels.swift */,
@@ -207,6 +210,7 @@
 				A2FB44896AC5A3E93E1C0C20 /* JSONDefaults.swift in Sources */,
 				CD081BE5F5542A72BB2E1A80 /* KLMSEngineCommand.swift in Sources */,
 				E29BC1E4076D65755AC920D7 /* KLMSPaths.swift in Sources */,
+				DB53201F407A0FD904EB2B9B /* LiveStatePolicies.swift in Sources */,
 				64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */,
 				0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */,
 				FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */,

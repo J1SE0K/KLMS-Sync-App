@@ -65,7 +65,7 @@ private func runSmoke() throws {
         throw SmokeFailure.dashboardMissing
     }
     _ = AXUIElementPerformAction(dashboard, kAXPressAction as CFString)
-    _ = waitForElement(withIdentifier: "workspace-content-dashboard", in: appElement, timeout: 2)
+    _ = waitForElement(withIdentifier: "workspace-container-dashboard", in: appElement, timeout: 2)
 
     guard let fullSync = waitForCommandButton(
         identifier: "command-fullSync",

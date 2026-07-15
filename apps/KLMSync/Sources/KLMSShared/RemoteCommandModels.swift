@@ -732,6 +732,18 @@ public struct LocalRemoteResponse: Codable, Sendable, Equatable {
     public var responseIssuedAtEpochSeconds: Int64?
     public var signature: String?
 
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case message
+        case status
+        case latestCommand
+        case running
+        case updatedAt
+        case requestNonce
+        case responseIssuedAtEpochSeconds
+        case signature
+    }
+
     public init(
         ok: Bool = true,
         message: String = "",
@@ -752,6 +764,21 @@ public struct LocalRemoteResponse: Codable, Sendable, Equatable {
         self.requestNonce = requestNonce
         self.responseIssuedAtEpochSeconds = responseIssuedAtEpochSeconds
         self.signature = signature
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try container.decodeIfPresent(Bool.self, forKey: .ok) ?? true
+        message = try container.decodeIfPresent(String.self, forKey: .message) ?? ""
+        status = try container.decodeIfPresent(SanitizedRemoteStatus.self, forKey: .status) ?? SanitizedRemoteStatus()
+        // A legacy malformed command must not make the status or the rest of a
+        // worker inbox undecodable. New malformed rows are rejected by relay validation.
+        latestCommand = try? container.decode(RemoteRunCommand.self, forKey: .latestCommand)
+        running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
+        updatedAt = try container.decodeIfPresent(String.self, forKey: .updatedAt)
+        requestNonce = try container.decodeIfPresent(String.self, forKey: .requestNonce)
+        responseIssuedAtEpochSeconds = try container.decodeIfPresent(Int64.self, forKey: .responseIssuedAtEpochSeconds)
+        signature = try container.decodeIfPresent(String.self, forKey: .signature)
     }
 
     public func signed(
@@ -1162,6 +1189,21 @@ public struct ServerRelayCommandListResponse: Codable, Sendable, Equatable {
         self.status = status
         self.latestCommand = latestCommand
         self.running = running
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case commands
+        case status
+        case latestCommand
+        case running
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        commands = container.decodeLossyArray(RemoteRunCommand.self, forKey: .commands)
+        status = try container.decodeIfPresent(SanitizedRemoteStatus.self, forKey: .status) ?? SanitizedRemoteStatus()
+        latestCommand = try? container.decode(RemoteRunCommand.self, forKey: .latestCommand)
+        running = try container.decodeIfPresent(Bool.self, forKey: .running) ?? false
     }
 }
 
@@ -1705,6 +1747,9 @@ public extension ServerRelaySyncItem {
     static func dashboardTimestampEpoch(from value: String) -> Int? {
         let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return nil }
+        if let epoch = dashboardISOTimestampEpoch(from: text) {
+            return epoch
+        }
         if let epoch = dashboardDashTimestampEpoch(from: text) {
             return epoch
         }
@@ -1724,6 +1769,89 @@ public extension ServerRelaySyncItem {
             }
         }
         return nil
+    }
+
+    private static func dashboardISOTimestampEpoch(from text: String) -> Int? {
+        let bytes = Array(text.utf8)
+        guard bytes.count >= 20,
+              bytes[4] == 45,
+              bytes[7] == 45,
+              bytes[10] == 84,
+              bytes[13] == 58,
+              bytes[16] == 58 else {
+            return nil
+        }
+
+        func number(at start: Int, count: Int) -> Int? {
+            guard start >= 0, start + count <= bytes.count else { return nil }
+            var value = 0
+            for byte in bytes[start..<(start + count)] {
+                guard byte >= 48, byte <= 57 else { return nil }
+                value = (value * 10) + Int(byte - 48)
+            }
+            return value
+        }
+
+        guard let year = number(at: 0, count: 4),
+              let month = number(at: 5, count: 2),
+              let day = number(at: 8, count: 2),
+              let hour = number(at: 11, count: 2),
+              let minute = number(at: 14, count: 2),
+              let second = number(at: 17, count: 2),
+              (1...12).contains(month),
+              (0...23).contains(hour),
+              (0...59).contains(minute),
+              (0...60).contains(second) else {
+            return nil
+        }
+
+        let leapYear = year.isMultiple(of: 4) && (!year.isMultiple(of: 100) || year.isMultiple(of: 400))
+        let daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        guard (1...daysInMonth[month - 1]).contains(day) else { return nil }
+
+        var zoneIndex = 19
+        if zoneIndex < bytes.count, bytes[zoneIndex] == 46 {
+            zoneIndex += 1
+            let fractionStart = zoneIndex
+            while zoneIndex < bytes.count, bytes[zoneIndex] >= 48, bytes[zoneIndex] <= 57 {
+                zoneIndex += 1
+            }
+            guard zoneIndex > fractionStart else { return nil }
+        }
+
+        let offsetSeconds: Int
+        guard zoneIndex < bytes.count else { return nil }
+        switch bytes[zoneIndex] {
+        case 90:
+            guard zoneIndex + 1 == bytes.count else { return nil }
+            offsetSeconds = 0
+        case 43, 45:
+            let sign = bytes[zoneIndex] == 43 ? 1 : -1
+            guard let offsetHour = number(at: zoneIndex + 1, count: 2),
+                  (0...23).contains(offsetHour) else {
+                return nil
+            }
+            let minuteStart = zoneIndex + 3 < bytes.count && bytes[zoneIndex + 3] == 58
+                ? zoneIndex + 4
+                : zoneIndex + 3
+            guard let offsetMinute = number(at: minuteStart, count: 2),
+                  (0...59).contains(offsetMinute),
+                  minuteStart + 2 == bytes.count else {
+                return nil
+            }
+            offsetSeconds = sign * ((offsetHour * 3_600) + (offsetMinute * 60))
+        default:
+            return nil
+        }
+
+        let adjustedYear = year - (month <= 2 ? 1 : 0)
+        let era = (adjustedYear >= 0 ? adjustedYear : adjustedYear - 399) / 400
+        let yearOfEra = adjustedYear - (era * 400)
+        let adjustedMonth = month + (month > 2 ? -3 : 9)
+        let dayOfYear = ((153 * adjustedMonth) + 2) / 5 + day - 1
+        let dayOfEra = (yearOfEra * 365) + (yearOfEra / 4) - (yearOfEra / 100) + dayOfYear
+        let daysSince1970 = (era * 146_097) + dayOfEra - 719_468
+        return (daysSince1970 * 86_400) + (hour * 3_600) + (minute * 60) + second - offsetSeconds
     }
 
     var normalizedDashboardItem: ServerRelaySyncItem {
@@ -2540,14 +2668,34 @@ public struct ServerRelayWorkerInbox: Codable, Sendable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         statusResponse = try container.decodeIfPresent(LocalRemoteResponse.self, forKey: .statusResponse) ?? LocalRemoteResponse()
-        recentRequestLog = try container.decodeIfPresent([ServerRelayRequestLogEntry].self, forKey: .recentRequestLog) ?? []
-        recentFileAccessRequests = try container.decodeIfPresent([ServerRelayFileAccessRequest].self, forKey: .recentFileAccessRequests) ?? []
-        pendingFileAccessRequests = try container.decodeIfPresent([ServerRelayFileAccessRequest].self, forKey: .pendingFileAccessRequests) ?? []
-        pendingSettingActions = try container.decodeIfPresent([ServerRelaySettingAction].self, forKey: .pendingSettingActions) ?? []
-        pendingItemActions = try container.decodeIfPresent([ServerRelayItemAction].self, forKey: .pendingItemActions) ?? []
-        pendingCommands = try container.decodeIfPresent([RemoteRunCommand].self, forKey: .pendingCommands) ?? []
+        recentRequestLog = container.decodeLossyArray(ServerRelayRequestLogEntry.self, forKey: .recentRequestLog)
+        recentFileAccessRequests = container.decodeLossyArray(ServerRelayFileAccessRequest.self, forKey: .recentFileAccessRequests)
+        pendingFileAccessRequests = container.decodeLossyArray(ServerRelayFileAccessRequest.self, forKey: .pendingFileAccessRequests)
+        pendingSettingActions = container.decodeLossyArray(ServerRelaySettingAction.self, forKey: .pendingSettingActions)
+        pendingItemActions = container.decodeLossyArray(ServerRelayItemAction.self, forKey: .pendingItemActions)
+        pendingCommands = container.decodeLossyArray(RemoteRunCommand.self, forKey: .pendingCommands)
         cancelRequest = try container.decodeIfPresent(ServerRelayCancelRequest.self, forKey: .cancelRequest) ?? ServerRelayCancelRequest()
-        sharedSettings = try container.decodeIfPresent([ServerRelaySetting].self, forKey: .sharedSettings) ?? []
+        sharedSettings = container.decodeLossyArray(ServerRelaySetting.self, forKey: .sharedSettings)
+    }
+}
+
+private struct LossyDecodableElement<Element: Decodable>: Decodable {
+    var value: Element?
+
+    init(from decoder: Decoder) throws {
+        value = try? Element(from: decoder)
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func decodeLossyArray<Element: Decodable>(
+        _ type: Element.Type,
+        forKey key: Key
+    ) -> [Element] {
+        guard let elements = try? decodeIfPresent([LossyDecodableElement<Element>].self, forKey: key) else {
+            return []
+        }
+        return elements.compactMap(\.value)
     }
 }
 
@@ -2600,7 +2748,12 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
     }
 
     public func create(_ command: RemoteRunCommand) async throws {
-        let _: RemoteRunCommand = try await send(
+        _ = try await createReturningCommand(command)
+    }
+
+    @discardableResult
+    public func createReturningCommand(_ command: RemoteRunCommand) async throws -> RemoteRunCommand {
+        try await send(
             method: "POST",
             path: "/v1/commands",
             body: command

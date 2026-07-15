@@ -44,8 +44,9 @@ private enum ProbeFailure: Error, CustomStringConvertible {
 
 private struct ProbeTarget {
     var rawValue: String
+    var renderedTexts: [String]
     var buttonIdentifier: String { "workspace-\(rawValue)" }
-    var selectionIdentifier: String { "workspace-container-marker-\(rawValue)" }
+    var renderIdentifier: String { "workspace-content-root-\(rawValue)" }
 }
 
 private let environment = ProcessInfo.processInfo.environment
@@ -57,14 +58,14 @@ private let runCount = max(1, Int(environment["KLMS_MAC_TAB_PROBE_RUNS"] ?? "1")
 private let averageLimit = Double(environment["KLMS_MAC_TAB_AVERAGE_LIMIT_MS"] ?? "") ?? 0
 private let slowestLimit = Double(environment["KLMS_MAC_TAB_SLOWEST_LIMIT_MS"] ?? "") ?? 0
 private let targets = [
-    ProbeTarget(rawValue: "dashboard"),
-    ProbeTarget(rawValue: "files"),
-    ProbeTarget(rawValue: "tasks"),
-    ProbeTarget(rawValue: "notices"),
-    ProbeTarget(rawValue: "calendar"),
-    ProbeTarget(rawValue: "activityLogs"),
-    ProbeTarget(rawValue: "diagnostics"),
-    ProbeTarget(rawValue: "settings"),
+    ProbeTarget(rawValue: "dashboard", renderedTexts: ["전체 동기화"]),
+    ProbeTarget(rawValue: "files", renderedTexts: ["파일 목록", "필터와 검색"]),
+    ProbeTarget(rawValue: "tasks", renderedTexts: ["과제", "시험", "필터와 검색"]),
+    ProbeTarget(rawValue: "notices", renderedTexts: ["공지 분류"]),
+    ProbeTarget(rawValue: "calendar", renderedTexts: ["캘린더 일정", "KLMS 기준 반영"]),
+    ProbeTarget(rawValue: "activityLogs", renderedTexts: ["실행 로그 지우기", "서버 로그 지우기"]),
+    ProbeTarget(rawValue: "diagnostics", renderedTexts: ["상태 검사", "권한/환경 진단"]),
+    ProbeTarget(rawValue: "settings", renderedTexts: ["이 기기에 바로 적용"]),
 ]
 
 do {
@@ -120,11 +121,15 @@ private func runProbe() throws {
 }
 
 private func runningKLMSApplication() -> NSRunningApplication? {
-    let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
-        app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+    if let exactBundleMatch = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        .first(where: { !$0.isTerminated }) {
+        return exactBundleMatch
     }
-    return (runningByBundleID + runningByName).first(where: { !$0.isTerminated })
+    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
+        app.localizedName == appName
+            || (appPath == nil && app.executableURL?.lastPathComponent == "KLMSMac")
+    }
+    return runningByName.first(where: { !$0.isTerminated })
 }
 
 private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
@@ -332,12 +337,20 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
         throw ProbeFailure.pressFailed(identifier: target.buttonIdentifier, error)
     }
 
-    let requiredIdentifiers = [target.selectionIdentifier]
+    let requiredIdentifiers = [target.renderIdentifier]
     guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
-        if waitForElement(withIdentifier: target.selectionIdentifier, in: appElement, timeout: 0.1) == nil {
+        if waitForElement(withIdentifier: requiredIdentifiers[0], in: appElement, timeout: 0.1) == nil {
             throw ProbeFailure.workspaceSelectionMissing(target.buttonIdentifier)
         }
-        throw ProbeFailure.workspaceContentMissing(target.selectionIdentifier)
+        let missing = requiredIdentifiers.filter {
+            waitForElement(withIdentifier: $0, in: appElement, timeout: 0.1) == nil
+        }
+        throw ProbeFailure.workspaceContentMissing(missing.joined(separator: ", "))
+    }
+    for renderedText in target.renderedTexts {
+        guard waitForText(renderedText, in: appElement, timeout: timeout) else {
+            throw ProbeFailure.workspaceContentMissing(renderedText)
+        }
     }
     let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
@@ -373,6 +386,25 @@ private func waitForElement(
         Thread.sleep(forTimeInterval: 0.02)
     } while Date() < deadline
     return nil
+}
+
+private func waitForText(
+    _ text: String,
+    in root: AXUIElement,
+    timeout: TimeInterval
+) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if findElement(in: root, maxDepth: 32, maxNodes: 35_000, predicate: { element in
+            textAttributes(of: element).contains {
+                $0.localizedCaseInsensitiveContains(text)
+            }
+        }) != nil {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.02)
+    } while Date() < deadline
+    return false
 }
 
 private func findElement(

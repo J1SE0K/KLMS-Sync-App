@@ -57,6 +57,8 @@ private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
 private let appPath = environment["KLMS_MAC_APP_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines)
 private let navigationDelay = TimeInterval(environment["KLMS_MAC_AX_NAVIGATION_DELAY_SECONDS"] ?? "0.60") ?? 0.60
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
+private let verifiesAdaptiveResize = environment["KLMS_MAC_AX_VERIFY_ADAPTIVE_RESIZE"] == "1"
+private let primarySyncActionIdentifier = "command-fullSync-primary"
 private let screenshotDirectoryURL: URL? = {
     guard let rawPath = environment["KLMS_MAC_AX_SCREENSHOT_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines),
           !rawPath.isEmpty else {
@@ -64,6 +66,7 @@ private let screenshotDirectoryURL: URL? = {
     }
     return URL(fileURLWithPath: (rawPath as NSString).expandingTildeInPath, isDirectory: true)
 }()
+private var targetProcessIdentifier: pid_t?
 
 private struct WorkspaceSmokeTarget {
     var rawValue: String
@@ -71,8 +74,9 @@ private struct WorkspaceSmokeTarget {
     var expectedTexts: [String] = []
     var buttonIdentifier: String { "workspace-\(rawValue)" }
     var scrollIdentifier: String { "workspace-scroll-\(rawValue)" }
+    var contentRootIdentifier: String { "workspace-content-root-\(rawValue)" }
     var panelIdentifier: String { "workspace-panel-workspace-\(rawValue)" }
-    var renderedIdentifier: String { "workspace-container-marker-\(rawValue)" }
+    var renderedIdentifier: String { contentRootIdentifier }
 }
 
 private struct SettingsSmokeTarget {
@@ -104,10 +108,51 @@ do {
     try runSmoke()
 } catch {
     FileHandle.standardError.write(Data("smoke failed: \(error)\n".utf8))
+    FileHandle.standardError.write(Data(accessibilityIdentifierDiagnostics().utf8))
     FileHandle.standardError.write(Data(visibleWindowDiagnostics().utf8))
     FileHandle.standardError.write(Data(sessionDiagnostics().utf8))
     captureFailureScreenshotIfRequested()
     exit(1)
+}
+
+private func accessibilityIdentifierDiagnostics() -> String {
+    guard let targetProcessIdentifier else {
+        return "accessibility identifiers unavailable: target pid missing\n"
+    }
+    let root = AXUIElementCreateApplication(targetProcessIdentifier)
+    var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
+    var identifiers = Set<String>()
+    var visitedCount = 0
+
+    while let (element, depth) = stack.popLast(), visitedCount < 35_000 {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else { continue }
+        visitedCount += 1
+        if let identifier = stringAttribute(element, "AXIdentifier" as CFString),
+           !identifier.isEmpty {
+            identifiers.insert(identifier)
+        }
+        guard depth < 32 else { continue }
+        for child in childElements(of: element).reversed() {
+            stack.append((child, depth + 1))
+        }
+    }
+
+    let relevant = identifiers
+        .filter {
+            $0.contains("workspace")
+                || $0.contains("dashboard")
+                || $0.contains("command")
+                || $0.contains("settings")
+        }
+        .sorted()
+    if relevant.isEmpty {
+        return "accessibility identifiers: none matched workspace/dashboard/command/settings (visited \(visitedCount))\n"
+    }
+    return "accessibility identifiers (visited \(visitedCount)):\n"
+        + relevant.prefix(200).map { "  \($0)" }.joined(separator: "\n")
+        + "\n"
 }
 
 private func runSmoke() throws {
@@ -119,6 +164,7 @@ private func runSmoke() throws {
     guard let app = launchKLMSApplicationIfNeeded() else {
         throw SmokeFailure.appNotRunning(bundleID: bundleID, appName: appName)
     }
+    targetProcessIdentifier = app.processIdentifier
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     bringKLMSAppForward(app: app, appElement: appElement)
@@ -138,16 +184,23 @@ private func runSmoke() throws {
     }
     try verifySettingsTabsDoNotOverlap(appElement: appElement)
     try verifyWorkspaceNavigation(appElement: appElement, target: workspaceTargets[0])
+    if verifiesAdaptiveResize {
+        try verifyAdaptiveResize(appElement: appElement)
+    }
 
     print("ok: KLMS Mac workspace accessibility navigation is responsive")
 }
 
 private func runningKLMSApplication() -> NSRunningApplication? {
-    let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
-        app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
+    if let exactBundleMatch = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        .first(where: { !$0.isTerminated }) {
+        return exactBundleMatch
     }
-    return (runningByBundleID + runningByName).first(where: { !$0.isTerminated })
+    let runningByName = NSWorkspace.shared.runningApplications.filter { app in
+        app.localizedName == appName
+            || (appPath == nil && app.executableURL?.lastPathComponent == "KLMSMac")
+    }
+    return runningByName.first(where: { !$0.isTerminated })
 }
 
 private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
@@ -198,6 +251,13 @@ private func activateApplicationBundle() {
 }
 
 private func activateApplicationWithAppleScript() {
+    // When a concrete bundle path is supplied, NSWorkspace/open and the AX
+    // frontmost attribute already target the exact process. Resolving an app
+    // by display name can select another installed KLMS Sync build or block
+    // indefinitely when both builds are running.
+    if let appPath, !appPath.isEmpty {
+        return
+    }
     let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -238,6 +298,17 @@ private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
 }
 
 private func requestDashboardWindowReopen() {
+    if let appPath, !appPath.isEmpty {
+        let escapedBundleID = bundleID.replacingOccurrences(of: "\"", with: "\\\"")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", "tell application id \"\(escapedBundleID)\" to reopen"]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try? process.run()
+        process.waitUntilExit()
+        return
+    }
     let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -251,6 +322,10 @@ private func requestDashboardWindowReopen() {
 private func hasVisibleDashboardWindow() -> Bool {
     let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     return windows.contains { info in
+        if let targetProcessIdentifier {
+            let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+            guard ownerPID == targetProcessIdentifier else { return false }
+        }
         let owner = info[kCGWindowOwnerName as String] as? String ?? ""
         return owner == appName || owner == "KLMS Sync" || owner == "KLMSMac"
     }
@@ -338,7 +413,10 @@ private func verifyWorkspaceNavigation(
             }
         }
 
-        let requiredIdentifiers = [target.renderedIdentifier]
+        var requiredIdentifiers = [target.renderedIdentifier]
+        if target.rawValue == "dashboard" {
+            requiredIdentifiers.append(primarySyncActionIdentifier)
+        }
         guard waitForElements(withIdentifiers: requiredIdentifiers, in: appElement, timeout: timeout) else {
             for identifier in requiredIdentifiers where waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1) == nil {
                 throw SmokeFailure.workspaceContentMissing(identifier)
@@ -347,6 +425,23 @@ private func verifyWorkspaceNavigation(
         }
 
         Thread.sleep(forTimeInterval: navigationDelay)
+        let primaryActionCount = countElements(
+            in: appElement,
+            maxDepth: 32,
+            maxNodes: 35_000,
+            where: {
+                identifierMatches(
+                    stringAttribute($0, "AXIdentifier" as CFString),
+                    expected: primarySyncActionIdentifier
+                )
+            }
+        )
+        let expectedPrimaryActionCount = target.rawValue == "dashboard" ? 1 : 0
+        guard primaryActionCount == expectedPrimaryActionCount else {
+            throw SmokeFailure.layoutOverlap(
+                "Expected \(expectedPrimaryActionCount) dashboard sync actions in \(target.rawValue), found \(primaryActionCount)."
+            )
+        }
         didSelect = waitForSelectedValue(identifier: target.buttonIdentifier, in: appElement, timeout: 0.7)
         guard didSelect else {
             Thread.sleep(forTimeInterval: 0.25)
@@ -360,6 +455,7 @@ private func verifyWorkspaceNavigation(
         }
         if foundAllExpectedText {
             try verifyWorkspaceContentLayout(appElement: appElement, target: target)
+            try waitForSettledWorkspaceNavigation(appElement: appElement)
             try captureScreenshotIfRequested(named: "workspace-\(target.rawValue)")
             print("ok: \(target.buttonIdentifier) -> \(target.title)")
             return
@@ -454,29 +550,601 @@ private func verifySettingsTabsDoNotOverlap(appElement: AXUIElement) throws {
     try verifyNoMeaningfulOverlap(frames, context: "settings tabs")
 }
 
+private func verifyAdaptiveResize(appElement: AXUIElement) throws {
+    guard let window = firstAccessibilityWindow(in: appElement),
+          let originalFrame = accessibilityFrame(of: window) else {
+        throw SmokeFailure.layoutOverlap("Could not find the KLMS window for adaptive resize verification.")
+    }
+    defer {
+        try? setAccessibilityWindowSize(originalFrame.size, window: window)
+    }
+
+    let verificationWidths: [(width: CGFloat, mode: String)] = [
+        (1_200, "wide"),
+        (900, "medium"),
+        (640, "compact"),
+    ]
+    let verificationHeight = max(720, originalFrame.height)
+
+    try verifyNavigationTransitionRanges(
+        appElement: appElement,
+        window: window,
+        height: verificationHeight
+    )
+    try verifyLogClearActionTransitionRanges(
+        appElement: appElement,
+        window: window,
+        height: verificationHeight
+    )
+
+    for target in workspaceTargets {
+        try setAccessibilityWindowSize(
+            CGSize(width: 1_200, height: verificationHeight),
+            window: window
+        )
+        try verifyWorkspaceNavigation(appElement: appElement, target: target)
+
+        for verification in verificationWidths {
+            try setAccessibilityWindowSize(
+                CGSize(width: verification.width, height: verificationHeight),
+                window: window
+            )
+            guard waitForElement(
+                withIdentifier: "workspace-layout-mode-\(verification.mode)",
+                in: appElement,
+                timeout: timeout
+            ) != nil,
+            waitForElement(
+                withIdentifier: target.renderedIdentifier,
+                in: appElement,
+                timeout: timeout
+            ) != nil else {
+                throw SmokeFailure.layoutOverlap(
+                    "Workspace \(target.rawValue) did not preserve its \(verification.mode) layout at width \(Int(verification.width))."
+                )
+            }
+
+            if verification.mode == "compact" {
+                guard waitForElementAbsence(
+                    identifiers: [
+                        "workspace-navigation-mode-rail",
+                        "workspace-navigation-mode-sidebar",
+                    ],
+                    in: appElement,
+                    timeout: timeout
+                ) else {
+                    throw SmokeFailure.layoutOverlap("Compact workspace menu did not render after live window resize.")
+                }
+            }
+
+            try verifyWorkspaceContentLayout(appElement: appElement, target: target)
+            try verifyHorizontalDescendantContainment(
+                appElement: appElement,
+                rootIdentifier: target.contentRootIdentifier,
+                viewportIdentifier: target.scrollIdentifier,
+                context: "workspace \(target.rawValue) at width \(Int(verification.width))"
+            )
+            if target.rawValue == "activityLogs" {
+                try verifyLogClearAction(
+                    appElement: appElement,
+                    rootIdentifier: target.contentRootIdentifier,
+                    viewportIdentifier: target.scrollIdentifier,
+                    mode: verification.mode
+                )
+            }
+            if target.rawValue == "dashboard" {
+                try verifyPrimarySyncActionLayout(appElement: appElement, mode: verification.mode)
+            }
+            try captureScreenshotIfRequested(
+                named: "matrix-\(target.rawValue)-\(Int(verification.width))"
+            )
+        }
+    }
+
+    try setAccessibilityWindowSize(
+        CGSize(width: 1_200, height: verificationHeight),
+        window: window
+    )
+    try verifyWorkspaceNavigation(appElement: appElement, target: workspaceTargets[7])
+    for settingsTarget in settingsTargets {
+        try setAccessibilityWindowSize(
+            CGSize(width: 1_200, height: verificationHeight),
+            window: window
+        )
+        try verifySettingsTabNavigation(
+            appElement: appElement,
+            identifier: settingsTarget.identifier,
+            expectedText: settingsTarget.expectedText
+        )
+        for verification in verificationWidths {
+            try setAccessibilityWindowSize(
+                CGSize(width: verification.width, height: verificationHeight),
+                window: window
+            )
+            guard waitForSelectedValue(
+                identifier: settingsTarget.identifier,
+                in: appElement,
+                timeout: timeout
+            ) else {
+                throw SmokeFailure.selectedValueMissing(settingsTarget.identifier)
+            }
+            try verifyHorizontalDescendantContainment(
+                appElement: appElement,
+                rootIdentifier: "workspace-content-root-settings",
+                viewportIdentifier: "workspace-scroll-settings",
+                context: "settings \(settingsTarget.rawValue) at width \(Int(verification.width))"
+            )
+            try captureScreenshotIfRequested(
+                named: "matrix-settings-\(settingsTarget.rawValue)-\(Int(verification.width))"
+            )
+        }
+    }
+
+    print("ok: all workspaces and settings tabs stay inside 1200/900/640pt viewports")
+}
+
+private func waitForSettledWorkspaceNavigation(appElement: AXUIElement) throws {
+    guard waitForElement(
+        withIdentifier: "workspace-navigation-mode-sidebar",
+        in: appElement,
+        timeout: 0.1
+    ) != nil else {
+        return
+    }
+
+    let deadline = Date().addingTimeInterval(timeout)
+    var previousSignature: String?
+    var stableSamples = 0
+    repeat {
+        var signatureParts: [String] = []
+        var complete = true
+        for target in workspaceTargets {
+            guard let element = waitForElement(
+                withIdentifier: target.buttonIdentifier,
+                in: appElement,
+                timeout: 0.1
+            ),
+            let frame = accessibilityFrame(of: element),
+            isMeaningful(frame),
+            textAttributes(of: element).contains(where: {
+                $0.localizedCaseInsensitiveContains(target.title)
+            }) else {
+                complete = false
+                break
+            }
+            signatureParts.append(
+                "\(target.rawValue):\(Int(frame.minX)),\(Int(frame.minY)),\(Int(frame.width)),\(Int(frame.height))"
+            )
+        }
+
+        if complete {
+            let signature = signatureParts.joined(separator: "|")
+            if signature == previousSignature {
+                stableSamples += 1
+                if stableSamples >= 2 {
+                    Thread.sleep(forTimeInterval: 0.15)
+                    return
+                }
+            } else {
+                previousSignature = signature
+                stableSamples = 1
+            }
+        } else {
+            previousSignature = nil
+            stableSamples = 0
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+
+    throw SmokeFailure.layoutOverlap(
+        "Workspace sidebar labels and icons did not reach a stable rendered state before capture."
+    )
+}
+
+private func verifyNavigationTransitionRanges(
+    appElement: AXUIElement,
+    window: AXUIElement,
+    height: CGFloat
+) throws {
+    let dashboard = workspaceTargets[0]
+    try setAccessibilityWindowSize(CGSize(width: 1_200, height: height), window: window)
+    try verifyWorkspaceNavigation(appElement: appElement, target: dashboard)
+
+    let samples: [(width: CGFloat, contentMode: String, navigationMode: String?, navigationWidth: CGFloat)] = [
+        (640, "compact", nil, 0),
+        (720, "compact", nil, 0),
+        (759, "medium", nil, 0),
+        (760, "compact", "rail", 65),
+        (1_199, "wide", "rail", 65),
+        (1_200, "wide", "sidebar", 185),
+    ]
+
+    for sample in samples {
+        try setAccessibilityWindowSize(CGSize(width: sample.width, height: height), window: window)
+        guard waitForElement(
+            withIdentifier: "workspace-layout-mode-\(sample.contentMode)",
+            in: appElement,
+            timeout: timeout
+        ) != nil else {
+            throw SmokeFailure.layoutOverlap(
+                "Content mode \(sample.contentMode) is missing at transition width \(Int(sample.width))."
+            )
+        }
+        if let navigationMode = sample.navigationMode {
+            let navigationIdentifier = "workspace-navigation-mode-\(navigationMode)"
+            guard let navigation = waitForElement(
+                withIdentifier: navigationIdentifier,
+                in: appElement,
+                timeout: timeout
+            ),
+            let navigationFrame = accessibilityFrame(of: navigation),
+            let contentRoot = waitForElement(
+                withIdentifier: dashboard.contentRootIdentifier,
+                in: appElement,
+                timeout: timeout
+            ),
+            let contentFrame = accessibilityFrame(of: contentRoot),
+            abs(navigationFrame.width - sample.navigationWidth) <= 2,
+            abs(contentFrame.minX - navigationFrame.maxX) <= 2 else {
+                throw SmokeFailure.layoutOverlap(
+                    "Navigation \(navigationMode) must be exactly \(Int(sample.navigationWidth))pt and meet the document edge at transition width \(Int(sample.width))."
+                )
+            }
+        } else {
+            guard waitForElementAbsence(
+                identifiers: [
+                    "workspace-navigation-mode-rail",
+                    "workspace-navigation-mode-sidebar",
+                ],
+                in: appElement,
+                timeout: timeout
+            ) else {
+                throw SmokeFailure.layoutOverlap(
+                    "Compact navigation is missing at transition width \(Int(sample.width))."
+                )
+            }
+            guard let contentRoot = waitForElement(
+                withIdentifier: dashboard.contentRootIdentifier,
+                in: appElement,
+                timeout: timeout
+            ),
+            let contentFrame = accessibilityFrame(of: contentRoot),
+            abs(contentFrame.width - sample.width) <= 2 else {
+                throw SmokeFailure.layoutOverlap(
+                    "Hidden navigation must be exactly 0pt at transition width \(Int(sample.width))."
+                )
+            }
+            if sample.width == 720 {
+                try verifyCompactWorkspaceMenuOptions(appElement: appElement)
+            }
+        }
+        try verifyHorizontalDescendantContainment(
+            appElement: appElement,
+            rootIdentifier: dashboard.contentRootIdentifier,
+            viewportIdentifier: dashboard.scrollIdentifier,
+            context: "dashboard transition width \(Int(sample.width))"
+        )
+        try captureScreenshotIfRequested(named: "transition-\(Int(sample.width))")
+    }
+}
+
+private func verifyCompactWorkspaceMenuOptions(appElement: AXUIElement) throws {
+    guard let menu = waitForElement(
+        withIdentifier: "workspace-compact-menu",
+        in: appElement,
+        timeout: timeout
+    ) else {
+        throw SmokeFailure.layoutOverlap("Narrow workspace menu is missing.")
+    }
+    guard AXUIElementPerformAction(menu, kAXPressAction as CFString) == .success else {
+        throw SmokeFailure.layoutOverlap("Narrow workspace menu could not be opened.")
+    }
+
+    var firstItem: AXUIElement?
+    for target in workspaceTargets {
+        let identifier = "workspace-compact-\(target.rawValue)"
+        guard let item = waitForElement(
+            withIdentifier: identifier,
+            in: appElement,
+            timeout: timeout
+        ) else {
+            throw SmokeFailure.layoutOverlap(
+                "Narrow workspace menu is missing section \(target.title)."
+            )
+        }
+        if firstItem == nil {
+            firstItem = item
+        }
+    }
+
+    if let firstItem {
+        _ = AXUIElementPerformAction(firstItem, kAXPressAction as CFString)
+    }
+    guard waitForElement(
+        withIdentifier: workspaceTargets[0].contentRootIdentifier,
+        in: appElement,
+        timeout: timeout
+    ) != nil else {
+        throw SmokeFailure.layoutOverlap("Narrow workspace menu did not preserve selection state.")
+    }
+}
+
+private func verifyLogClearActionTransitionRanges(
+    appElement: AXUIElement,
+    window: AXUIElement,
+    height: CGFloat
+) throws {
+    let target = workspaceTargets.first { $0.rawValue == "activityLogs" }!
+    try setAccessibilityWindowSize(CGSize(width: 1_200, height: height), window: window)
+    try verifyWorkspaceNavigation(appElement: appElement, target: target)
+
+    let samples: [(width: CGFloat, mode: String)] = [
+        (720, "compact"),
+        (1_040, "wide"),
+        (1_240, "wide"),
+    ]
+    for sample in samples {
+        try setAccessibilityWindowSize(CGSize(width: sample.width, height: height), window: window)
+        guard waitForElement(
+            withIdentifier: "workspace-layout-mode-\(sample.mode)",
+            in: appElement,
+            timeout: timeout
+        ) != nil,
+        waitForElement(
+            withIdentifier: target.contentRootIdentifier,
+            in: appElement,
+            timeout: timeout
+        ) != nil else {
+            throw SmokeFailure.layoutOverlap(
+                "Activity logs did not preserve their \(sample.mode) layout at width \(Int(sample.width))."
+            )
+        }
+        try verifyHorizontalDescendantContainment(
+            appElement: appElement,
+            rootIdentifier: target.contentRootIdentifier,
+            viewportIdentifier: target.scrollIdentifier,
+            context: "activity logs at width \(Int(sample.width))"
+        )
+        try verifyLogClearAction(
+            appElement: appElement,
+            rootIdentifier: target.contentRootIdentifier,
+            viewportIdentifier: target.scrollIdentifier,
+            mode: sample.mode
+        )
+        try captureScreenshotIfRequested(named: "log-clear-\(Int(sample.width))")
+    }
+}
+
+private func verifyLogClearAction(
+    appElement: AXUIElement,
+    rootIdentifier: String,
+    viewportIdentifier: String,
+    mode: String
+) throws {
+    guard let action = waitForElement(
+        withIdentifier: "log-clear-all-action",
+        in: appElement,
+        timeout: timeout
+    ),
+    let actionFrame = accessibilityFrame(of: action),
+    let viewport = waitForElement(
+        withIdentifier: viewportIdentifier,
+        in: appElement,
+        timeout: 0.2
+    ) ?? waitForElement(
+        withIdentifier: rootIdentifier,
+        in: appElement,
+        timeout: timeout
+    ),
+    let viewportFrame = accessibilityFrame(of: viewport),
+    isMeaningful(actionFrame),
+    isMeaningful(viewportFrame) else {
+        throw SmokeFailure.layoutOverlap("The compact trailing clear-all log action is missing in \(mode) layout.")
+    }
+
+    guard actionFrame.width >= 44,
+          actionFrame.height >= 44,
+          actionFrame.minX >= viewportFrame.minX - 2,
+          actionFrame.maxX <= viewportFrame.maxX + 2 else {
+        throw SmokeFailure.layoutOverlap(
+            "The clear-all log action lost its 44pt target or escaped the \(mode) viewport: action=\(actionFrame.debugDescription), viewport=\(viewportFrame.debugDescription)."
+        )
+    }
+
+    let expectedPresentation = mode == "compact" ? "아이콘 전용" : "아이콘과 레이블"
+    guard textAttributes(of: action).contains(where: {
+        $0.localizedCaseInsensitiveContains(expectedPresentation)
+    }) else {
+        throw SmokeFailure.layoutOverlap(
+            "The clear-all log action did not expose its \(expectedPresentation) presentation in \(mode) layout."
+        )
+    }
+}
+
+private func verifyPrimarySyncActionLayout(appElement: AXUIElement, mode: String) throws {
+    guard let action = waitForElement(
+        withIdentifier: primarySyncActionIdentifier,
+        in: appElement,
+        timeout: timeout
+    ),
+    let actionFrame = accessibilityFrame(of: action),
+    let commandColumn = waitForElement(
+        withIdentifier: "dashboard-command-column",
+        in: appElement,
+        timeout: timeout
+    ),
+    let commandColumnFrame = accessibilityFrame(of: commandColumn),
+    let summaryColumn = waitForElement(
+        withIdentifier: "dashboard-summary-column",
+        in: appElement,
+        timeout: timeout
+    ),
+    let summaryColumnFrame = accessibilityFrame(of: summaryColumn),
+    let viewportFrame = workspaceViewportFrame(
+        in: appElement,
+        identifiers: [
+            "workspace-scroll-dashboard",
+            "workspace-content-root-dashboard",
+            "workspace-container-dashboard",
+        ],
+        timeout: timeout
+    ),
+    isMeaningful(actionFrame),
+    isMeaningful(commandColumnFrame),
+    isMeaningful(summaryColumnFrame),
+    isMeaningful(viewportFrame) else {
+        throw SmokeFailure.layoutOverlap("The dashboard sync card or adaptive column frame is missing in \(mode) layout.")
+    }
+
+    guard actionFrame.minY >= viewportFrame.minY - 4,
+          actionFrame.maxY <= viewportFrame.maxY + 4 else {
+        throw SmokeFailure.layoutOverlap(
+            "The dashboard sync card is not inside the workspace scroll area in \(mode) layout."
+        )
+    }
+
+    guard actionFrame.minX >= commandColumnFrame.minX - 4,
+          actionFrame.maxX <= commandColumnFrame.maxX + 4,
+          actionFrame.minY >= commandColumnFrame.minY - 4,
+          actionFrame.maxY <= commandColumnFrame.maxY + 4 else {
+        throw SmokeFailure.layoutOverlap(
+            "The full-sync action escaped the dashboard command column in \(mode) layout."
+        )
+    }
+
+    if mode == "wide" {
+        guard abs(commandColumnFrame.minY - summaryColumnFrame.minY) <= 4 else {
+            throw SmokeFailure.layoutOverlap(
+                "The wide dashboard columns no longer share their original top alignment."
+            )
+        }
+    } else {
+        guard commandColumnFrame.maxY <= summaryColumnFrame.minY + 4 else {
+            throw SmokeFailure.layoutOverlap(
+                "The sync section is not above the dashboard summary in \(mode) one-column layout."
+            )
+        }
+    }
+
+    if mode == "compact" {
+        guard actionFrame.width >= commandColumnFrame.width - 40 else {
+            throw SmokeFailure.layoutOverlap(
+                "The compact full-sync card does not fill its command column: \(Int(actionFrame.width)) of \(Int(commandColumnFrame.width))."
+            )
+        }
+        if let compactMenu = waitForElement(
+            withIdentifier: "workspace-compact-menu",
+            in: appElement,
+            timeout: 0.2
+        ),
+        let compactMenuFrame = accessibilityFrame(of: compactMenu),
+        isMeaningful(compactMenuFrame),
+        actionFrame.minY < compactMenuFrame.maxY - 2 {
+            throw SmokeFailure.layoutOverlap("The compact primary sync action overlaps the workspace menu.")
+        }
+    }
+
+    if let utilities = waitForElement(
+        withIdentifier: "top-utility-actions",
+        in: appElement,
+        timeout: 0.2
+    ),
+    let utilityFrame = accessibilityFrame(of: utilities),
+    isMeaningful(utilityFrame) {
+        let intersection = actionFrame.intersection(utilityFrame)
+        if !intersection.isNull,
+           intersection.width > 4,
+           intersection.height > 4 {
+            throw SmokeFailure.layoutOverlap(
+                "The primary sync action overlaps the top utility actions in \(mode) layout."
+            )
+        }
+    }
+}
+
+private func firstAccessibilityWindow(in appElement: AXUIElement) -> AXUIElement? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value) == .success,
+          let windows = value as? [AXUIElement] else {
+        return nil
+    }
+    return windows
+        .filter { stringAttribute($0, kAXRoleAttribute as CFString) == kAXWindowRole }
+        .compactMap { window -> (window: AXUIElement, area: CGFloat)? in
+            guard let frame = accessibilityFrame(of: window), isMeaningful(frame) else { return nil }
+            return (window, frame.width * frame.height)
+        }
+        .max { $0.area < $1.area }?
+        .window
+}
+
+private func setAccessibilityWindowSize(_ requestedSize: CGSize, window: AXUIElement) throws {
+    var size = requestedSize
+    guard let value = AXValueCreate(.cgSize, &size) else {
+        throw SmokeFailure.layoutOverlap("Could not create an accessibility window-size value.")
+    }
+    let error = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value)
+    guard error == .success else {
+        throw SmokeFailure.layoutOverlap("Could not resize the KLMS window through Accessibility: \(error).")
+    }
+
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let frame = accessibilityFrame(of: window), abs(frame.width - requestedSize.width) <= 2 {
+            Thread.sleep(forTimeInterval: 0.25)
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    let actualWidth = accessibilityFrame(of: window)?.width ?? 0
+    throw SmokeFailure.layoutOverlap(
+        "KLMS window did not reach requested width \(Int(requestedSize.width)); actual=\(Int(actualWidth))."
+    )
+}
+
 private func verifyWorkspaceContentLayout(
     appElement: AXUIElement,
     target: WorkspaceSmokeTarget
 ) throws {
-    guard let button = waitForElement(withIdentifier: target.buttonIdentifier, in: appElement, timeout: timeout),
-          let buttonFrame = accessibilityFrame(of: button),
-          let scroll = waitForElement(withIdentifier: target.scrollIdentifier, in: appElement, timeout: timeout),
-          let scrollFrame = accessibilityFrame(of: scroll),
-          isMeaningful(buttonFrame),
+    let nativeScrollFrame = meaningfulAccessibilityFrame(
+        identifier: target.scrollIdentifier,
+        in: appElement,
+        timeout: 0.4
+    )
+    guard let scrollFrame = nativeScrollFrame ?? meaningfulAccessibilityFrame(
+              identifier: target.renderedIdentifier,
+              in: appElement,
+              timeout: timeout
+          ),
           isMeaningful(scrollFrame) else {
         throw SmokeFailure.layoutOverlap("workspace \(target.rawValue) layout frame is missing from the accessibility tree.")
     }
 
-    guard scrollFrame.width >= 420, scrollFrame.height >= 240 else {
-        throw SmokeFailure.layoutOverlap(
-            "workspace \(target.rawValue) scroll area is too small: \(Int(scrollFrame.width))x\(Int(scrollFrame.height))."
-        )
+    if nativeScrollFrame != nil {
+        guard scrollFrame.width >= 420, scrollFrame.height >= 240 else {
+            throw SmokeFailure.layoutOverlap(
+                "workspace \(target.rawValue) scroll area is too small: \(Int(scrollFrame.width))x\(Int(scrollFrame.height))."
+            )
+        }
+    } else {
+        guard scrollFrame.width >= 360, scrollFrame.height >= 80 else {
+            throw SmokeFailure.layoutOverlap(
+                "workspace \(target.rawValue) content frame is too small: \(Int(scrollFrame.width))x\(Int(scrollFrame.height))."
+            )
+        }
     }
 
-    guard scrollFrame.minX >= buttonFrame.maxX - 16 else {
-        throw SmokeFailure.layoutOverlap(
-            "workspace \(target.rawValue) scroll area overlaps the sidebar."
-        )
+    let buttonFrame = waitForElement(
+        withIdentifier: target.buttonIdentifier,
+        in: appElement,
+        timeout: 0.2
+    ).flatMap(accessibilityFrame)
+    if let buttonFrame, isMeaningful(buttonFrame) {
+        guard scrollFrame.minX >= buttonFrame.maxX - 16 else {
+            throw SmokeFailure.layoutOverlap(
+                "workspace \(target.rawValue) scroll area overlaps the sidebar."
+            )
+        }
     }
 
     let horizontalSlack: CGFloat = 10
@@ -505,14 +1173,135 @@ private func verifyWorkspaceContentLayout(
         )
     }
 
-    let navIntersection = buttonFrame.intersection(scrollFrame)
-    if !navIntersection.isNull, isMeaningful(navIntersection),
-       navIntersection.width > 4,
-       navIntersection.height > 4 {
+    if let buttonFrame, isMeaningful(buttonFrame) {
+        let navIntersection = buttonFrame.intersection(scrollFrame)
+        if !navIntersection.isNull, isMeaningful(navIntersection),
+           navIntersection.width > 4,
+           navIntersection.height > 4 {
+            throw SmokeFailure.layoutOverlap(
+                "workspace \(target.rawValue) scroll area overlaps the sidebar button \(target.buttonIdentifier)."
+            )
+        }
+    }
+}
+
+private func workspaceViewportFrame(
+    in appElement: AXUIElement,
+    identifiers: [String],
+    timeout: TimeInterval
+) -> CGRect? {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        for identifier in identifiers {
+            if let element = waitForElement(withIdentifier: identifier, in: appElement, timeout: 0.1),
+               let frame = accessibilityFrame(of: element),
+               isMeaningful(frame) {
+                return frame
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    return nil
+}
+
+private func meaningfulAccessibilityFrame(
+    identifier: String,
+    in appElement: AXUIElement,
+    timeout: TimeInterval
+) -> CGRect? {
+    guard let element = waitForElement(
+        withIdentifier: identifier,
+        in: appElement,
+        timeout: timeout
+    ),
+    let frame = accessibilityFrame(of: element),
+    isMeaningful(frame) else {
+        return nil
+    }
+    return frame
+}
+
+private func verifyHorizontalDescendantContainment(
+    appElement: AXUIElement,
+    rootIdentifier: String,
+    viewportIdentifier: String,
+    context: String
+) throws {
+    guard let root = waitForElement(
+        withIdentifier: rootIdentifier,
+        in: appElement,
+        timeout: timeout
+    ) else {
         throw SmokeFailure.layoutOverlap(
-            "workspace \(target.rawValue) scroll area overlaps the sidebar button \(target.buttonIdentifier)."
+            "\(context): content root is missing."
         )
     }
+    let viewport = waitForElement(
+        withIdentifier: viewportIdentifier,
+        in: appElement,
+        timeout: 0.2
+    ) ?? root
+    guard let viewportFrame = accessibilityFrame(of: viewport),
+          isMeaningful(viewportFrame) else {
+        throw SmokeFailure.layoutOverlap(
+            "\(context): content root or native workspace viewport is missing."
+        )
+    }
+
+    let horizontalSlack: CGFloat = 2
+    var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
+    var visitedCount = 0
+    var offenders: [String] = []
+
+    while let (element, depth) = stack.popLast() {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else { continue }
+        visitedCount += 1
+        guard visitedCount <= 35_000 else {
+            throw SmokeFailure.layoutOverlap(
+                "\(context): accessibility containment traversal exceeded 35000 nodes."
+            )
+        }
+
+        if boolAttribute(element, "AXVisible" as CFString) != false,
+           let frame = accessibilityFrame(of: element),
+           isMeaningful(frame),
+           (frame.minX < viewportFrame.minX - horizontalSlack
+            || frame.maxX > viewportFrame.maxX + horizontalSlack
+            || frame.width > viewportFrame.width + (horizontalSlack * 2)) {
+            offenders.append(
+                "\(accessibilityElementSummary(element)) frame=\(frame.debugDescription)"
+            )
+            if offenders.count >= 8 { break }
+        }
+
+        guard depth < 40 else { continue }
+        for child in childElements(of: element).reversed() {
+            stack.append((child, depth + 1))
+        }
+    }
+
+    guard offenders.isEmpty else {
+        throw SmokeFailure.layoutOverlap(
+            "\(context): descendants escaped viewport \(viewportFrame.debugDescription): \(offenders.joined(separator: "; "))"
+        )
+    }
+}
+
+private func accessibilityElementSummary(_ element: AXUIElement) -> String {
+    let role = stringAttribute(element, kAXRoleAttribute as CFString) ?? "unknown-role"
+    let identifier = stringAttribute(element, "AXIdentifier" as CFString) ?? "no-id"
+    let title = textAttributes(of: element).first ?? "no-title"
+    return "role=\(role) id=\(identifier) title=\(title)"
+}
+
+private func boolAttribute(_ element: AXUIElement, _ attribute: CFString) -> Bool? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else {
+        return nil
+    }
+    return (value as? NSNumber)?.boolValue
 }
 
 private func verifyNoMeaningfulOverlap(_ frames: [(String, CGRect)], context: String) throws {
@@ -574,7 +1363,7 @@ private func captureScreenshotIfRequested(named rawName: String) throws {
         at: screenshotDirectoryURL,
         withIntermediateDirectories: true
     )
-    guard let windowID = visibleDashboardWindowID() else {
+    guard let windowID = waitForVisibleDashboardWindowID() else {
         throw SmokeFailure.screenshotFailed("Could not find a visible KLMS Sync window to capture.")
     }
     let safeName = rawName
@@ -587,6 +1376,23 @@ private func captureScreenshotIfRequested(named rawName: String) throws {
         throw SmokeFailure.screenshotFailed("Could not capture KLMS Sync screenshot for '\(rawName)'.")
     }
     print("screenshot: \(outputURL.path)")
+}
+
+private func waitForVisibleDashboardWindowID() -> Int? {
+    if let windowID = visibleDashboardWindowID() {
+        return windowID
+    }
+
+    requestDashboardWindowReopen()
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        if let windowID = visibleDashboardWindowID() {
+            Thread.sleep(forTimeInterval: 0.2)
+            return windowID
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    return nil
 }
 
 private func captureWindowUsingScreencapture(windowID: Int, to outputURL: URL) -> Bool {
@@ -615,6 +1421,10 @@ private func captureFailureScreenshotIfRequested() {
 private func visibleDashboardWindowID() -> Int? {
     let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     let candidates = windows.compactMap { info -> (id: Int, area: Double)? in
+        if let targetProcessIdentifier {
+            let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+            guard ownerPID == targetProcessIdentifier else { return nil }
+        }
         let owner = info[kCGWindowOwnerName as String] as? String ?? ""
         guard owner == appName || owner == "KLMS Sync" || owner == "KLMSMac" else { return nil }
         let layer = info[kCGWindowLayer as String] as? Int ?? -1
@@ -663,6 +1473,24 @@ private func waitForElements(
     return false
 }
 
+private func waitForElementAbsence(
+    identifiers: [String],
+    in root: AXUIElement,
+    timeout: TimeInterval
+) -> Bool {
+    let deadline = Date().addingTimeInterval(timeout)
+    repeat {
+        let hasVisibleIdentifier = identifiers.contains { identifier in
+            waitForElement(withIdentifier: identifier, in: root, timeout: 0.05) != nil
+        }
+        if !hasVisibleIdentifier {
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    return false
+}
+
 private func identifierMatches(_ actual: String?, expected: String) -> Bool {
     actual == expected || actual == "\(expected):"
 }
@@ -696,7 +1524,7 @@ private func waitForSelectedValue(
             return true
         }
         if let rawValue = workspaceRawValue(from: identifier),
-           waitForElement(withIdentifier: "workspace-content-\(rawValue)", in: root, timeout: 0.1) != nil {
+           waitForElement(withIdentifier: "workspace-content-root-\(rawValue)", in: root, timeout: 0.1) != nil {
             return true
         }
         Thread.sleep(forTimeInterval: 0.1)
@@ -748,6 +1576,44 @@ private func findElement(
     }
 
     return nil
+}
+
+private func countElements(
+    in root: AXUIElement,
+    maxDepth: Int,
+    maxNodes: Int,
+    where predicate: (AXUIElement) -> Bool
+) -> Int {
+    var stack: [(AXUIElement, Int)] = [(root, 0)]
+    var visited = Set<CFHashCode>()
+    var visitedCount = 0
+    var matches = 0
+
+    while let (element, depth) = stack.popLast() {
+        let elementHash = CFHash(element)
+        guard visited.insert(elementHash).inserted else {
+            continue
+        }
+
+        visitedCount += 1
+        guard visitedCount <= maxNodes else {
+            return matches
+        }
+
+        if predicate(element) {
+            matches += 1
+        }
+
+        guard depth < maxDepth else {
+            continue
+        }
+
+        for child in childElements(of: element).reversed() {
+            stack.append((child, depth + 1))
+        }
+    }
+
+    return matches
 }
 
 private func findIdentifiers(

@@ -60,6 +60,26 @@ private enum KLMSAppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+private struct CompanionLayoutModeKey: EnvironmentKey {
+    static let defaultValue: AdaptiveLayoutMode = .compact
+}
+
+private extension EnvironmentValues {
+    var companionLayoutMode: AdaptiveLayoutMode {
+        get { self[CompanionLayoutModeKey.self] }
+        set { self[CompanionLayoutModeKey.self] = newValue }
+    }
+}
+
+private actor ServerTokenPersistenceCoordinator {
+    func persist(
+        _ token: String,
+        operation: @Sendable (String) -> Void
+    ) {
+        operation(token)
+    }
+}
+
 @main
 struct KLMSiOSApp: App {
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
@@ -195,6 +215,7 @@ final class CompanionModel: ObservableObject {
     @Published private(set) var hasClearableFileAccessLogs = false
     @Published private(set) var sharedRunLogStageDurationsByID: [String: [KLMSStageDuration]] = [:]
     @Published private(set) var latestSharedRunLogStageDurations: [KLMSStageDuration] = []
+    @Published private(set) var uiTestPerformanceMetricsJSON = ""
     fileprivate var remoteSettingGroups: [RemoteSettingGroup] = []
     @Published var status = SanitizedRemoteStatus() {
         didSet { rebuildDashboardStatus() }
@@ -206,6 +227,7 @@ final class CompanionModel: ObservableObject {
     @Published var isRefreshing = false
     @Published private(set) var isLoadingServerSyncData = false
     @Published var isSubmitting = false
+    @Published private(set) var pendingSharedSettingKeys = Set<String>()
     @Published private(set) var pendingCancelCommandID: UUID?
     @Published private(set) var pendingCancelRequestedAt: Date?
     @Published var lastRefreshAt: Date?
@@ -219,10 +241,20 @@ final class CompanionModel: ObservableObject {
         didSet { UserDefaults.standard.set(shouldUpdateNoticeNotes, forKey: Self.shouldUpdateNoticeNotesKey) }
     }
     @Published var serverURL: String {
-        didSet { UserDefaults.standard.set(serverURL, forKey: Self.serverURLKey) }
+        didSet {
+            UserDefaults.standard.set(serverURL, forKey: Self.serverURLKey)
+            if oldValue != serverURL {
+                resetRemoteSessionForConnectionChange()
+            }
+        }
     }
     @Published var serverToken: String {
-        didSet { schedulePersistServerToken(serverToken) }
+        didSet {
+            schedulePersistServerToken(serverToken)
+            if oldValue != serverToken {
+                resetRemoteSessionForConnectionChange()
+            }
+        }
     }
 
     private var lastAuthSuccessAlertMessage = ""
@@ -232,25 +264,59 @@ final class CompanionModel: ObservableObject {
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
     private var serverTokenPersistTask: Task<Void, Never>?
+    private let serverTokenPersistenceCoordinator = ServerTokenPersistenceCoordinator()
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
+    private var relayEventBatchTask: Task<Void, Never>?
+    private var relayEventBatchOperationID: UInt64 = 0
+    private var relayEventBatchGeneration: UInt64?
+    private var relayRealtimePreviewTasks: [RelayRefreshEndpointKind: Task<Void, Never>] = [:]
+    private var relayRealtimePreviewOperationIDs: [RelayRefreshEndpointKind: UInt64] = [:]
+    private var relayRealtimePreviewGeneration: UInt64?
+    private var relayEndpointApplyEpochs = RelayEndpointApplyEpochs<RelayRefreshEndpointKind>()
     private var serverRelayEventStreamKey = ""
+    private var relayEventCursor = RelayEventCursor()
+    private var relayDirtyScopes = RelayDirtyScopeAccumulator()
+    private var relayEventBatchRetryAttempt = 0
+    private var relaySessionGeneration: UInt64 = 0
+    private var connectionCheckSequence: UInt64 = 0
+    private var commandSubmissionOperationID: UInt64 = 0
+    private var sharedSettingMutationSequence: UInt64 = 0
+    private var sharedSettingMutationVersionsByKey: [String: UInt64] = [:]
+    private var pendingSharedSettingsByKey: [String: ServerRelaySetting] = [:]
+    private let sharedSettingMutationQueue = KeyedSerialTaskQueue<String>()
+    private var sharedSettingCommittedBaselines = KeyedCommittedBaselineTracker<String, ServerRelaySetting>()
+    private var sharedSettingAuthoritativeObservationSequence: UInt64 = 0
+    private var sharedSettingAuthoritativeObservationVersionsByKey: [String: UInt64] = [:]
     private let usesUITestCaptureFixture: Bool
     private let usesUITestRunningFixture: Bool
+    private let usesUITestLargeDatasetFixture: Bool
     private var refreshInProgress = false
+    private var refreshInProgressGeneration: UInt64?
     private var pendingRefreshRequest: PendingRefreshRequest?
     private var lastSyncDataRefreshAt: Date?
     private var syncDataNeedsRefresh = true
     private var isApplyingServerSyncData = false
     @Published private(set) var hasLoadedServerSyncData = false
     private var syncItemsSignature: Int?
-    private var calendarChangesSignature: Int?
     private var remoteSettingsSignature: Int?
     private var sharedSettingsSignature: Int?
     private var sharedRunLogsSignature: Int?
     private var verifySummarySignature: Int?
     private var pendingRemoteSettingActionsByKey: [String: ServerRelaySettingAction] = [:]
+    private var pendingSubmittedCommandsByID: [UUID: RemoteRunCommand] = [:]
+    private var statusCommandID: UUID?
+    private struct PendingItemActionOverlay {
+        var action: ServerRelayItemAction
+        var previousSyncItems: [ServerRelaySyncItem]?
+        var previousSyncItemsSignature: Int?
+        var previousMailDashboardItems: [ServerRelaySyncItem]?
+        var previousResolvedCalendarChangeIDs: Set<String>?
+    }
+    private var pendingItemActionOverlaysByID: [UUID: PendingItemActionOverlay] = [:]
+    private var pendingFileAccessRequestsByID: [UUID: ServerRelayFileAccessRequest] = [:]
+    private var sharedRunLogsClearPending = false
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
     private var latestFileAccessRequestByItemID: [String: ServerRelayFileAccessRequest] = [:]
@@ -263,6 +329,7 @@ final class CompanionModel: ObservableObject {
     private var dashboardFilterOptionsByCategoryID: [String: CompanionItemFilterOptions] = [:]
     private var defaultDashboardListDataByCategoryID: [String: CompanionItemListData] = [:]
     private var visibleDashboardTaskItems: [ServerRelaySyncItem] = []
+    private var dashboardSelectionByCategoryID: [String: String] = [:]
     private var visibleCalendarChangeByID: [String: CalendarChange] = [:]
     private var dashboardSortedSyncItems: [ServerRelaySyncItem] = []
     private var dashboardActionHiddenItemIDsCache = Set<String>()
@@ -313,7 +380,7 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    struct RelayRefreshScope: Equatable {
+    struct RelayRefreshScope: Equatable, Sendable {
         var fetchesCommands: Bool
         var fetchesSyncData: Bool
         var fetchesFileRequests: Bool
@@ -448,15 +515,74 @@ final class CompanionModel: ObservableObject {
         )
     }
 
-    private struct RelayEventEnvelope: Decodable {
-        var type: String?
-        var reason: String?
-        var updatedAt: String?
+    private enum RelayRefreshEndpointKind: Sendable, Hashable, CaseIterable {
+        case status
+        case commands
+        case syncData
+        case fileRequests
+        case itemActions
+        case requestLog
+        case settingActions
+    }
+
+    private enum RelayRefreshEndpointResult: Sendable {
+        case status(Result<LocalRemoteResponse, Error>)
+        case commands([RemoteRunCommand]?)
+        case syncData(Result<ServerRelaySyncData?, Error>)
+        case fileRequests([ServerRelayFileAccessRequest]?)
+        case itemActions([ServerRelayItemAction]?)
+        case requestLog([ServerRelayRequestLogEntry]?)
+        case settingActions([ServerRelaySettingAction]?)
+    }
+
+    private struct RelayRefreshEndpointCompletion: Sendable {
+        var endpoint: RelayRefreshEndpointKind
+        var applyEpoch: UInt64
+        var result: RelayRefreshEndpointResult
+    }
+
+    private struct RelayRefreshEndpointApplication: Sendable {
+        var didChange = false
+        var refreshSucceeded = true
+        var loadedSyncData = false
+        var statusRefreshErrorMessage: String?
+        var belongsToCurrentOwner = true
+
+        static let staleOwner = RelayRefreshEndpointApplication(
+            belongsToCurrentOwner: false
+        )
+    }
+
+    private struct UITestPerformanceThresholds: Codable {
+        var webSocketSnapshotReconciliationMs = 2_500.0
+        var classificationAndFilteringMs = 1_500.0
+        var cacheWriteAndReadMs = 250.0
+        var searchMs = 1_500.0
+        var totalMeasuredMs = 5_000.0
+    }
+
+    private struct UITestPerformanceMetrics: Codable {
+        var schema = "klms-ios-2000-item-v1"
+        var itemCount: Int
+        var categoryCounts: [String: Int]
+        var initialLazyRenderLimit: Int
+        var targetGlobalIndex: Int
+        var targetItemID: String
+        var searchResultCount: Int
+        var searchResolvedTarget: Bool
+        var cacheHit: Bool
+        var webSocketSnapshotReconciliationMs: Double
+        var classificationAndFilteringMs: Double
+        var cacheWriteAndReadMs: Double
+        var searchMs: Double
+        var totalMeasuredMs: Double
+        var thresholds: UITestPerformanceThresholds
     }
 
     init() {
         usesUITestCaptureFixture = Self.shouldUseUITestCaptureFixture
         usesUITestRunningFixture = Self.shouldUseUITestRunningFixture
+        usesUITestLargeDatasetFixture = Self.shouldUseUITestLargeDatasetFixture
         #if canImport(UserNotifications)
         UNUserNotificationCenter.current().delegate = KLMSCompanionNotificationDelegate.shared
         #endif
@@ -465,6 +591,13 @@ final class CompanionModel: ObservableObject {
             serverToken = ""
             shouldUpdateNoticeNotes = true
             applyUITestRunningFixture()
+            return
+        }
+        if usesUITestLargeDatasetFixture {
+            serverURL = ""
+            serverToken = ""
+            shouldUpdateNoticeNotes = true
+            applyUITestLargeDatasetFixture()
             return
         }
         if usesUITestCaptureFixture {
@@ -511,6 +644,10 @@ final class CompanionModel: ObservableObject {
             return shouldUpdateNoticeNotes
         }
         return setting.boolValue
+    }
+
+    var isSharedNoticeUpdatePending: Bool {
+        pendingSharedSettingKeys.contains(Self.sharedNoticeUpdateNotesKey)
     }
 
     private var dashboardMailItems: [ServerRelaySyncItem] {
@@ -713,6 +850,7 @@ final class CompanionModel: ObservableObject {
         guard let serverRelayStore else {
             return
         }
+        let generation = relaySessionGeneration
         do {
             let payload = try JSONEncoder().encode(normalizedItem)
             let message = String(data: payload, encoding: .utf8) ?? ""
@@ -724,6 +862,7 @@ final class CompanionModel: ObservableObject {
                 message: message
             ))
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return }
             mailDashboardItems = previousMailDashboardItems
             persistMailDashboardItems()
             errorMessage = userFacingMessage(for: error)
@@ -743,6 +882,7 @@ final class CompanionModel: ObservableObject {
         guard let serverRelayStore else {
             return
         }
+        let generation = relaySessionGeneration
         do {
             let payload = try JSONEncoder().encode(item)
             let message = String(data: payload, encoding: .utf8) ?? ""
@@ -754,6 +894,7 @@ final class CompanionModel: ObservableObject {
                 message: message
             ))
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return }
             mailDashboardItems = previousMailDashboardItems
             persistMailDashboardItems()
             errorMessage = userFacingMessage(for: error)
@@ -807,6 +948,10 @@ final class CompanionModel: ObservableObject {
     }
 
     var isUsingUITestFixture: Bool {
+        usesUITestRunningFixture || usesUITestCaptureFixture || usesUITestLargeDatasetFixture
+    }
+
+    var usesUITestFrameMarkers: Bool {
         usesUITestRunningFixture || usesUITestCaptureFixture
     }
 
@@ -852,6 +997,10 @@ final class CompanionModel: ObservableObject {
 
     private static var shouldUseUITestCaptureFixture: Bool {
         ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_CAPTURE")
+    }
+
+    private static var shouldUseUITestLargeDatasetFixture: Bool {
+        ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_LARGE_DATASET")
     }
 
     private func applyUITestCaptureFixture() {
@@ -1030,6 +1179,212 @@ final class CompanionModel: ObservableObject {
         connectionSucceeded = true
         errorMessage = ""
         rebuildRemoteLogDerivedState()
+    }
+
+    private func applyUITestLargeDatasetFixture() {
+        let generatedAt = "2026-07-14T12:00:00+09:00"
+        let targetGlobalIndex = 1_775
+        let targetItemID = "perf-file-0355"
+        let items = Self.uiTestLargeDatasetItems(
+            count: 2_000,
+            targetGlobalIndex: targetGlobalIndex,
+            generatedAt: generatedAt
+        )
+        let snapshot = ServerRelaySyncData(generatedAt: generatedAt, items: items)
+        let clock = ContinuousClock()
+
+        status = SanitizedRemoteStatus(
+            phase: "idle",
+            phaseDetail: "2,000개 성능 검증 준비됨",
+            loginRequired: false
+        )
+
+        // WebSocket sync-data previews and batched event refreshes both converge
+        // through this same apply path, so this measures real snapshot
+        // normalization, signature comparison, and derived-state rebuilding.
+        let reconciliationStart = clock.now
+        _ = apply(snapshot, persistCache: false, markLoaded: true)
+        let webSocketSnapshotReconciliationMs = Self.milliseconds(
+            reconciliationStart.duration(to: clock.now)
+        )
+
+        let category = DashboardMetricCategory.files
+        let fileItems = cachedDashboardItems(for: category.rawValue)
+        let filterOptions = cachedDashboardFilterOptions(for: category.rawValue)
+        let defaultInputKey = CompanionItemListInputKey(
+            itemsRevision: dashboardSyncItemsRevision,
+            category: category.rawValue,
+            query: "",
+            sortOption: CompanionItemSortOption.recent.rawValue,
+            visibilityFilter: CompanionItemVisibilityFilter.visible.rawValue,
+            statusFilter: CompanionItemStatusFilter.all.rawValue,
+            selectedCourse: CompanionItemListFilter.allCourses,
+            selectedYear: CompanionItemListFilter.allYears,
+            selectedSemester: CompanionItemListFilter.allSemesters,
+            newOnly: false,
+            recentOnly: false
+        )
+
+        let classificationStart = clock.now
+        let classifiedData = CompanionItemListData(
+            items: fileItems,
+            category: category,
+            isCategoryPrefiltered: true,
+            query: "",
+            sortOption: .recent,
+            visibilityFilter: .visible,
+            statusFilter: .all,
+            selectedCourse: CompanionItemListFilter.allCourses,
+            selectedYear: CompanionItemListFilter.allYears,
+            selectedSemester: CompanionItemListFilter.allSemesters,
+            newOnly: false,
+            recentOnly: false,
+            filterOptions: filterOptions
+        )
+        let classificationAndFilteringMs = Self.milliseconds(
+            classificationStart.duration(to: clock.now)
+        )
+
+        let cacheStart = clock.now
+        CompanionItemListPreloadStore.store(classifiedData, for: defaultInputKey)
+        let cachedData = CompanionItemListPreloadStore.cachedData(for: defaultInputKey)
+        let cacheWriteAndReadMs = Self.milliseconds(cacheStart.duration(to: clock.now))
+
+        let searchStart = clock.now
+        let searchData = CompanionItemListData(
+            items: fileItems,
+            category: category,
+            isCategoryPrefiltered: true,
+            query: "PERF-TARGET-1775",
+            sortOption: .recent,
+            visibilityFilter: .visible,
+            statusFilter: .all,
+            selectedCourse: CompanionItemListFilter.allCourses,
+            selectedYear: CompanionItemListFilter.allYears,
+            selectedSemester: CompanionItemListFilter.allSemesters,
+            newOnly: false,
+            recentOnly: false,
+            filterOptions: filterOptions
+        )
+        let searchMs = Self.milliseconds(searchStart.duration(to: clock.now))
+
+        let roundedReconciliation = Self.roundedMilliseconds(webSocketSnapshotReconciliationMs)
+        let roundedClassification = Self.roundedMilliseconds(classificationAndFilteringMs)
+        let roundedCache = Self.roundedMilliseconds(cacheWriteAndReadMs)
+        let roundedSearch = Self.roundedMilliseconds(searchMs)
+        let thresholds = UITestPerformanceThresholds()
+        let metrics = UITestPerformanceMetrics(
+            itemCount: items.count,
+            categoryCounts: Dictionary(uniqueKeysWithValues: [
+                DashboardMetricCategory.files,
+                DashboardMetricCategory.notices,
+                DashboardMetricCategory.assignments,
+                DashboardMetricCategory.exams,
+                DashboardMetricCategory.helpDesk,
+            ].map { category in
+                (category.rawValue, cachedDashboardItems(for: category.rawValue).count)
+            }),
+            initialLazyRenderLimit: 120,
+            targetGlobalIndex: targetGlobalIndex,
+            targetItemID: targetItemID,
+            searchResultCount: searchData.filteredItems.count,
+            searchResolvedTarget: searchData.filteredItems.first?.id == targetItemID,
+            cacheHit: cachedData?.filteredItems.count == fileItems.count,
+            webSocketSnapshotReconciliationMs: roundedReconciliation,
+            classificationAndFilteringMs: roundedClassification,
+            cacheWriteAndReadMs: roundedCache,
+            searchMs: roundedSearch,
+            totalMeasuredMs: Self.roundedMilliseconds(
+                roundedReconciliation + roundedClassification + roundedCache + roundedSearch
+            ),
+            thresholds: thresholds
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        if let data = try? encoder.encode(metrics),
+           let json = String(data: data, encoding: .utf8) {
+            uiTestPerformanceMetricsJSON = json
+        }
+        lastRefreshAt = Date()
+        connectionMessage = "2,000개 혼합 데이터 성능 검증 fixture입니다."
+        connectionSucceeded = true
+        errorMessage = ""
+    }
+
+    private static func uiTestLargeDatasetItems(
+        count: Int,
+        targetGlobalIndex: Int,
+        generatedAt: String
+    ) -> [ServerRelaySyncItem] {
+        (0..<count).map { globalIndex in
+            let localIndex = globalIndex / 5
+            let paddedIndex = String(format: "%04d", localIndex)
+            let kind: String
+            let idPrefix: String
+            let titlePrefix: String
+            let timestamp: String
+            let status: String
+            switch globalIndex % 5 {
+            case 0:
+                kind = "file"
+                idPrefix = "perf-file"
+                titlePrefix = globalIndex == targetGlobalIndex
+                    ? "ZZZ PERF-TARGET-1775 File Item"
+                    : "File Item"
+                timestamp = "2026-07-10T12:00:00+09:00"
+                status = "new"
+            case 1:
+                kind = "notice"
+                idPrefix = "perf-notice"
+                titlePrefix = "Notice Item"
+                timestamp = "2026-07-11T12:00:00+09:00"
+                status = "stable"
+            case 2:
+                kind = "assignment"
+                idPrefix = "perf-assignment"
+                titlePrefix = "Assignment Item"
+                timestamp = "2027-12-20T23:59:00+09:00"
+                status = "active"
+            case 3:
+                kind = "exam"
+                idPrefix = "perf-exam"
+                titlePrefix = "Exam Item"
+                timestamp = "2027-12-22T09:00:00+09:00"
+                status = "active"
+            default:
+                kind = "helpDesk"
+                idPrefix = "perf-helpdesk"
+                titlePrefix = "Help Desk Item"
+                timestamp = "2027-12-24T14:00:00+09:00"
+                status = "active"
+            }
+            return ServerRelaySyncItem(
+                id: "\(idPrefix)-\(paddedIndex)",
+                kind: kind,
+                course: "성능 검증 과목 \((globalIndex % 8) + 1)",
+                academicTerm: "2027년 가을학기",
+                academicYear: 2027,
+                academicSemester: "fall",
+                title: "\(titlePrefix) \(paddedIndex)",
+                timestamp: timestamp,
+                status: status,
+                detail: "deterministic mixed dataset item \(globalIndex)",
+                attachmentCount: kind == "file" && localIndex.isMultiple(of: 3) ? 1 : 0,
+                updatedAt: generatedAt,
+                isRead: kind == "notice" && localIndex.isMultiple(of: 2),
+                isImportant: kind == "notice" && localIndex.isMultiple(of: 11)
+            )
+        }
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        return (Double(components.seconds) * 1_000)
+            + (Double(components.attoseconds) / 1_000_000_000_000_000)
+    }
+
+    private static func roundedMilliseconds(_ value: Double) -> Double {
+        (value * 1_000).rounded() / 1_000
     }
 
     private static func uiTestRunningFixtureItems(generatedAt: String) -> [ServerRelaySyncItem] {
@@ -1226,7 +1581,7 @@ final class CompanionModel: ObservableObject {
     }
 
     var canCancelRunningCommand: Bool {
-        shouldShowCancelControl && !isCancelRequestedForLatestCommand
+        shouldShowCancelControl && !isSubmitting && !isCancelRequestedForLatestCommand
     }
 
     var shouldShowAuthCompletion: Bool {
@@ -1479,26 +1834,55 @@ final class CompanionModel: ObservableObject {
             errorMessage = remoteAvailabilityMessage
             return
         }
+        let generation = relaySessionGeneration
+        commandSubmissionOperationID &+= 1
+        let submissionOperationID = commandSubmissionOperationID
+        isSubmitting = true
+        defer {
+            if isCurrentRelaySession(generation: generation),
+               commandSubmissionOperationID == submissionOperationID {
+                isSubmitting = false
+            }
+        }
         var command = RemoteRunCommand(
             kind: kind,
             options: RemoteRunOptions(updateNoticeNotes: shouldUpdateNoticeNotes, dryRun: dryRun)
         )
         command.summary = status
+        let previousStatus = status
+        let previousStatusCommandID = statusCommandID
+        let previousLastRefreshAt = lastRefreshAt
+        pendingSubmittedCommandsByID[command.id] = command
         recentCommands = ([command] + recentCommands.filter { $0.id != command.id })
         status = command.summary
+        statusCommandID = command.id
         lastRefreshAt = Date()
         connectionMessage = "\(kind.displayName) 요청을 화면에 먼저 반영했습니다. 서버로 보내는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
-            try await serverRelayStore.create(command)
-            trackReportNotificationIfNeeded(for: command)
+            let savedCommand = try await serverRelayStore.createReturningCommand(command)
+            guard isCurrentRelaySession(generation: generation) else { return }
+            pendingSubmittedCommandsByID.removeValue(forKey: command.id)
+            pendingSubmittedCommandsByID[savedCommand.id] = savedCommand
+            recentCommands = ([savedCommand] + recentCommands.filter {
+                $0.id != command.id && $0.id != savedCommand.id
+            })
+            status = savedCommand.summary
+            statusCommandID = savedCommand.id
+            trackReportNotificationIfNeeded(for: savedCommand)
             connectionMessage = "\(kind.displayName) 요청이 서버에 전달됐습니다. Mac이 확인하면 상태가 바로 바뀝니다."
             connectionSucceeded = true
             rebuildRemoteLogDerivedState()
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard isCurrentRelaySession(generation: generation) else { return }
+            pendingSubmittedCommandsByID.removeValue(forKey: command.id)
             recentCommands = recentCommands.filter { $0.id != command.id }
+            status = previousStatus
+            statusCommandID = previousStatusCommandID
+            lastRefreshAt = previousLastRefreshAt
+            rebuildRemoteLogDerivedState()
+            guard !isCancellationError(error) else { return }
             errorMessage = userFacingMessage(for: error)
             connectionMessage = "요청 전송 실패"
             connectionSucceeded = false
@@ -1506,16 +1890,38 @@ final class CompanionModel: ObservableObject {
     }
 
     func cancelRunningCommand() async {
+        await cancelRunningCommand(expectedCommandID: nil)
+    }
+
+    func cancelRunningCommand(expectedCommandID: UUID) async {
+        await cancelRunningCommand(expectedCommandID: Optional(expectedCommandID))
+    }
+
+    private func cancelRunningCommand(expectedCommandID: UUID?) async {
+        guard !isSubmitting else {
+            connectionMessage = "서버가 실행 요청 ID를 확정하는 중입니다. 잠시 후 중단할 수 있습니다."
+            connectionSucceeded = nil
+            errorMessage = ""
+            return
+        }
         guard let serverRelayStore else {
             errorMessage = remoteAvailabilityMessage
             return
         }
-        guard let commandID = latestCommand?.id,
-              latestDisplayStatus?.isInFlight == true else {
+        let generation = relaySessionGeneration
+        guard let activeCommand = latestCommand,
+              activeCommand.displayStatus().isInFlight else {
             errorMessage = "중단할 원격 실행 요청을 찾지 못했습니다."
             userAlert = UserAlert(title: "중단 요청 실패", message: errorMessage)
             return
         }
+        if let expectedCommandID, activeCommand.id != expectedCommandID {
+            connectionMessage = "선택한 실행은 이미 끝났거나 다른 실행으로 바뀌어 중단 요청을 보내지 않았습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            return
+        }
+        let commandID = activeCommand.id
         guard pendingCancelCommandID != commandID else {
             connectionMessage = "이미 이 실행에 중단 요청을 보냈습니다."
             connectionSucceeded = true
@@ -1526,13 +1932,20 @@ final class CompanionModel: ObservableObject {
         pendingCancelRequestedAt = Date()
         let previousCommands = recentCommands
         let previousStatus = status
+        let previousStatusCommandID = statusCommandID
         let previousLastRefreshAt = lastRefreshAt
         markCancelRequestedLocally(commandID: commandID)
+        statusCommandID = commandID
+        if let command = recentCommands.first(where: { $0.id == commandID }),
+           pendingSubmittedCommandsByID[commandID] != nil {
+            pendingSubmittedCommandsByID[commandID] = command
+        }
         connectionMessage = "중단 요청을 화면에 먼저 반영했습니다. 서버로 보내는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
             let cancelResponse = try await serverRelayStore.requestCancel(commandID: commandID)
+            guard isCurrentRelaySession(generation: generation) else { return }
             connectionSucceeded = true
             errorMessage = ""
             if cancelResponse.requested {
@@ -1548,7 +1961,7 @@ final class CompanionModel: ObservableObject {
                 userAlert = UserAlert(title: "요청 취소됨", message: connectionMessage)
             }
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard isCurrentRelaySession(generation: generation) else { return }
             if pendingCancelCommandID == commandID {
                 pendingCancelCommandID = nil
                 pendingCancelRequestedAt = nil
@@ -1556,9 +1969,15 @@ final class CompanionModel: ObservableObject {
                 cancelFollowUpTask = nil
             }
             recentCommands = previousCommands
+            if pendingSubmittedCommandsByID[commandID] != nil,
+               let previousCommand = previousCommands.first(where: { $0.id == commandID }) {
+                pendingSubmittedCommandsByID[commandID] = previousCommand
+            }
             status = previousStatus
+            statusCommandID = previousStatusCommandID
             lastRefreshAt = previousLastRefreshAt
             rebuildRemoteLogDerivedState()
+            guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
             errorMessage = message
             connectionMessage = "중단 요청 전송 실패"
@@ -1573,6 +1992,7 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
+        let generation = relaySessionGeneration
         let optimisticAction = ServerRelaySettingAction(
             key: setting.key,
             value: value,
@@ -1592,12 +2012,14 @@ final class CompanionModel: ObservableObject {
                 title: setting.title
             )
             let savedAction = try await serverRelayStore.createSettingAction(action)
+            guard isCurrentRelaySession(generation: generation) else { return }
             rememberPendingRemoteSettingAction(savedAction)
             replaceRecentSettingAction(savedAction) { $0.id == savedAction.id || $0.key == savedAction.key }
             applyRemoteSettingActionLocally(savedAction, fallbackSetting: setting)
             connectionSucceeded = true
             errorMessage = ""
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return }
             guard !isCancellationError(error) else { return }
             let rollbackAction = ServerRelaySettingAction(
                 key: setting.key,
@@ -1846,30 +2268,95 @@ final class CompanionModel: ObservableObject {
             editable: true,
             updatedAt: updatedAt
         )
-        let previousSharedSettings = sharedSettings
-        let previousSharedSettingsSignature = sharedSettingsSignature
+        sharedSettingMutationSequence &+= 1
+        let mutationVersion = sharedSettingMutationSequence
+        let generation = relaySessionGeneration
+        let authoritativeObservationVersion = sharedSettingAuthoritativeObservationVersionsByKey[key] ?? 0
+        sharedSettingCommittedBaselines.beginMutation(
+            for: key,
+            generation: generation,
+            committedValue: sharedSettings.first { $0.key == key }
+        )
+        sharedSettingMutationVersionsByKey[key] = mutationVersion
+        pendingSharedSettingsByKey[key] = setting
+        pendingSharedSettingKeys.insert(key)
         _ = applySharedSettings([setting], merge: true)
         guard let serverRelayStore else {
+            clearPendingSharedSettingMutation(key: key, version: mutationVersion)
+            sharedSettingCommittedBaselines.endMutationChain(for: key, generation: generation)
             connectionMessage = "서버 연결 정보가 없어 이 기기에만 적용했습니다."
             connectionSucceeded = false
             return
         }
-        do {
-            let saved = try await serverRelayStore.updateSharedSetting(setting)
-            _ = applySharedSettings([saved], merge: true)
-            connectionSucceeded = true
-            errorMessage = ""
-        } catch {
-            guard !isCancellationError(error) else { return }
-            sharedSettings = previousSharedSettings
-            sharedSettingsSignature = previousSharedSettingsSignature
-            rebuildRemoteSettingGroups()
-            let message = userFacingMessage(for: error)
-            errorMessage = message
-            connectionMessage = "설정 저장 실패"
-            connectionSucceeded = false
-            userAlert = UserAlert(title: "설정 저장 실패", message: message)
+        await sharedSettingMutationQueue.enqueue(for: key) { @MainActor [weak self] in
+            guard let self, !Task.isCancelled,
+                  self.isCurrentRelaySession(generation: generation),
+                  self.sharedSettingMutationVersionsByKey[key] == mutationVersion else { return }
+            do {
+                let saved = try await serverRelayStore.updateSharedSetting(setting)
+                guard !Task.isCancelled,
+                      self.isCurrentRelaySession(generation: generation) else { return }
+                let committedSetting = self.sharedSettingCommittedBaselines.committedValue(
+                    for: key,
+                    generation: generation
+                )
+                let authoritativeObservationIsUnchanged =
+                    (self.sharedSettingAuthoritativeObservationVersionsByKey[key] ?? 0)
+                        == authoritativeObservationVersion
+                let savedWasAccepted = authoritativeObservationIsUnchanged
+                    || Self.serverRelaySetting(saved, isStrictlyNewerThan: committedSetting)
+                if savedWasAccepted {
+                    self.sharedSettingCommittedBaselines.recordCommittedValue(
+                        saved,
+                        for: key,
+                        generation: generation
+                    )
+                }
+                guard self.sharedSettingMutationVersionsByKey[key] == mutationVersion else { return }
+                self.clearPendingSharedSettingMutation(key: key, version: mutationVersion)
+                if savedWasAccepted {
+                    _ = self.applySharedSettings([saved], merge: true)
+                } else {
+                    self.restoreSharedSetting(key: key, previousSetting: committedSetting)
+                }
+                self.sharedSettingCommittedBaselines.endMutationChain(for: key, generation: generation)
+                self.connectionMessage = successMessage
+                self.connectionSucceeded = true
+                self.errorMessage = ""
+            } catch {
+                guard !Task.isCancelled,
+                      self.isCurrentRelaySession(generation: generation),
+                      self.sharedSettingMutationVersionsByKey[key] == mutationVersion else { return }
+                let committedSetting = self.sharedSettingCommittedBaselines.committedValue(
+                    for: key,
+                    generation: generation
+                )
+                self.clearPendingSharedSettingMutation(key: key, version: mutationVersion)
+                self.restoreSharedSetting(key: key, previousSetting: committedSetting)
+                self.sharedSettingCommittedBaselines.endMutationChain(for: key, generation: generation)
+                guard !self.isCancellationError(error) else { return }
+                let message = self.userFacingMessage(for: error)
+                self.errorMessage = message
+                self.connectionMessage = "설정 저장 실패"
+                self.connectionSucceeded = false
+                self.userAlert = UserAlert(title: "설정 저장 실패", message: message)
+            }
         }
+    }
+
+    private func clearPendingSharedSettingMutation(key: String, version: UInt64) {
+        guard sharedSettingMutationVersionsByKey[key] == version else { return }
+        sharedSettingMutationVersionsByKey.removeValue(forKey: key)
+        pendingSharedSettingsByKey.removeValue(forKey: key)
+        pendingSharedSettingKeys.remove(key)
+    }
+
+    private func restoreSharedSetting(key: String, previousSetting: ServerRelaySetting?) {
+        var restored = sharedSettings.filter { $0.key != key }
+        if let previousSetting {
+            restored.append(previousSetting)
+        }
+        _ = applySharedSettings(restored, merge: false)
     }
 
     func createItemAction(_ actionKind: ServerRelayItemActionKind, item: ServerRelaySyncItem) async {
@@ -1878,6 +2365,7 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
+        let generation = relaySessionGeneration
         let updatesServerVisibleState = actionKind.isCompanionImmediateDisplayAction
         let suppressSuccessFeedback = actionKind.suppressesImmediateSuccessFeedback
         let previousSyncItems = syncItems
@@ -1892,6 +2380,13 @@ final class CompanionModel: ObservableObject {
         do {
             applyServerVisibleItemActionLocally(actionKind, itemID: item.id)
             let localAction = action.optimisticCompanionDisplayAction
+            pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
+                action: localAction,
+                previousSyncItems: previousSyncItems,
+                previousSyncItemsSignature: previousSyncItemsSignature,
+                previousMailDashboardItems: previousMailDashboardItems,
+                previousResolvedCalendarChangeIDs: nil
+            )
             replaceRecentItemAction(localAction) { $0.itemID == item.id }
             if !suppressSuccessFeedback {
                 connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
@@ -1901,6 +2396,11 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = true
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
+            guard isCurrentRelaySession(generation: generation) else { return }
+            if var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
+                overlay.action = savedAction
+                pendingItemActionOverlaysByID[savedAction.id] = overlay
+            }
             applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             replaceRecentItemAction(savedAction) { $0.id == action.id || $0.itemID == item.id }
             if !suppressSuccessFeedback {
@@ -1912,7 +2412,8 @@ final class CompanionModel: ObservableObject {
             }
             errorMessage = ""
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard isCurrentRelaySession(generation: generation) else { return }
+            pendingItemActionOverlaysByID.removeValue(forKey: action.id)
             if updatesServerVisibleState {
                 restoreServerDisplayItemActionState(
                     syncItems: previousSyncItems,
@@ -1922,6 +2423,7 @@ final class CompanionModel: ObservableObject {
             }
             removeRecentItemActions { ($0.id == action.id || $0.itemID == item.id) && $0.action == actionKind }
             syncDataNeedsRefresh = true
+            guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
@@ -1938,12 +2440,14 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
+        let generation = relaySessionGeneration
         let actionItemID = serverRelayCalendarChange(change).id
         let candidateIDs = calendarChangeResolvedIDs(for: change)
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         if actionKind.resolvesCalendarChange {
             markCalendarChangeResolvedLocally(change)
         }
+        var pendingActionID: UUID?
         do {
             let action = ServerRelayItemAction(
                 action: actionKind,
@@ -1952,26 +2456,48 @@ final class CompanionModel: ObservableObject {
                 itemTitle: change.title.nilIfEmpty ?? change.course.nilIfEmpty ?? "캘린더 변경",
                 message: try edit?.encodedMessage() ?? ""
             )
+            pendingActionID = action.id
+            pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
+                action: action,
+                previousSyncItems: nil,
+                previousSyncItemsSignature: nil,
+                previousMailDashboardItems: nil,
+                previousResolvedCalendarChangeIDs: previousResolvedCalendarChangeIDs
+            )
             replaceRecentItemAction(action) { candidateIDs.contains($0.itemID) }
             connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
             connectionSucceeded = true
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
+            guard isCurrentRelaySession(generation: generation) else { return }
+            if var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
+                overlay.action = savedAction
+                pendingItemActionOverlaysByID[savedAction.id] = overlay
+                pendingActionID = savedAction.id
+            }
             if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
                 markCalendarChangeResolvedLocally(change)
+            } else if savedAction.status.isFailedLike {
+                resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
+                persistResolvedCalendarChangeIDs()
+                rebuildVisibleCalendarChanges()
             }
             replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard isCurrentRelaySession(generation: generation) else { return }
+            if let pendingActionID {
+                pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID)
+            }
             if actionKind.resolvesCalendarChange {
                 resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
                 persistResolvedCalendarChangeIDs()
                 rebuildVisibleCalendarChanges()
             }
             removeRecentItemActions { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
+            guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "요청 실패", message: message)
@@ -1989,6 +2515,8 @@ final class CompanionModel: ObservableObject {
 
     @discardableResult
     func editCalendarEventOnDevice(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
+        let generation = relaySessionGeneration
+        let originalStore = serverRelayStore
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         markCalendarChangeResolvedLocally(change)
         await Task.yield()
@@ -1996,12 +2524,20 @@ final class CompanionModel: ObservableObject {
             try await Task.detached(priority: .userInitiated) {
                 try await Self.updateLocalCalendarEvent(change: change, edit: edit)
             }.value
-            await publishCompletedCalendarAction(.calendarEdit, change: change)
+            guard isCurrentRelaySession(generation: generation) else { return true }
+            await publishCompletedCalendarAction(
+                .calendarEdit,
+                change: change,
+                store: originalStore,
+                generation: generation
+            )
+            guard isCurrentRelaySession(generation: generation) else { return true }
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return false }
             guard !isCancellationError(error) else { return false }
             resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
             persistResolvedCalendarChangeIDs()
@@ -2015,11 +2551,20 @@ final class CompanionModel: ObservableObject {
 
     @discardableResult
     func deleteCalendarEventOnDevice(change: CalendarChange) async -> Bool {
+        let generation = relaySessionGeneration
+        let originalStore = serverRelayStore
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         markCalendarChangeResolvedLocally(change)
         await Task.yield()
         if change.isDeletedAction {
-            await publishCompletedCalendarAction(.calendarDelete, change: change)
+            guard isCurrentRelaySession(generation: generation) else { return true }
+            await publishCompletedCalendarAction(
+                .calendarDelete,
+                change: change,
+                store: originalStore,
+                generation: generation
+            )
+            guard isCurrentRelaySession(generation: generation) else { return true }
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
@@ -2029,12 +2574,20 @@ final class CompanionModel: ObservableObject {
             try await Task.detached(priority: .userInitiated) {
                 try await Self.deleteLocalCalendarEvent(change: change)
             }.value
-            await publishCompletedCalendarAction(.calendarDelete, change: change)
+            guard isCurrentRelaySession(generation: generation) else { return true }
+            await publishCompletedCalendarAction(
+                .calendarDelete,
+                change: change,
+                store: originalStore,
+                generation: generation
+            )
+            guard isCurrentRelaySession(generation: generation) else { return true }
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return false }
             guard !isCancellationError(error) else { return false }
             resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
             persistResolvedCalendarChangeIDs()
@@ -2070,6 +2623,8 @@ final class CompanionModel: ObservableObject {
         change: CalendarChange?,
         completedAction: ServerRelayItemActionKind?
     ) async -> Bool {
+        let generation = relaySessionGeneration
+        let originalStore = serverRelayStore
         let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
         if let change {
             markCalendarChangeResolvedLocally(change)
@@ -2080,13 +2635,21 @@ final class CompanionModel: ObservableObject {
                 try await Self.createLocalCalendarEvent(title: title, edit: edit, change: change)
             }.value
             if let change, let completedAction {
-                await publishCompletedCalendarAction(completedAction, change: change)
+                guard isCurrentRelaySession(generation: generation) else { return true }
+                await publishCompletedCalendarAction(
+                    completedAction,
+                    change: change,
+                    store: originalStore,
+                    generation: generation
+                )
             }
+            guard isCurrentRelaySession(generation: generation) else { return true }
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return false }
             guard !isCancellationError(error) else { return false }
             if change != nil {
                 resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
@@ -2100,9 +2663,15 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private func publishCompletedCalendarAction(_ actionKind: ServerRelayItemActionKind, change: CalendarChange) async {
+    private func publishCompletedCalendarAction(
+        _ actionKind: ServerRelayItemActionKind,
+        change: CalendarChange,
+        store: ServerRelayCommandStore?,
+        generation: UInt64
+    ) async {
         guard actionKind.resolvesCalendarChange,
-              let serverRelayStore else {
+              isCurrentRelaySession(generation: generation),
+              let store else {
             return
         }
         let publicChange = serverRelayCalendarChange(change)
@@ -2116,11 +2685,13 @@ final class CompanionModel: ObservableObject {
             message: "이 기기에서 처리했고 서버 화면에도 반영했습니다."
         )
         do {
-            let savedAction = try await serverRelayStore.createItemAction(action)
+            let savedAction = try await store.createItemAction(action)
+            guard isCurrentRelaySession(generation: generation) else { return }
             recordResolvedCalendarChanges([savedAction])
             replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
             schedulePostActionRefresh(scope: .itemActionServerState)
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return }
             guard !isCancellationError(error) else { return }
             errorMessage = "캘린더 처리는 끝났지만 서버 반영에 실패했습니다. \(userFacingMessage(for: error))"
         }
@@ -2305,25 +2876,34 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "요청 실패", message: errorMessage)
             return
         }
+        let generation = relaySessionGeneration
         let request = ServerRelayFileAccessRequest(
             itemID: item.id,
             itemKind: item.kind,
             itemTitle: item.title
         )
+        pendingFileAccessRequestsByID[request.id] = request
         replaceRecentFileAccessRequest(request) { $0.id == request.id }
         connectionMessage = "파일 링크 요청을 대기열에 올렸습니다. 서버 확인을 기다리는 중입니다."
         connectionSucceeded = true
         errorMessage = ""
         do {
             let created = try await serverRelayStore.createFileAccessRequest(request)
-            replaceRecentFileAccessRequest(created) { $0.id == request.id }
+            guard isCurrentRelaySession(generation: generation) else { return }
+            pendingFileAccessRequestsByID.removeValue(forKey: request.id)
+            pendingFileAccessRequestsByID[created.id] = created
+            replaceRecentFileAccessRequest(created) {
+                $0.id == request.id || $0.id == created.id
+            }
             connectionMessage = "서버에 파일 링크 준비를 요청했습니다."
             connectionSucceeded = true
             errorMessage = ""
             userAlert = UserAlert(title: "파일 요청 완료", message: "Mac 앱이 파일 링크를 준비하면 열기 버튼이 표시됩니다.")
         } catch {
-            guard !isCancellationError(error) else { return }
+            guard isCurrentRelaySession(generation: generation) else { return }
+            pendingFileAccessRequestsByID.removeValue(forKey: request.id)
             removeRecentFileAccessRequests { $0.id == request.id }
+            guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "파일 요청 실패", message: message)
@@ -2348,9 +2928,14 @@ final class CompanionModel: ObservableObject {
     deinit {
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventStreamTask?.cancel()
+        relayEventBatchTask?.cancel()
         pasteboardClearTask?.cancel()
         cancelFollowUpTask?.cancel()
+        serverTokenPersistTask?.cancel()
         cachedSyncDataPersistTask?.cancel()
+        Task { @MainActor [sharedSettingMutationQueue] in
+            sharedSettingMutationQueue.cancelAll()
+        }
     }
 
     func latestFileAccessRequest(for item: ServerRelaySyncItem) -> ServerRelayFileAccessRequest? {
@@ -2383,6 +2968,18 @@ final class CompanionModel: ObservableObject {
 
     func cachedVisibleDashboardItem(for itemID: String, categoryID: String) -> ServerRelaySyncItem? {
         visibleDashboardItemLookupByCategoryID[categoryID]?[itemID]
+    }
+
+    func rememberedDashboardSelection(for categoryID: String) -> String? {
+        dashboardSelectionByCategoryID[categoryID]
+    }
+
+    func rememberDashboardSelection(_ itemID: String?, for categoryID: String) {
+        if let itemID, !itemID.isEmpty {
+            dashboardSelectionByCategoryID[categoryID] = itemID
+        } else {
+            dashboardSelectionByCategoryID.removeValue(forKey: categoryID)
+        }
     }
 
     fileprivate func cachedDashboardFilterOptions(for categoryID: String) -> CompanionItemFilterOptions? {
@@ -2562,12 +3159,18 @@ final class CompanionModel: ObservableObject {
         rebuildChangeSummaryCalendarLookup(using: next)
     }
 
+    @discardableResult
     func refreshRecent(
         silentErrors: Bool = false,
         includeSyncData: Bool? = nil,
         showsActivity: Bool = true,
         scope: RelayRefreshScope = .full
-    ) async {
+    ) async -> Bool {
+        let refreshGeneration = relaySessionGeneration
+        if refreshInProgress, refreshInProgressGeneration != refreshGeneration {
+            refreshInProgress = false
+            refreshInProgressGeneration = nil
+        }
         guard !refreshInProgress else {
             queueRefreshIfNeeded(
                 silentErrors: silentErrors,
@@ -2575,18 +3178,22 @@ final class CompanionModel: ObservableObject {
                 showsActivity: showsActivity,
                 scope: scope
             )
-            return
+            return false
         }
         refreshInProgress = true
+        refreshInProgressGeneration = refreshGeneration
         if showsActivity {
             isRefreshing = true
         }
         defer {
-            refreshInProgress = false
-            if showsActivity {
-                isRefreshing = false
+            if refreshInProgressGeneration == refreshGeneration {
+                refreshInProgress = false
+                refreshInProgressGeneration = nil
+                if showsActivity {
+                    isRefreshing = false
+                }
+                runPendingRefreshIfNeeded()
             }
-            runPendingRefreshIfNeeded()
         }
             if let serverRelayStore {
                 let shouldLoadSyncData = includeSyncData == true
@@ -2595,107 +3202,296 @@ final class CompanionModel: ObservableObject {
                     isLoadingServerSyncData = true
                 }
                 defer {
-                    if shouldLoadSyncData {
+                    if shouldLoadSyncData,
+                       isCurrentRelaySession(generation: refreshGeneration) {
                         isLoadingServerSyncData = false
                     }
                 }
-                async let responseTask = Self.fetchStatusResponseResult(store: serverRelayStore)
-                async let commandsTask = Self.fetchRecentCommandsIfNeeded(scope.fetchesCommands, store: serverRelayStore, limit: 8)
-                async let syncDataTask = Self.fetchSyncDataResultIfNeeded(shouldLoadSyncData, store: serverRelayStore)
-                async let fileRequestsTask = Self.fetchRecentFileAccessRequestsIfNeeded(scope.fetchesFileRequests, store: serverRelayStore, limit: 20)
-                async let itemActionsTask = Self.fetchRecentItemActionsIfNeeded(scope.fetchesItemActions, store: serverRelayStore, limit: 40)
-                async let requestLogTask = Self.fetchRecentRequestLogIfNeeded(scope.fetchesRequestLog, store: serverRelayStore, limit: 30)
-                async let settingActionsTask = Self.fetchRecentSettingActionsIfNeeded(scope.fetchesSettingActions, store: serverRelayStore, limit: 20)
-
-                var didChange = false
-                var statusRefreshError: Error?
-                var loadedSyncData = false
-                switch await syncDataTask {
-                case let .success(syncData?):
-                    loadedSyncData = true
-                    didChange = apply(syncData) || didChange
-                case .success(nil):
-                    if shouldLoadSyncData && !hasLoadedServerSyncData {
-                        didChange = markInitialSyncDataLoadFailure(silentErrors: silentErrors) || didChange
-                    }
-                case let .failure(error):
-                    if shouldLoadSyncData {
-                        didChange = markSyncDataLoadFailure(error, silentErrors: silentErrors) || didChange
-                    }
+                let applications = await consumeRelayRefreshEndpoints(
+                    store: serverRelayStore,
+                    scope: scope,
+                    shouldLoadSyncData: shouldLoadSyncData,
+                    silentErrors: silentErrors,
+                    sessionGeneration: refreshGeneration
+                )
+                guard isCurrentRelaySession(generation: refreshGeneration) else {
+                    return false
                 }
-                switch await responseTask {
-                case let .success(response):
-                    didChange = apply(response) || didChange
-                case let .failure(error):
-                    statusRefreshError = error
-                }
-                if let commands = await commandsTask, !commands.isEmpty {
-                    let visibleCommands = visibleCommands(commands)
-                    if recentCommands != visibleCommands {
-                        recentCommands = visibleCommands
-                        didChange = true
-                    }
-                    clearFinishedCancelRequestIfNeeded(commands)
-                    handleReportNotificationUpdates(commands)
-                }
-                if let fileRequests = await fileRequestsTask {
-                    let visibleFileRequests = visibleFileAccessRequests(fileRequests)
-                    if recentFileAccessRequests != visibleFileRequests {
-                        recentFileAccessRequests = visibleFileRequests
-                        didChange = true
-                    }
-                }
-                if let itemActions = await itemActionsTask {
-                    recordResolvedCalendarChanges(itemActions)
-                    let visibleItemActions = visibleItemActions(itemActions)
-                    if recentItemActions != visibleItemActions {
-                        recentItemActions = visibleItemActions
-                        didChange = true
-                    }
-                }
-                if let requestLog = await requestLogTask {
-                    let visibleRequestLog = visibleRequestLog(requestLog)
-                    if recentRequestLog != visibleRequestLog {
-                        recentRequestLog = visibleRequestLog
-                        didChange = true
-                    }
-                }
-                if let settingActions = await settingActionsTask {
-                    didChange = applyRemoteSettingActionsFromServer(settingActions) || didChange
-                    let visibleSettingActions = visibleSettingActions(settingActions)
-                    if recentSettingActions != visibleSettingActions {
-                        recentSettingActions = visibleSettingActions
-                        didChange = true
-                    }
-                }
+                let didChange = applications.contains(where: \.didChange)
+                let loadedSyncData = applications.contains(where: \.loadedSyncData)
+                let refreshSucceeded = applications.allSatisfy(\.refreshSucceeded)
+                let statusRefreshErrorMessage = applications.lazy
+                    .compactMap(\.statusRefreshErrorMessage)
+                    .first
                 if showsActivity || didChange {
                     lastRefreshAt = Date()
                 }
                 if showsActivity {
-                    if let statusRefreshError, loadedSyncData {
-                        connectionMessage = "대시보드는 불러왔지만 현재 실행 상태 갱신은 실패했습니다. \(userFacingMessage(for: statusRefreshError))"
+                    if let statusRefreshErrorMessage, loadedSyncData {
+                        connectionMessage = "대시보드는 불러왔지만 현재 실행 상태 갱신은 실패했습니다. \(statusRefreshErrorMessage)"
                         connectionSucceeded = nil
-                    } else if statusRefreshError == nil {
+                    } else if statusRefreshErrorMessage == nil {
                         connectionMessage = "최신 상태를 불러왔습니다."
                         connectionSucceeded = true
                     }
                 }
-                if statusRefreshError == nil || loadedSyncData {
+                if statusRefreshErrorMessage == nil || loadedSyncData {
                     errorMessage = ""
-                } else if let statusRefreshError, !silentErrors {
-                    let message = userFacingMessage(for: statusRefreshError)
-                    errorMessage = message
+                } else if let statusRefreshErrorMessage, !silentErrors {
+                    errorMessage = statusRefreshErrorMessage
                     if showsActivity {
-                        connectionMessage = refreshFailureMessage(reason: message)
+                        connectionMessage = refreshFailureMessage(reason: statusRefreshErrorMessage)
                         connectionSucceeded = false
                     }
                 }
+                return refreshSucceeded
         } else {
             if showsActivity {
                 connectionMessage = "설정에서 서버 URL과 클라이언트 토큰을 먼저 저장해 주세요."
                 connectionSucceeded = false
             }
             errorMessage = ""
+            return false
+        }
+    }
+
+    private func consumeRelayRefreshEndpoints(
+        store: ServerRelayCommandStore,
+        scope: RelayRefreshScope,
+        shouldLoadSyncData: Bool,
+        silentErrors: Bool,
+        sessionGeneration: UInt64
+    ) async -> [RelayRefreshEndpointApplication] {
+        var endpoints = [RelayRefreshEndpointKind.status]
+        if scope.fetchesCommands { endpoints.append(.commands) }
+        if shouldLoadSyncData { endpoints.append(.syncData) }
+        if scope.fetchesFileRequests { endpoints.append(.fileRequests) }
+        if scope.fetchesItemActions { endpoints.append(.itemActions) }
+        if scope.fetchesRequestLog { endpoints.append(.requestLog) }
+        if scope.fetchesSettingActions { endpoints.append(.settingActions) }
+
+        let operations: [@Sendable () async -> RelayRefreshEndpointCompletion] = endpoints.map { endpoint in
+            let applyEpoch = relayEndpointApplyEpochs.begin(for: endpoint)
+            return {
+                RelayRefreshEndpointCompletion(
+                    endpoint: endpoint,
+                    applyEpoch: applyEpoch,
+                    result: await Self.fetchRelayRefreshEndpoint(
+                        endpoint,
+                        store: store,
+                        scope: scope,
+                        shouldLoadSyncData: shouldLoadSyncData
+                    )
+                )
+            }
+        }
+
+        return await RelayEndpointCompletionConsumer.consume(operations) { [weak self] completion in
+            guard let self,
+                  self.isCurrentRelaySession(generation: sessionGeneration),
+                  self.relayEndpointApplyEpochs.owns(
+                      endpoint: completion.endpoint,
+                      epoch: completion.applyEpoch
+                  ) else {
+                return .staleOwner
+            }
+            let application = self.applyRelayRefreshEndpoint(
+                completion.result,
+                scope: scope,
+                shouldLoadSyncData: shouldLoadSyncData,
+                silentErrors: silentErrors
+            )
+            if application.didChange {
+                self.lastRefreshAt = Date()
+            }
+            return application
+        }
+    }
+
+    private func applyRelayRefreshEndpoint(
+        _ endpoint: RelayRefreshEndpointResult,
+        scope: RelayRefreshScope,
+        shouldLoadSyncData: Bool,
+        silentErrors: Bool
+    ) -> RelayRefreshEndpointApplication {
+        switch endpoint {
+        case let .syncData(result):
+            switch result {
+            case let .success(syncData?):
+                return RelayRefreshEndpointApplication(
+                    didChange: apply(syncData),
+                    loadedSyncData: true
+                )
+            case .success(nil):
+                var application = RelayRefreshEndpointApplication(
+                    refreshSucceeded: !shouldLoadSyncData
+                )
+                if shouldLoadSyncData && !hasLoadedServerSyncData {
+                    application.didChange = markInitialSyncDataLoadFailure(
+                        silentErrors: silentErrors
+                    )
+                }
+                return application
+            case let .failure(error):
+                guard shouldLoadSyncData else {
+                    return RelayRefreshEndpointApplication()
+                }
+                return RelayRefreshEndpointApplication(
+                    didChange: markSyncDataLoadFailure(
+                        error,
+                        silentErrors: silentErrors
+                    ),
+                    refreshSucceeded: false
+                )
+            }
+
+        case let .status(result):
+            switch result {
+            case let .success(response):
+                return RelayRefreshEndpointApplication(didChange: apply(response))
+            case let .failure(error):
+                return RelayRefreshEndpointApplication(
+                    refreshSucceeded: false,
+                    statusRefreshErrorMessage: userFacingMessage(for: error)
+                )
+            }
+
+        case let .commands(commands):
+            var application = RelayRefreshEndpointApplication(
+                refreshSucceeded: !scope.fetchesCommands || commands != nil
+            )
+            guard let commands else { return application }
+            let overlaidCommands = commandsOverlayingPendingSubmissions(commands)
+            if let statusCommandID,
+               let confirmedTerminalCommand = overlaidCommands.first(where: {
+                   $0.id == statusCommandID && $0.status.isTerminal
+               }), status != confirmedTerminalCommand.summary {
+                status = confirmedTerminalCommand.summary
+                rebuildDashboardStatus()
+                application.didChange = true
+            }
+            let visibleCommands = visibleCommands(overlaidCommands)
+            if recentCommands != visibleCommands {
+                recentCommands = visibleCommands
+                application.didChange = true
+            }
+            clearFinishedCancelRequestIfNeeded(overlaidCommands)
+            handleReportNotificationUpdates(overlaidCommands)
+            return application
+
+        case let .fileRequests(fileRequests):
+            var application = RelayRefreshEndpointApplication(
+                refreshSucceeded: !scope.fetchesFileRequests || fileRequests != nil
+            )
+            guard let fileRequests else { return application }
+            let visibleFileRequests = visibleFileAccessRequests(
+                fileAccessRequestsOverlayingPendingSubmissions(fileRequests)
+            )
+            if recentFileAccessRequests != visibleFileRequests {
+                recentFileAccessRequests = visibleFileRequests
+                application.didChange = true
+            }
+            return application
+
+        case let .itemActions(itemActions):
+            var application = RelayRefreshEndpointApplication(
+                refreshSucceeded: !scope.fetchesItemActions || itemActions != nil
+            )
+            guard let itemActions else { return application }
+            let overlaidItemActions = itemActionsOverlayingPendingSubmissions(itemActions)
+            recordResolvedCalendarChanges(overlaidItemActions)
+            let visibleItemActions = visibleItemActions(overlaidItemActions)
+            if recentItemActions != visibleItemActions {
+                recentItemActions = visibleItemActions
+                application.didChange = true
+            }
+            return application
+
+        case let .requestLog(requestLog):
+            var application = RelayRefreshEndpointApplication(
+                refreshSucceeded: !scope.fetchesRequestLog || requestLog != nil
+            )
+            guard let requestLog else { return application }
+            let visibleRequestLog = visibleRequestLog(requestLog)
+            if recentRequestLog != visibleRequestLog {
+                recentRequestLog = visibleRequestLog
+                application.didChange = true
+            }
+            return application
+
+        case let .settingActions(settingActions):
+            var application = RelayRefreshEndpointApplication(
+                refreshSucceeded: !scope.fetchesSettingActions || settingActions != nil
+            )
+            guard let settingActions else { return application }
+            application.didChange = applyRemoteSettingActionsFromServer(settingActions)
+            let visibleSettingActions = visibleSettingActions(settingActions)
+            if recentSettingActions != visibleSettingActions {
+                recentSettingActions = visibleSettingActions
+                application.didChange = true
+            }
+            return application
+        }
+    }
+
+    private func isRelayRealtimePreviewOwnerCurrent(
+        sessionGeneration: UInt64,
+        endpoint: RelayRefreshEndpointKind,
+        operationID: UInt64,
+        connectionGeneration: UInt64,
+        applyEpoch: UInt64
+    ) -> Bool {
+        isCurrentRelaySession(generation: sessionGeneration)
+            && relayRealtimePreviewOperationIDs[endpoint] == operationID
+            && relayRealtimePreviewGeneration == connectionGeneration
+            && relayEventCursor.isCurrent(generation: connectionGeneration)
+            && relayEndpointApplyEpochs.owns(endpoint: endpoint, epoch: applyEpoch)
+    }
+
+    private static func fetchRelayRefreshEndpoint(
+        _ endpoint: RelayRefreshEndpointKind,
+        store: ServerRelayCommandStore,
+        scope: RelayRefreshScope,
+        shouldLoadSyncData: Bool
+    ) async -> RelayRefreshEndpointResult {
+        switch endpoint {
+        case .status:
+            return .status(await fetchStatusResponseResult(store: store))
+        case .commands:
+            return .commands(await fetchRecentCommandsIfNeeded(
+                scope.fetchesCommands,
+                store: store,
+                limit: 8
+            ))
+        case .syncData:
+            return .syncData(await fetchSyncDataResultIfNeeded(
+                shouldLoadSyncData,
+                store: store
+            ))
+        case .fileRequests:
+            return .fileRequests(await fetchRecentFileAccessRequestsIfNeeded(
+                scope.fetchesFileRequests,
+                store: store,
+                limit: 20
+            ))
+        case .itemActions:
+            return .itemActions(await fetchRecentItemActionsIfNeeded(
+                scope.fetchesItemActions,
+                store: store,
+                limit: 40
+            ))
+        case .requestLog:
+            return .requestLog(await fetchRecentRequestLogIfNeeded(
+                scope.fetchesRequestLog,
+                store: store,
+                limit: 30
+            ))
+        case .settingActions:
+            return .settingActions(await fetchRecentSettingActionsIfNeeded(
+                scope.fetchesSettingActions,
+                store: store,
+                limit: 20
+            ))
         }
     }
 
@@ -2831,6 +3627,7 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "로그 지우기 보류", message: message)
             return
         }
+        let generation = relaySessionGeneration
         let previousCommands = recentCommands
         let previousRequestLog = recentRequestLog
         let previousFileAccessRequests = recentFileAccessRequests
@@ -2838,10 +3635,12 @@ final class CompanionModel: ObservableObject {
         let previousSettingActions = recentSettingActions
         let previousSharedRunLogs = sharedRunLogs
         let previousSharedRunLogsSignature = sharedRunLogsSignature
+        let previousSharedRunLogsClearPending = sharedRunLogsClearPending
         let previousLastTerminalCommandID = lastTerminalCommandID
 
         applyLogClear(scope: scope)
         if scope == .all {
+            sharedRunLogsClearPending = true
             clearSharedRunLogDisplayState()
             syncDataNeedsRefresh = true
         }
@@ -2861,6 +3660,7 @@ final class CompanionModel: ObservableObject {
                 remoteClearError = "서버 표시 기록 지우기 실패: \(error.localizedDescription)"
             }
         }
+        guard isCurrentRelaySession(generation: generation) else { return }
         if remoteClearError != nil {
             recentCommands = previousCommands
             recentRequestLog = previousRequestLog
@@ -2869,6 +3669,7 @@ final class CompanionModel: ObservableObject {
             recentSettingActions = previousSettingActions
             sharedRunLogs = previousSharedRunLogs
             sharedRunLogsSignature = previousSharedRunLogsSignature
+            sharedRunLogsClearPending = previousSharedRunLogsClearPending
             lastTerminalCommandID = previousLastTerminalCommandID
             rebuildRemoteLogDerivedState()
             schedulePostActionRefresh(scope: .displayLogs)
@@ -2892,8 +3693,11 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "공유 실행 로그 지우기 실패", message: message)
             return
         }
+        let generation = relaySessionGeneration
         let previousSharedRunLogs = sharedRunLogs
         let previousSharedRunLogsSignature = sharedRunLogsSignature
+        let previousSharedRunLogsClearPending = sharedRunLogsClearPending
+        sharedRunLogsClearPending = true
         clearSharedRunLogDisplayState()
         syncDataNeedsRefresh = true
         connectionMessage = ""
@@ -2901,13 +3705,17 @@ final class CompanionModel: ObservableObject {
         errorMessage = ""
         do {
             _ = try await serverRelayStore.clearSharedRunLogs()
+            guard isCurrentRelaySession(generation: generation) else { return }
             syncDataNeedsRefresh = true
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
         } catch {
+            guard isCurrentRelaySession(generation: generation) else { return }
             sharedRunLogs = previousSharedRunLogs
             sharedRunLogsSignature = previousSharedRunLogsSignature
+            sharedRunLogsClearPending = previousSharedRunLogsClearPending
+            guard !isCancellationError(error) else { return }
             let message = "공유 실행 로그 지우기 실패: \(error.localizedDescription)"
             errorMessage = message
             connectionSucceeded = false
@@ -2954,6 +3762,47 @@ final class CompanionModel: ObservableObject {
         commands.filter { $0.status.isInFlight || !locallyHiddenCommandIDs.contains($0.id) }
     }
 
+    private func commandsOverlayingPendingSubmissions(
+        _ incomingCommands: [RemoteRunCommand],
+        confirmsTerminalState: Bool = true
+    ) -> [RemoteRunCommand] {
+        let currentByID = Dictionary(uniqueKeysWithValues: recentCommands.map { ($0.id, $0) })
+        var nextByID: [UUID: RemoteRunCommand] = [:]
+        for incomingCommand in incomingCommands {
+            nextByID[incomingCommand.id] = RemoteCommandMonotonicMergePolicy.preferred(
+                current: currentByID[incomingCommand.id],
+                incoming: incomingCommand
+            )
+        }
+        for (id, pendingCommand) in Array(pendingSubmittedCommandsByID) {
+            if let observedCommand = nextByID[id] {
+                let mergedCommand = RemoteCommandMonotonicMergePolicy.preferred(
+                    current: pendingCommand,
+                    incoming: observedCommand
+                )
+                nextByID[id] = mergedCommand
+                if mergedCommand.status.isTerminal, confirmsTerminalState {
+                    pendingSubmittedCommandsByID.removeValue(forKey: id)
+                } else {
+                    pendingSubmittedCommandsByID[id] = mergedCommand
+                }
+            } else {
+                let mergedCommand: RemoteRunCommand
+                if let currentCommand = currentByID[id] {
+                    mergedCommand = RemoteCommandMonotonicMergePolicy.preferred(
+                        current: pendingCommand,
+                        incoming: currentCommand
+                    )
+                } else {
+                    mergedCommand = pendingCommand
+                }
+                pendingSubmittedCommandsByID[id] = mergedCommand
+                nextByID[id] = mergedCommand
+            }
+        }
+        return nextByID.values.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     private func visibleRequestLog(_ entries: [ServerRelayRequestLogEntry]) -> [ServerRelayRequestLogEntry] {
         entries.filter { !locallyHiddenRequestLogIDs.contains($0.id) }
     }
@@ -2962,8 +3811,59 @@ final class CompanionModel: ObservableObject {
         requests.filter { $0.status.isInFlight || !locallyHiddenFileAccessRequestIDs.contains($0.id) }
     }
 
+    private func fileAccessRequestsOverlayingPendingSubmissions(
+        _ incomingRequests: [ServerRelayFileAccessRequest]
+    ) -> [ServerRelayFileAccessRequest] {
+        var nextByID = Dictionary(uniqueKeysWithValues: incomingRequests.map { ($0.id, $0) })
+        for request in incomingRequests where pendingFileAccessRequestsByID[request.id] != nil {
+            if request.status.isInFlight {
+                pendingFileAccessRequestsByID[request.id] = request
+            } else {
+                pendingFileAccessRequestsByID.removeValue(forKey: request.id)
+            }
+        }
+        for (id, request) in pendingFileAccessRequestsByID where nextByID[id] == nil {
+            nextByID[id] = request
+        }
+        return nextByID.values.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     private func visibleItemActions(_ actions: [ServerRelayItemAction]) -> [ServerRelayItemAction] {
         actions.filter { $0.status == .pending || $0.status == .running || !locallyHiddenItemActionIDs.contains($0.id) }
+    }
+
+    private func itemActionsOverlayingPendingSubmissions(
+        _ incomingActions: [ServerRelayItemAction]
+    ) -> [ServerRelayItemAction] {
+        var nextByID = Dictionary(uniqueKeysWithValues: incomingActions.map { ($0.id, $0) })
+        for action in incomingActions {
+            guard var overlay = pendingItemActionOverlaysByID[action.id] else { continue }
+            if action.status == .pending || action.status == .running {
+                overlay.action = action
+                pendingItemActionOverlaysByID[action.id] = overlay
+            } else {
+                pendingItemActionOverlaysByID.removeValue(forKey: action.id)
+                if action.status.isFailedLike,
+                   let previousSyncItems = overlay.previousSyncItems,
+                   let previousMailDashboardItems = overlay.previousMailDashboardItems {
+                    restoreServerDisplayItemActionState(
+                        syncItems: previousSyncItems,
+                        syncItemsSignature: overlay.previousSyncItemsSignature,
+                        mailDashboardItems: previousMailDashboardItems
+                    )
+                }
+                if action.status.isFailedLike,
+                   let previousResolvedCalendarChangeIDs = overlay.previousResolvedCalendarChangeIDs {
+                    resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
+                    persistResolvedCalendarChangeIDs()
+                    rebuildVisibleCalendarChanges()
+                }
+            }
+        }
+        for (id, overlay) in pendingItemActionOverlaysByID where nextByID[id] == nil {
+            nextByID[id] = overlay.action
+        }
+        return nextByID.values.sorted { $0.updatedAt > $1.updatedAt }
     }
 
     private func visibleSettingActions(_ actions: [ServerRelaySettingAction]) -> [ServerRelaySettingAction] {
@@ -2971,12 +3871,18 @@ final class CompanionModel: ObservableObject {
     }
 
     func checkServerRelayConnection() async {
+        connectionCheckSequence &+= 1
+        let checkSequence = connectionCheckSequence
+        let generation = relaySessionGeneration
         connectionMessage = "서버 연결을 확인하는 중..."
         connectionSucceeded = nil
         errorMessage = ""
         isRefreshing = true
         defer {
-            isRefreshing = false
+            if connectionCheckSequence == checkSequence,
+               isCurrentRelaySession(generation: generation) {
+                isRefreshing = false
+            }
         }
 
         guard let serverRelayStore else {
@@ -2990,6 +3896,8 @@ final class CompanionModel: ObservableObject {
 
         do {
             let response = try await serverRelayStore.fetchStatusResponse()
+            guard connectionCheckSequence == checkSequence,
+                  isCurrentRelaySession(generation: generation) else { return }
             apply(response)
             configureServerRelayEventStream()
             let message = "서버 릴레이와 연결됐습니다."
@@ -3001,6 +3909,8 @@ final class CompanionModel: ObservableObject {
                 await refreshRecent(silentErrors: true, includeSyncData: true, showsActivity: false)
             }
         } catch {
+            guard connectionCheckSequence == checkSequence,
+                  isCurrentRelaySession(generation: generation) else { return }
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
             connectionMessage = message
@@ -3022,10 +3932,6 @@ final class CompanionModel: ObservableObject {
             in: text,
             labels: ServerRelayConnectionInfo.clientTokenLabels + ServerRelayConnectionInfo.legacyTokenLabels
         ) ?? connectionInfo.token
-        if nextServerURL != serverURL || nextServerToken != serverToken {
-            clearLoadedServerSyncData()
-            UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
-        }
         serverURL = nextServerURL
         serverToken = nextServerToken
         if UIPasteboard.general.string == text {
@@ -3096,11 +4002,79 @@ final class CompanionModel: ObservableObject {
     func clearServerRelayConnectionInfo() {
         serverURL = ""
         serverToken = ""
-        clearLoadedServerSyncData()
         UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
         errorMessage = ""
+    }
+
+    private func resetRemoteSessionForConnectionChange() {
+        relaySessionGeneration &+= 1
+        commandSubmissionOperationID &+= 1
+        _ = relayEventCursor.beginConnection()
+        connectionCheckSequence &+= 1
+        sharedSettingMutationSequence &+= 1
+        sharedSettingMutationQueue.cancelAll()
+        sharedSettingMutationVersionsByKey = [:]
+        pendingSharedSettingsByKey = [:]
+        sharedSettingCommittedBaselines.reset()
+        sharedSettingAuthoritativeObservationVersionsByKey = [:]
+        pendingSharedSettingKeys = []
+        stopServerRelayEventStream()
+        refreshInProgress = false
+        refreshInProgressGeneration = nil
+        pendingRefreshRequest = nil
+        relayEndpointApplyEpochs.reset()
+        cancelFollowUpTask?.cancel()
+        cancelFollowUpTask = nil
+        cachedSyncDataPersistTask?.cancel()
+        cachedSyncDataPersistTask = nil
+        recentCommands = []
+        recentRequestLog = []
+        recentFileAccessRequests = []
+        recentItemActions = []
+        recentSettingActions = []
+        status = SanitizedRemoteStatus()
+        statusCommandID = nil
+        pendingCancelCommandID = nil
+        pendingCancelRequestedAt = nil
+        lastRefreshAt = nil
+        lastTerminalCommandID = nil
+        lastAuthSuccessAlertMessage = ""
+        lastAuthSuccessAlertAt = nil
+        pendingRemoteSettingActionsByKey = [:]
+        pendingSubmittedCommandsByID = [:]
+        pendingItemActionOverlaysByID = [:]
+        pendingFileAccessRequestsByID = [:]
+        sharedRunLogsClearPending = false
+        trackedReportNotificationCommandIDs = []
+        notifiedCancelCompletionCommandIDs = []
+        locallyHiddenCommandIDs = []
+        locallyHiddenRequestLogIDs = []
+        locallyHiddenFileAccessRequestIDs = []
+        locallyHiddenItemActionIDs = []
+        locallyHiddenSettingActionIDs = []
+        resolvedCalendarChangeIDs = []
+        mailDashboardItems = []
+        clearLoadedServerSyncData()
+        connectionMessage = ""
+        errorMessage = ""
+        connectionSucceeded = nil
+        userAlert = nil
+        isRefreshing = false
+        isLoadingServerSyncData = false
+        isSubmitting = false
+        UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
+        UserDefaults.standard.removeObject(forKey: Self.mailDashboardItemsKey)
+        UserDefaults.standard.removeObject(forKey: Self.resolvedCalendarChangeIDsKey)
+        UserDefaults.standard.removeObject(forKey: Self.trackedReportNotificationCommandIDsKey)
+        rebuildRemoteLogDerivedState()
+        rebuildDashboardDerivedState()
+        rebuildVisibleCalendarChanges()
+    }
+
+    private func isCurrentRelaySession(generation: UInt64) -> Bool {
+        generation == relaySessionGeneration
     }
 
     private func copyToPasteboard(_ value: String, clearAfterSeconds: UInt64?) {
@@ -3183,37 +4157,406 @@ final class CompanionModel: ObservableObject {
         serverRelayEventWebSocketTask = nil
         serverRelayEventStreamTask?.cancel()
         serverRelayEventStreamTask = nil
+        relayEventBatchTask?.cancel()
+        relayEventBatchTask = nil
+        relayEventBatchOperationID &+= 1
+        relayEventBatchGeneration = nil
+        relayRealtimePreviewTasks.values.forEach { $0.cancel() }
+        relayRealtimePreviewTasks.removeAll()
+        relayRealtimePreviewOperationIDs.removeAll()
+        relayRealtimePreviewGeneration = nil
+        relayDirtyScopes.reset()
+        relayEventBatchRetryAttempt = 0
         serverRelayEventStreamKey = ""
     }
 
     private func runServerRelayEventStream(key: String, store: ServerRelayCommandStore) async {
+        var reconnectAttempt = 0
         while !Task.isCancelled, serverRelayEventStreamKey == key {
             do {
+                let generation = relayEventCursor.beginConnection()
                 let task = URLSession.shared.webSocketTask(with: store.eventStreamRequest(role: "client"))
                 serverRelayEventWebSocketTask = task
+                connectionMessage = "서버 실시간 연결 중"
+                connectionSucceeded = nil
                 task.resume()
+
+                // A resumed URLSessionWebSocketTask is not an authenticated relay
+                // connection yet.  Treat the server's versioned hello as the
+                // handshake commit point so an HTTP error page or a stale relay
+                // cannot briefly present as a live connection.
+                let helloTimeout = Task { @MainActor in
+                    do {
+                        try await Task.sleep(nanoseconds: RelayHeartbeatPolicy.helloTimeoutNanoseconds)
+                    } catch {
+                        return
+                    }
+                    guard !Task.isCancelled else { return }
+                    task.cancel(with: .goingAway, reason: nil)
+                }
+                defer {
+                    helloTimeout.cancel()
+                }
+                let helloMessage = try await task.receive()
+                helloTimeout.cancel()
+                guard let hello = Self.relayEvent(for: helloMessage),
+                      hello.type == .hello,
+                      hello.version == 1 else {
+                    task.cancel(with: .protocolError, reason: nil)
+                    throw URLError(.cannotParseResponse)
+                }
+                guard relayEventCursor.isCurrent(generation: generation), serverRelayEventStreamKey == key else {
+                    task.cancel(with: .goingAway, reason: nil)
+                    continue
+                }
+                handleRelayEvent(helloMessage, generation: generation)
+                connectionMessage = "서버 실시간 연결됨"
+                connectionSucceeded = true
+                reconnectAttempt = 0
+                var lastMessageAt = Date()
+                let heartbeat = Task {
+                    while !Task.isCancelled {
+                        try await Task.sleep(nanoseconds: RelayHeartbeatPolicy.intervalNanoseconds)
+                        guard !Task.isCancelled else { return }
+                        guard !RelayHeartbeatPolicy.isStale(lastMessageAt: lastMessageAt) else {
+                            task.cancel(with: .goingAway, reason: nil)
+                            return
+                        }
+                        let ping = RelayEventEnvelope(type: .ping)
+                        let data = try JSONEncoder().encode(ping)
+                        guard let text = String(data: data, encoding: .utf8) else { continue }
+                        try await task.send(.string(text))
+                    }
+                }
+                defer {
+                    heartbeat.cancel()
+                }
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
-                    applyRelayEventLocalClear(message)
-                    let scope = Self.relayRefreshScope(for: message)
-                    await refreshRecent(
-                        silentErrors: true,
-                        includeSyncData: scope.fetchesSyncData ? true : false,
-                        showsActivity: false,
-                        scope: scope
-                    )
+                    lastMessageAt = Date()
+                    handleRelayEvent(message, generation: generation)
                 }
             } catch {
                 if !Task.isCancelled, serverRelayEventStreamKey == key {
-                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    connectionMessage = "서버 실시간 연결 끊김 · 자동 재연결 중"
+                    connectionSucceeded = false
+                    let delay = RelayReconnectBackoff.nanoseconds(forAttempt: reconnectAttempt)
+                    reconnectAttempt += 1
+                    try? await Task.sleep(nanoseconds: delay)
                 }
             }
         }
     }
 
-    private func applyRelayEventLocalClear(_ message: URLSessionWebSocketTask.Message) {
-        let reason = Self.relayEventReason(for: message)
+    func ensureServerRelayRealtimeConnection() {
+        guard serverRelayConfigured else {
+            stopServerRelayEventStream()
+            return
+        }
+        if serverRelayEventWebSocketTask?.state == .running {
+            return
+        }
+        stopServerRelayEventStream()
+        configureServerRelayEventStream()
+    }
+
+    private func handleRelayEvent(
+        _ message: URLSessionWebSocketTask.Message,
+        generation: UInt64
+    ) {
+        guard relayEventCursor.isCurrent(generation: generation) else { return }
+        guard let event = Self.relayEvent(for: message) else {
+            relayDirtyScopes.insert(RelayEventScope.allCases, requiresSnapshot: true)
+            scheduleRelayEventBatch(generation: generation)
+            return
+        }
+        let reason = event.reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let decision = relayEventCursor.decision(for: event)
+        guard decision != .ignore else { return }
+        applyRelayEventLocalClear(reason: reason)
+        var scopes = Set(event.scopes)
+        if scopes.isEmpty {
+            scopes = Self.relayEventScopes(forLegacyReason: reason)
+        }
+        var requiresSnapshot = decision == .reconcileSnapshot
+            || event.requiresSnapshot
+            || event.type == .hello
+        if scopes.isEmpty {
+            scopes = Set(RelayEventScope.allCases)
+            requiresSnapshot = true
+        }
+        relayDirtyScopes.insert(
+            scopes,
+            requiresSnapshot: requiresSnapshot,
+            revision: event.revision
+        )
+        if refreshInProgress {
+            scheduleRelayRealtimePreviews(
+                scope: Self.relayRefreshScope(for: scopes),
+                generation: generation
+            )
+        }
+        scheduleRelayEventBatch(generation: generation)
+    }
+
+    /// A full snapshot can legitimately take much longer than the small relay
+    /// endpoints. If another WebSocket event arrives while that snapshot is in
+    /// flight, reconcile each endpoint on its own supersedable lane. A later
+    /// sync-data event can replace the old snapshot, and a slow request-log read
+    /// cannot delay a later command read.
+    private func scheduleRelayRealtimePreviews(
+        scope: RelayRefreshScope,
+        generation: UInt64,
+        delayNanoseconds: UInt64 = 10_000_000
+    ) {
+        guard relayEventCursor.isCurrent(generation: generation),
+              scope.hasClientFetchWork,
+              let store = serverRelayStore else {
+            return
+        }
+        if relayRealtimePreviewGeneration != generation {
+            relayRealtimePreviewTasks.values.forEach { $0.cancel() }
+            relayRealtimePreviewTasks.removeAll()
+            relayRealtimePreviewOperationIDs.removeAll()
+            relayRealtimePreviewGeneration = generation
+        }
+
+        var endpoints = [RelayRefreshEndpointKind.status]
+        if scope.fetchesCommands { endpoints.append(.commands) }
+        if scope.fetchesSyncData { endpoints.append(.syncData) }
+        if scope.fetchesFileRequests { endpoints.append(.fileRequests) }
+        if scope.fetchesItemActions { endpoints.append(.itemActions) }
+        if scope.fetchesRequestLog { endpoints.append(.requestLog) }
+        if scope.fetchesSettingActions { endpoints.append(.settingActions) }
+
+        for endpoint in endpoints {
+            scheduleRelayRealtimePreview(
+                endpoint: endpoint,
+                store: store,
+                scope: scope,
+                generation: generation,
+                delayNanoseconds: delayNanoseconds
+            )
+        }
+    }
+
+    private func scheduleRelayRealtimePreview(
+        endpoint: RelayRefreshEndpointKind,
+        store: ServerRelayCommandStore,
+        scope: RelayRefreshScope,
+        generation: UInt64,
+        delayNanoseconds: UInt64
+    ) {
+        relayRealtimePreviewTasks[endpoint]?.cancel()
+        let operationID = (relayRealtimePreviewOperationIDs[endpoint] ?? 0) &+ 1
+        relayRealtimePreviewOperationIDs[endpoint] = operationID
+        let applyEpoch = relayEndpointApplyEpochs.begin(for: endpoint)
+        let sessionGeneration = relaySessionGeneration
+        let shouldLoadSyncData = endpoint == .syncData
+        relayRealtimePreviewTasks[endpoint] = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard let self else { return }
+            let ownsPreview = {
+                self.isRelayRealtimePreviewOwnerCurrent(
+                sessionGeneration: sessionGeneration,
+                endpoint: endpoint,
+                operationID: operationID,
+                connectionGeneration: generation,
+                applyEpoch: applyEpoch
+                )
+            }
+            guard !Task.isCancelled, ownsPreview() else {
+                self.finishRelayRealtimePreview(
+                    endpoint: endpoint,
+                    operationID: operationID,
+                    generation: generation
+                )
+                return
+            }
+            let result = await Self.fetchRelayRefreshEndpoint(
+                endpoint,
+                store: store,
+                scope: scope,
+                shouldLoadSyncData: shouldLoadSyncData
+            )
+            guard !Task.isCancelled, ownsPreview() else {
+                self.finishRelayRealtimePreview(
+                    endpoint: endpoint,
+                    operationID: operationID,
+                    generation: generation
+                )
+                return
+            }
+            let application = self.applyRelayRefreshEndpoint(
+                result,
+                scope: scope,
+                shouldLoadSyncData: shouldLoadSyncData,
+                silentErrors: true
+            )
+            if application.didChange {
+                self.lastRefreshAt = Date()
+            }
+            self.finishRelayRealtimePreview(
+                endpoint: endpoint,
+                operationID: operationID,
+                generation: generation
+            )
+        }
+    }
+
+    private func finishRelayRealtimePreview(
+        endpoint: RelayRefreshEndpointKind,
+        operationID: UInt64,
+        generation: UInt64
+    ) {
+        guard relayRealtimePreviewOperationIDs[endpoint] == operationID,
+              relayRealtimePreviewGeneration == generation else {
+            return
+        }
+        relayRealtimePreviewTasks.removeValue(forKey: endpoint)
+        if relayRealtimePreviewTasks.isEmpty {
+            relayRealtimePreviewGeneration = nil
+        }
+    }
+
+    private func scheduleRelayEventBatch(
+        generation: UInt64,
+        delayNanoseconds: UInt64 = 100_000_000
+    ) {
+        if let existingTask = relayEventBatchTask {
+            if relayEventBatchGeneration == generation {
+                return
+            }
+            existingTask.cancel()
+            relayEventBatchTask = nil
+            relayEventBatchGeneration = nil
+        }
+        relayEventBatchOperationID &+= 1
+        let operationID = relayEventBatchOperationID
+        let sessionGeneration = relaySessionGeneration
+        relayEventBatchGeneration = generation
+        relayEventBatchTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard let self,
+                  self.isRelayEventBatchOwner(operationID: operationID, generation: generation) else {
+                return
+            }
+            guard !Task.isCancelled else {
+                self.finishRelayEventBatch(
+                    operationID: operationID,
+                    generation: generation,
+                    rescheduleGeneration: nil,
+                    delayNanoseconds: delayNanoseconds
+                )
+                return
+            }
+            guard self.relayEventCursor.isCurrent(generation: generation) else {
+                self.finishRelayEventBatch(
+                    operationID: operationID,
+                    generation: generation,
+                    rescheduleGeneration: self.relayEventCursor.connectionGeneration,
+                    delayNanoseconds: delayNanoseconds
+                )
+                return
+            }
+            let dirty = self.relayDirtyScopes.drain()
+            guard !dirty.scopes.isEmpty || dirty.requiresSnapshot else {
+                self.finishRelayEventBatch(
+                    operationID: operationID,
+                    generation: generation,
+                    rescheduleGeneration: generation,
+                    delayNanoseconds: delayNanoseconds
+                )
+                return
+            }
+            let scope = dirty.requiresSnapshot
+                ? RelayRefreshScope.full
+                : Self.relayRefreshScope(for: dirty.scopes)
+            let succeeded = await self.refreshRecent(
+                silentErrors: true,
+                includeSyncData: dirty.requiresSnapshot || scope.fetchesSyncData,
+                showsActivity: false,
+                scope: scope
+            )
+            guard self.isRelayEventBatchOwner(operationID: operationID, generation: generation) else {
+                if self.isCurrentRelaySession(generation: sessionGeneration) {
+                    self.relayDirtyScopes.insert(
+                        dirty.scopes,
+                        requiresSnapshot: dirty.requiresSnapshot,
+                        revision: dirty.highestRevision
+                    )
+                    self.scheduleRelayEventBatch(
+                        generation: self.relayEventCursor.connectionGeneration
+                    )
+                }
+                return
+            }
+            guard self.relayEventCursor.isCurrent(generation: generation) else {
+                self.relayDirtyScopes.insert(
+                    dirty.scopes,
+                    requiresSnapshot: dirty.requiresSnapshot,
+                    revision: dirty.highestRevision
+                )
+                self.finishRelayEventBatch(
+                    operationID: operationID,
+                    generation: generation,
+                    rescheduleGeneration: self.relayEventCursor.connectionGeneration,
+                    delayNanoseconds: delayNanoseconds
+                )
+                return
+            }
+            var nextDelay: UInt64 = 100_000_000
+            if succeeded {
+                self.relayEventBatchRetryAttempt = 0
+                self.relayEventCursor.markApplied(revision: dirty.highestRevision)
+            } else {
+                self.relayDirtyScopes.insert(
+                    dirty.scopes,
+                    requiresSnapshot: dirty.requiresSnapshot,
+                    revision: dirty.highestRevision
+                )
+                nextDelay = RelayReconnectBackoff.nanoseconds(
+                    forAttempt: self.relayEventBatchRetryAttempt
+                )
+                self.relayEventBatchRetryAttempt += 1
+            }
+            self.finishRelayEventBatch(
+                operationID: operationID,
+                generation: generation,
+                rescheduleGeneration: generation,
+                delayNanoseconds: nextDelay
+            )
+        }
+    }
+
+    private func isRelayEventBatchOwner(operationID: UInt64, generation: UInt64) -> Bool {
+        relayEventBatchOperationID == operationID
+            && relayEventBatchGeneration == generation
+            && relayEventBatchTask != nil
+    }
+
+    private func finishRelayEventBatch(
+        operationID: UInt64,
+        generation: UInt64,
+        rescheduleGeneration: UInt64?,
+        delayNanoseconds: UInt64
+    ) {
+        guard isRelayEventBatchOwner(operationID: operationID, generation: generation) else {
+            return
+        }
+        relayEventBatchTask = nil
+        relayEventBatchGeneration = nil
+        if let rescheduleGeneration, !relayDirtyScopes.isEmpty {
+            scheduleRelayEventBatch(
+                generation: rescheduleGeneration,
+                delayNanoseconds: delayNanoseconds
+            )
+        }
+    }
+
+    private func applyRelayEventLocalClear(reason: String) {
         if reason == "sync-data:run-logs-clear" {
+            sharedRunLogsClearPending = true
             clearSharedRunLogDisplayState()
             rebuildRemoteLogDerivedState()
             return
@@ -3223,13 +4566,13 @@ final class CompanionModel: ObservableObject {
         }
         applyLogClear(scope: scope)
         if scope == .all {
+            sharedRunLogsClearPending = true
             clearSharedRunLogDisplayState()
         }
         rebuildRemoteLogDerivedState()
     }
 
-    private static func relayRefreshScope(for message: URLSessionWebSocketTask.Message) -> RelayRefreshScope {
-        let reason = relayEventReason(for: message)
+    private static func relayRefreshScope(for reason: String) -> RelayRefreshScope {
         if reason == "state" || reason == "updated" {
             return .state
         }
@@ -3272,7 +4615,7 @@ final class CompanionModel: ObservableObject {
         return .full
     }
 
-    private static func relayEventReason(for message: URLSessionWebSocketTask.Message) -> String {
+    private static func relayEvent(for message: URLSessionWebSocketTask.Message) -> RelayEventEnvelope? {
         let data: Data?
         switch message {
         case .data(let payload):
@@ -3282,11 +4625,55 @@ final class CompanionModel: ObservableObject {
         @unknown default:
             data = nil
         }
-        guard let data,
-              let event = try? JSONDecoder().decode(RelayEventEnvelope.self, from: data) else {
-            return ""
+        guard let data else { return nil }
+        if String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "pong" {
+            return RelayEventEnvelope(type: .pong)
         }
-        return event.reason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return try? JSONDecoder().decode(RelayEventEnvelope.self, from: data)
+    }
+
+    private static func relayEventScopes(forLegacyReason reason: String) -> Set<RelayEventScope> {
+        if reason.isEmpty { return Set(RelayEventScope.allCases) }
+        if reason == "state" || reason == "updated" { return [.status, .commands] }
+        if reason == "cancel:requested" { return [.cancel, .commands, .status] }
+        if reason.hasPrefix("commands:") { return [.commands, .status, .requestLog] }
+        if reason.hasPrefix("item-actions:") { return [.itemActions, .syncData, .requestLog] }
+        if reason.hasPrefix("setting-actions:") { return [.settingActions, .sharedSettings, .syncData, .requestLog] }
+        if reason == "shared-settings" { return [.sharedSettings, .syncData, .requestLog] }
+        if reason == "sync-data" || reason.hasPrefix("sync-data:") { return [.syncData, .runLogs] }
+        if reason.hasPrefix("file-access:") { return [.fileAccess, .requestLog] }
+        if reason.hasPrefix("logs-display:") || reason.hasPrefix("logs:") {
+            return [.commands, .itemActions, .settingActions, .fileAccess, .requestLog, .runLogs]
+        }
+        return Set(RelayEventScope.allCases)
+    }
+
+    private static func relayRefreshScope(for scopes: Set<RelayEventScope>) -> RelayRefreshScope {
+        var result = RelayRefreshScope(
+            fetchesCommands: false,
+            fetchesSyncData: false,
+            fetchesFileRequests: false,
+            fetchesItemActions: false,
+            fetchesRequestLog: false,
+            fetchesSettingActions: false
+        )
+        for scope in scopes {
+            switch scope {
+            case .status, .commands, .cancel:
+                result.formUnion(.state)
+            case .syncData, .runLogs, .sharedSettings:
+                result.formUnion(.syncData)
+            case .itemActions:
+                result.formUnion(.itemActions)
+            case .settingActions:
+                result.formUnion(.settingActions)
+            case .fileAccess:
+                result.formUnion(.fileAccess)
+            case .requestLog:
+                result.formUnion(.requestLog)
+            }
+        }
+        return result
     }
 
     private static func logClearScope(for reason: String) -> ServerRelayLogClearScope? {
@@ -3309,37 +4696,43 @@ final class CompanionModel: ObservableObject {
     private func apply(_ response: LocalRemoteResponse) -> Bool {
         var didChange = false
         let previousStatus = status
-        if status != response.status {
-            status = response.status
+        var mergedLatestCommand: RemoteRunCommand?
+        if let latestCommand = response.latestCommand {
+            let overlaidCommands = visibleCommands(
+                commandsOverlayingPendingSubmissions(
+                    [latestCommand],
+                    confirmsTerminalState: false
+                )
+            )
+            mergedLatestCommand = overlaidCommands.first(where: { $0.id == latestCommand.id })
+            if recentCommands != overlaidCommands {
+                recentCommands = overlaidCommands
+                didChange = true
+            }
+            clearFinishedCancelRequestIfNeeded(overlaidCommands)
+            if let terminalCommand = overlaidCommands.first(where: { $0.displayStatus().isTerminal }),
+               terminalCommand.id != lastTerminalCommandID {
+                lastTerminalCommandID = terminalCommand.id
+                syncDataNeedsRefresh = true
+            }
+            handleReportNotificationUpdates(overlaidCommands)
+        }
+        let pendingCommand = pendingSubmittedCommandsByID.values
+            .max { $0.updatedAt < $1.updatedAt }
+        let statusCommand = pendingCommand ?? mergedLatestCommand
+        statusCommandID = statusCommand?.id
+        let incomingStatus = statusCommand?.summary ?? response.status
+        if status != incomingStatus {
+            status = incomingStatus
             rebuildDashboardStatus()
             didChange = true
         }
-        if shouldNotifyAuthSuccess(from: previousStatus, to: response.status),
-           let authStatusMessage = response.status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        if shouldNotifyAuthSuccess(from: previousStatus, to: incomingStatus),
+           let authStatusMessage = incomingStatus.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines) {
             if shouldPresentAuthSuccessAlert(message: authStatusMessage) {
                 userAlert = UserAlert(title: "인증 완료", message: authStatusMessage)
                 didChange = true
             }
-        }
-        if let latestCommand = response.latestCommand {
-            let shouldShowLatestCommand = latestCommand.status.isInFlight
-                || !locallyHiddenCommandIDs.contains(latestCommand.id)
-            if shouldShowLatestCommand {
-                if recentCommands.first != latestCommand {
-                    recentCommands = [latestCommand]
-                    didChange = true
-                }
-            } else if recentCommands.first?.id == latestCommand.id {
-                recentCommands = recentCommands.filter { $0.id != latestCommand.id }
-                didChange = true
-            }
-            clearFinishedCancelRequestIfNeeded([latestCommand])
-            if latestCommand.displayStatus().isTerminal,
-               latestCommand.id != lastTerminalCommandID {
-                lastTerminalCommandID = latestCommand.id
-                syncDataNeedsRefresh = true
-            }
-            handleReportNotificationUpdates([latestCommand])
         }
         return didChange
     }
@@ -3421,10 +4814,11 @@ final class CompanionModel: ObservableObject {
             dryRunReports = syncData.dryRunReports
             didChange = true
         }
-        let nextCalendarChangesSignature = Self.signature(for: syncData.calendarChanges)
-        if calendarChangesSignature != nextCalendarChangesSignature {
+        // CalendarChange is Equatable across every user-visible field. Comparing
+        // the values directly prevents a WebSocket snapshot that only corrects
+        // course, location, URL, or parseError from being discarded as stale.
+        if calendarChanges != syncData.calendarChanges {
             calendarChanges = syncData.calendarChanges
-            calendarChangesSignature = nextCalendarChangesSignature
             didChange = true
         }
         if termCatalog != syncData.termCatalog {
@@ -3438,10 +4832,23 @@ final class CompanionModel: ObservableObject {
             remoteSettingsSignature = nextRemoteSettingsSignature
             didChange = true
         }
-        didChange = applySharedSettings(syncData.sharedSettings, merge: false) || didChange
-        let nextSharedRunLogsSignature = Self.signature(for: syncData.runLogs)
+        didChange = applySharedSettings(
+            syncData.sharedSettings,
+            merge: false,
+            authoritativeIncoming: true
+        ) || didChange
+        let incomingSharedRunLogs: [ServerRelayRunLog]
+        if sharedRunLogsClearPending {
+            incomingSharedRunLogs = []
+            if syncData.runLogs.isEmpty {
+                sharedRunLogsClearPending = false
+            }
+        } else {
+            incomingSharedRunLogs = syncData.runLogs
+        }
+        let nextSharedRunLogsSignature = Self.signature(for: incomingSharedRunLogs)
         if sharedRunLogsSignature != nextSharedRunLogsSignature {
-            sharedRunLogs = syncData.runLogs
+            sharedRunLogs = incomingSharedRunLogs
             sharedRunLogsSignature = nextSharedRunLogsSignature
             didChange = true
         }
@@ -3507,7 +4914,11 @@ final class CompanionModel: ObservableObject {
     }
 
     private func syncItemsOverlayingRecentDisplayActions(_ incomingItems: [ServerRelaySyncItem]) -> [ServerRelaySyncItem] {
-        let actions = recentItemActions
+        let pendingActions = pendingItemActionOverlaysByID.values.map(\.action)
+        let actions = Dictionary(
+            (recentItemActions + pendingActions).map { ($0.id, $0) },
+            uniquingKeysWith: { _, pending in pending }
+        ).values
             .filter {
                 $0.action.isCompanionImmediateDisplayAction
                     && !$0.status.isFailedLike
@@ -3659,7 +5070,6 @@ final class CompanionModel: ObservableObject {
         sharedRunLogs = []
         verifySummary = nil
         syncItemsSignature = nil
-        calendarChangesSignature = nil
         remoteSettingsSignature = nil
         sharedSettingsSignature = nil
         sharedRunLogsSignature = nil
@@ -3672,20 +5082,48 @@ final class CompanionModel: ObservableObject {
     }
 
     @discardableResult
-    private func applySharedSettings(_ incomingSettings: [ServerRelaySetting], merge: Bool) -> Bool {
+    private func applySharedSettings(
+        _ incomingSettings: [ServerRelaySetting],
+        merge: Bool,
+        authoritativeIncoming: Bool = false
+    ) -> Bool {
         let visibleIncomingSettings = incomingSettings.filter { !Self.hiddenSharedSettingKeys.contains($0.key) }
         let visiblePreviousSettings = sharedSettings.filter { !Self.hiddenSharedSettingKeys.contains($0.key) }
         let previousByKey = Dictionary(uniqueKeysWithValues: visiblePreviousSettings.map { ($0.key, $0) })
-        let next: [ServerRelaySetting]
-        if merge {
-            var mergedByKey = previousByKey
-            for setting in visibleIncomingSettings {
-                mergedByKey[setting.key] = setting
+        if authoritativeIncoming, !pendingSharedSettingsByKey.isEmpty {
+            let incomingByKey = Dictionary(uniqueKeysWithValues: visibleIncomingSettings.map { ($0.key, $0) })
+            let generation = relaySessionGeneration
+            for key in pendingSharedSettingsByKey.keys {
+                sharedSettingAuthoritativeObservationSequence &+= 1
+                sharedSettingAuthoritativeObservationVersionsByKey[key] = sharedSettingAuthoritativeObservationSequence
+                let incoming = incomingByKey[key]
+                let committed = sharedSettingCommittedBaselines.committedValue(
+                    for: key,
+                    generation: generation
+                )
+                if incoming == nil || Self.serverRelaySetting(incoming, isNotOlderThan: committed) {
+                    sharedSettingCommittedBaselines.recordCommittedValue(
+                        incoming,
+                        for: key,
+                        generation: generation
+                    )
+                }
             }
-            next = mergedByKey.values.sorted { $0.key < $1.key }
-        } else {
-            next = visibleIncomingSettings.sorted { $0.key < $1.key }
         }
+        var nextByKey: [String: ServerRelaySetting]
+        if merge {
+            nextByKey = previousByKey
+            for setting in visibleIncomingSettings {
+                nextByKey[setting.key] = setting
+            }
+        } else {
+            nextByKey = Dictionary(uniqueKeysWithValues: visibleIncomingSettings.map { ($0.key, $0) })
+        }
+        for (key, pendingSetting) in pendingSharedSettingsByKey
+            where !Self.hiddenSharedSettingKeys.contains(key) {
+            nextByKey[key] = pendingSetting
+        }
+        let next = nextByKey.values.sorted { $0.key < $1.key }
         let nextSignature = Self.signature(for: next)
         guard sharedSettingsSignature != nextSignature else {
             return false
@@ -3696,6 +5134,45 @@ final class CompanionModel: ObservableObject {
             applySharedSettingLocally(setting)
         }
         return true
+    }
+
+    private static func serverRelaySetting(
+        _ candidate: ServerRelaySetting?,
+        isNotOlderThan baseline: ServerRelaySetting?
+    ) -> Bool {
+        guard let candidate else { return true }
+        guard let baseline else { return true }
+        let candidateDate = serverRelaySettingDate(candidate.updatedAt)
+        let baselineDate = serverRelaySettingDate(baseline.updatedAt)
+        if let candidateDate, let baselineDate {
+            return candidateDate >= baselineDate
+        }
+        return candidate.updatedAt >= baseline.updatedAt
+    }
+
+    private static func serverRelaySetting(
+        _ candidate: ServerRelaySetting?,
+        isStrictlyNewerThan baseline: ServerRelaySetting?
+    ) -> Bool {
+        guard let candidate else { return false }
+        guard let baseline else { return true }
+        let candidateDate = serverRelaySettingDate(candidate.updatedAt)
+        let baselineDate = serverRelaySettingDate(baseline.updatedAt)
+        if let candidateDate, let baselineDate {
+            return candidateDate > baselineDate
+        }
+        return candidate.updatedAt > baseline.updatedAt
+    }
+
+    private static func serverRelaySettingDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) {
+            return date
+        }
+        let standard = ISO8601DateFormatter()
+        standard.formatOptions = [.withInternetDateTime]
+        return standard.date(from: value)
     }
 
     private func applySharedSettingLocally(_ setting: ServerRelaySetting) {
@@ -3732,17 +5209,6 @@ final class CompanionModel: ObservableObject {
             hasher.combine(item.isRead)
             hasher.combine(item.isImportant)
             hasher.combine(item.isHidden)
-        }
-        return hasher.finalize()
-    }
-
-    private static func signature(for changes: [CalendarChange]) -> Int {
-        var hasher = Hasher()
-        hasher.combine(changes.count)
-        for change in changes {
-            hasher.combine(change.id)
-            hasher.combine(change.action)
-            hasher.combine(change.changes.joined(separator: "|"))
         }
         return hasher.finalize()
     }
@@ -3899,7 +5365,21 @@ final class CompanionModel: ObservableObject {
 
         Task {
             let center = UNUserNotificationCenter.current()
-            let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            let settings = await center.notificationSettings()
+            let authorizationStatus = settings.authorizationStatus
+            let granted: Bool
+            if authorizationStatus == .notDetermined {
+                granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+            } else {
+                #if os(iOS)
+                let isEphemeral = authorizationStatus == .ephemeral
+                #else
+                let isEphemeral = false
+                #endif
+                granted = authorizationStatus == .authorized
+                    || authorizationStatus == .provisional
+                    || isEphemeral
+            }
             guard granted else {
                 return
             }
@@ -4021,12 +5501,13 @@ final class CompanionModel: ObservableObject {
 
     private func schedulePersistServerToken(_ token: String) {
         serverTokenPersistTask?.cancel()
-        serverTokenPersistTask = Task { [weak self, token] in
+        let persistenceCoordinator = serverTokenPersistenceCoordinator
+        serverTokenPersistTask = Task { [weak self, token, persistenceCoordinator] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            await Task.detached(priority: .utility) {
-                Self.persistServerToken(token)
-            }.value
+            await persistenceCoordinator.persist(token) { persistedToken in
+                Self.persistServerToken(persistedToken)
+            }
             await MainActor.run {
                 if self?.serverToken == token {
                     self?.serverTokenPersistTask = nil
@@ -4088,7 +5569,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
     var id: String { rawValue }
 
     static var compactTabs: [CompanionAppSection] {
-        [.status, .history, .settings]
+        [.status, .files, .notices, .tasks, .calendar, .history, .settings]
     }
 
     static var workstationSections: [CompanionAppSection] {
@@ -4175,37 +5656,170 @@ private enum CompanionWorkstationMetrics {
     static let listColumnMinWidth: CGFloat = 380
     static let listColumnIdealWidth: CGFloat = 560
     static let listColumnMaxWidth: CGFloat = 700
+
+    static let twoColumnMinimumContentWidth = listColumnMinWidth + columnSpacing + detailColumnMinWidth
+}
+
+/// Chooses columns from the width proposed by the screen after the sidebar and
+/// screen padding have already been removed. Keeping the decision in a Layout
+/// avoids maintaining duplicate list/detail view trees while a Split View or
+/// Stage Manager resize crosses the two-column boundary.
+private struct CompanionAdaptiveTwoColumnLayout: Layout {
+    var minimumHorizontalWidth: CGFloat = CompanionWorkstationMetrics.twoColumnMinimumContentWidth
+    var horizontalSpacing: CGFloat = CompanionWorkstationMetrics.columnSpacing
+    var verticalSpacing: CGFloat = 12
+
+    private struct Measurement {
+        var isHorizontal: Bool
+        var primaryWidth: CGFloat
+        var detailWidth: CGFloat
+        var primarySize: CGSize
+        var detailSize: CGSize
+
+        var height: CGFloat {
+            isHorizontal
+                ? max(primarySize.height, detailSize.height)
+                : primarySize.height + detailSize.height
+        }
+    }
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) -> CGSize {
+        guard subviews.count >= 2 else { return .zero }
+        let availableWidth = max(proposal.width ?? minimumHorizontalWidth, 0)
+        let measurement = measure(availableWidth: availableWidth, subviews: subviews)
+        let spacing = measurement.isHorizontal ? 0 : verticalSpacing
+        return CGSize(width: availableWidth, height: measurement.height + spacing)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout ()
+    ) {
+        guard subviews.count >= 2 else { return }
+        let measurement = measure(availableWidth: bounds.width, subviews: subviews)
+
+        subviews[0].place(
+            at: CGPoint(x: bounds.minX, y: bounds.minY),
+            anchor: .topLeading,
+            proposal: ProposedViewSize(
+                width: measurement.primaryWidth,
+                height: measurement.primarySize.height
+            )
+        )
+
+        let detailOrigin: CGPoint
+        if measurement.isHorizontal {
+            detailOrigin = CGPoint(
+                x: bounds.minX + measurement.primaryWidth + horizontalSpacing,
+                y: bounds.minY
+            )
+        } else {
+            detailOrigin = CGPoint(
+                x: bounds.minX,
+                y: bounds.minY + measurement.primarySize.height + verticalSpacing
+            )
+        }
+        subviews[1].place(
+            at: detailOrigin,
+            anchor: .topLeading,
+            proposal: ProposedViewSize(
+                width: measurement.detailWidth,
+                height: measurement.detailSize.height
+            )
+        )
+    }
+
+    private func measure(availableWidth: CGFloat, subviews: Subviews) -> Measurement {
+        let isHorizontal = availableWidth >= minimumHorizontalWidth
+        let primaryWidth: CGFloat
+        let detailWidth: CGFloat
+
+        if isHorizontal {
+            let maximumPrimaryWidth = max(
+                CompanionWorkstationMetrics.listColumnMinWidth,
+                availableWidth - horizontalSpacing - CompanionWorkstationMetrics.detailColumnMinWidth
+            )
+            primaryWidth = min(
+                min(
+                    CompanionWorkstationMetrics.listColumnIdealWidth,
+                    CompanionWorkstationMetrics.listColumnMaxWidth
+                ),
+                maximumPrimaryWidth
+            )
+            detailWidth = max(availableWidth - horizontalSpacing - primaryWidth, 0)
+        } else {
+            primaryWidth = availableWidth
+            detailWidth = availableWidth
+        }
+
+        let primarySize = subviews[0].sizeThatFits(
+            ProposedViewSize(width: primaryWidth, height: nil)
+        )
+        let detailSize = subviews[1].sizeThatFits(
+            ProposedViewSize(width: detailWidth, height: nil)
+        )
+        return Measurement(
+            isHorizontal: isHorizontal,
+            primaryWidth: primaryWidth,
+            detailWidth: detailWidth,
+            primarySize: primarySize,
+            detailSize: detailSize
+        )
+    }
 }
 
 struct CompanionRootView: View {
     @StateObject private var model = CompanionModel()
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.scenePhase) private var scenePhase
     @State private var selectedSection: CompanionAppSection? = .status
 
     var body: some View {
         GeometryReader { proxy in
-            Group {
-                if horizontalSizeClass == .regular,
-                   proxy.size.width >= CompanionWorkstationMetrics.minimumSplitWidth {
-                    CompanionSplitRootView(model: model, selectedSection: $selectedSection)
-                } else {
-                    CompanionTabRootView(model: model)
+            let contentWidth = min(proxy.size.width, uiTestRequestedLayoutWidth ?? proxy.size.width)
+            let layoutMode = AdaptiveLayoutPolicy.mode(for: contentWidth)
+            HStack(spacing: 0) {
+                CompanionAdaptiveRootView(
+                    model: model,
+                    selectedSection: $selectedSection,
+                    layoutMode: layoutMode
+                )
+                .frame(width: contentWidth, height: proxy.size.height)
+                .environment(\.companionLayoutMode, layoutMode)
+                .transformEnvironment(\.dynamicTypeSize) { size in
+                    if uiTestUsesAccessibility5 {
+                        size = .accessibility5
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height)
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .leading)
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())
         .tint(.klmsCommandAccent)
+        .overlay(alignment: .bottomTrailing) {
+            if !model.uiTestPerformanceMetricsJSON.isEmpty {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement()
+                    .accessibilityLabel("2,000-item performance evidence")
+                    .accessibilityValue(model.uiTestPerformanceMetricsJSON)
+                    .accessibilityIdentifier("ui-test-2000-item-performance")
+                    .allowsHitTesting(false)
+            }
+        }
         .task(id: model.serverRelayBootstrapKey) {
             guard !model.isUsingUITestFixture else { return }
             await model.bootstrapServerRelayFromLaunch()
         }
         .onChange(of: scenePhase) { _, newPhase in
             guard newPhase == .active, !model.isUsingUITestFixture else { return }
-            Task {
-                await model.bootstrapServerRelayFromLaunch(silentInitialErrors: true, forceSyncData: false)
-            }
+            model.ensureServerRelayRealtimeConnection()
         }
         .alert(item: $model.userAlert) { alert in
             Alert(
@@ -4215,14 +5829,99 @@ struct CompanionRootView: View {
             )
         }
     }
+
+    private var uiTestRequestedLayoutWidth: CGFloat? {
+        guard model.isUsingUITestFixture else { return nil }
+        let prefix = "KLMS_UI_TEST_LAYOUT_WIDTH="
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }),
+              let width = Double(argument.dropFirst(prefix.count)),
+              width > 0 else {
+            return nil
+        }
+        return CGFloat(width)
+    }
+
+    private var uiTestUsesAccessibility5: Bool {
+        model.isUsingUITestFixture
+            && ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_AX5")
+    }
+}
+
+private struct CompanionAdaptiveRootView: View {
+    @ObservedObject var model: CompanionModel
+    @Binding var selectedSection: CompanionAppSection?
+    var layoutMode: AdaptiveLayoutMode
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            CompanionStableSectionPane(section: currentSection, model: model, openSection: select)
+                .padding(
+                    .leading,
+                    layoutMode == .wide ? CompanionWorkstationMetrics.sidebarWidth + 1 : 0
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+            if layoutMode == .wide {
+                HStack(spacing: 0) {
+                    WorkstationSidebar(selectedSection: $selectedSection)
+                        .frame(
+                            minWidth: CompanionWorkstationMetrics.sidebarWidth,
+                            idealWidth: CompanionWorkstationMetrics.sidebarWidth,
+                            maxWidth: CompanionWorkstationMetrics.sidebarWidth,
+                            alignment: .topLeading
+                        )
+                        .fixedSize(horizontal: true, vertical: false)
+                    Rectangle()
+                        .fill(Color.klmsBorder)
+                        .frame(width: 1)
+                }
+                .frame(maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if layoutMode != .wide {
+                CompanionCompactTabBar(selectedSection: sectionBinding)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 7)
+                    .padding(.bottom, 8)
+                    .background(Color.klmsScreenBackground)
+            }
+        }
+        .background(Color.klmsScreenBackground.ignoresSafeArea())
+        .companionUITestFrameMarker(
+            "companion-layout-root",
+            label: "KLMS layout root",
+            enabled: model.usesUITestFrameMarkers
+        )
+    }
+
+    private var currentSection: CompanionAppSection {
+        selectedSection ?? .status
+    }
+
+    private var sectionBinding: Binding<CompanionAppSection> {
+        Binding(
+            get: { selectedSection ?? .status },
+            set: { selectedSection = $0 }
+        )
+    }
+
+    private func select(_ section: CompanionAppSection) {
+        guard selectedSection != section else { return }
+        var transaction = Transaction()
+        transaction.animation = nil
+        withTransaction(transaction) {
+            selectedSection = section
+        }
+    }
 }
 
 private struct CompanionTabRootView: View {
     @ObservedObject var model: CompanionModel
-    @State private var selectedSection: CompanionAppSection = .status
+    @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
-        CompanionStableSectionPane(section: selectedSection, model: model) { section in
+        CompanionStableSectionPane(section: currentSection, model: model) { section in
             guard selectedSection != section else { return }
             var transaction = Transaction()
             transaction.animation = nil
@@ -4232,7 +5931,7 @@ private struct CompanionTabRootView: View {
         }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                CompanionCompactTabBar(selectedSection: $selectedSection)
+                CompanionCompactTabBar(selectedSection: sectionBinding)
                     .padding(.horizontal, 16)
                     .padding(.top, 7)
                     .padding(.bottom, 8)
@@ -4240,10 +5939,22 @@ private struct CompanionTabRootView: View {
             }
             .background(Color.klmsScreenBackground.ignoresSafeArea())
     }
+
+    private var currentSection: CompanionAppSection {
+        selectedSection ?? .status
+    }
+
+    private var sectionBinding: Binding<CompanionAppSection> {
+        Binding(
+            get: { selectedSection ?? .status },
+            set: { selectedSection = $0 }
+        )
+    }
 }
 
 private struct CompanionCompactTabBar: View {
     @Binding var selectedSection: CompanionAppSection
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 6) {
@@ -4264,9 +5975,15 @@ private struct CompanionCompactTabBar: View {
     }
 
     private var compactRows: [[CompanionAppSection]] {
-        [
-            CompanionAppSection.compactTabs,
-        ]
+        let tabs = CompanionAppSection.compactTabs
+        if dynamicTypeSize.isAccessibilitySize {
+            return [
+                Array(tabs.prefix(3)),
+                Array(tabs.dropFirst(3).prefix(2)),
+                Array(tabs.dropFirst(5)),
+            ]
+        }
+        return [Array(tabs.prefix(4)), Array(tabs.dropFirst(4))]
     }
 
     private func compactTabButton(_ section: CompanionAppSection) -> some View {
@@ -4283,12 +6000,13 @@ private struct CompanionCompactTabBar: View {
                 Image(systemName: section.systemImage)
                     .font(.caption.weight(.bold))
                 Text(section.compactTitle)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.74)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
-            .frame(maxWidth: .infinity, minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 48)
             .background(Color.klmsSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 12))
             .overlay(alignment: .top) {
                 RoundedRectangle(cornerRadius: 2)
@@ -4412,7 +6130,7 @@ private struct CompanionSidebarButton: View {
                     .frame(width: isCompact ? 28 : 30, height: isCompact ? 28 : 30)
                 }
                 Text(section.title)
-                    .font(.system(size: isCompact ? 12 : 13, weight: .semibold, design: .rounded))
+                    .font(.system(isCompact ? .caption : .subheadline, design: .rounded, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
                 Spacer(minLength: 0)
                 if showsArrow {
@@ -4527,14 +6245,14 @@ private struct CompanionStatusScreen: View {
     @State private var selectedChangeSummary: RemoteChangeSummaryKind?
     @State private var selectedYear = CompanionItemListFilter.allYears
     @State private var selectedSemester = CompanionItemListFilter.allSemesters
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     var body: some View {
         CompanionScreenContainer(
             title: "대시보드",
             model: model
         ) {
-            if horizontalSizeClass == .regular {
+            if layoutMode == .wide {
                 statusRegularWorkspace
             } else {
                 VStack(alignment: .leading, spacing: 14) {
@@ -4586,6 +6304,7 @@ private struct CompanionStatusScreen: View {
                         alignment: .topLeading
                     )
             }
+            statusSummaryColumn
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -4602,7 +6321,7 @@ private struct CompanionStatusScreen: View {
             if !model.serverRelayConfigured {
                 CompanionDisconnectedRecoveryPanel(openSettings: onOpenSettings)
             } else {
-                RemoteDashboardSyncCard(model: model, compact: horizontalSizeClass != .regular)
+                RemoteDashboardSyncCard(model: model, compact: layoutMode != .wide)
                 CompanionDashboardScopeBar(
                     selectedYear: $selectedYear,
                     selectedSemester: $selectedSemester,
@@ -4647,7 +6366,7 @@ private struct CompanionStatusScreen: View {
 
     @ViewBuilder
     private var compactDashboardDetail: some View {
-        if horizontalSizeClass != .regular {
+        if layoutMode != .wide {
             if let kind = selectedChangeSummary {
                 RemoteChangeSummaryDetailPanel(
                     kind: kind,
@@ -4739,7 +6458,7 @@ private struct CompanionStatusScreen: View {
                 initialSelectedYear: selectedYear,
                 initialSelectedSemester: selectedSemester
             )
-        } else if horizontalSizeClass == .regular {
+        } else if layoutMode == .wide {
             VStack(alignment: .leading, spacing: 12) {
                 if !model.serverRelayConfigured {
                     WorkstationDisconnectedDetailPanel(openSettings: onOpenSettings)
@@ -4839,10 +6558,13 @@ private struct CompanionDashboardScopeBar: View {
                     } label: {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.caption.weight(.bold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(Color.klmsSecondaryText)
                     .accessibilityLabel("동기화 범위 초기화")
+                    .accessibilityHint("연도와 학기 범위를 전체로 되돌립니다.")
                 }
             }
             HStack(spacing: 8) {
@@ -4858,6 +6580,7 @@ private struct CompanionDashboardScopeBar: View {
                 .stroke(Color.klmsBorder.opacity(0.84), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dashboard-scope-section")
     }
 
     private func companionScopePicker(_ title: String, selection: Binding<String>, options: [String]) -> some View {
@@ -5242,11 +6965,14 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
     var failureMessage: String
     var selectedCategory: DashboardMetricCategory?
     var onCategoryTap: (DashboardMetricCategory) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let columns = [
-        GridItem(.flexible(minimum: 0), spacing: 8),
-        GridItem(.flexible(minimum: 0), spacing: 8),
-    ]
+    private var columns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+            count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        )
+    }
 
     nonisolated static func == (lhs: CompanionDashboardQuickAccessGrid, rhs: CompanionDashboardQuickAccessGrid) -> Bool {
         lhs.status == rhs.status
@@ -5290,7 +7016,7 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
         let value = category.value(from: status)
         return HStack(alignment: .center, spacing: 8) {
             Image(systemName: category.systemImage)
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.system(.subheadline, design: .rounded, weight: .bold))
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
                 .frame(width: 26, height: 26)
                 .background(
@@ -5335,7 +7061,7 @@ private struct CompanionDashboardCategoryScreen: View {
     var title: String
     var category: DashboardMetricCategory
     @ObservedObject var model: CompanionModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     var body: some View {
         CompanionScreenContainer(title: title, model: model) {
@@ -5347,9 +7073,9 @@ private struct CompanionDashboardCategoryScreen: View {
                     didFail: model.connectionSucceeded == false,
                     failureMessage: model.errorMessage
                 )
-            } else if horizontalSizeClass == .regular && category == .calendar {
+            } else if layoutMode == .wide && category == .calendar {
                 WorkstationCalendarWorkspace(model: model)
-            } else if horizontalSizeClass == .regular && category.supportsWorkstationSelectionWorkspace {
+            } else if layoutMode == .wide && category.supportsWorkstationSelectionWorkspace {
                 WorkstationDashboardCategoryWorkspace(category: category, model: model)
             } else {
                 DashboardCategoryInlineDetailPanel(category: category, model: model)
@@ -5360,7 +7086,7 @@ private struct CompanionDashboardCategoryScreen: View {
 
 private struct CompanionTasksScreen: View {
     @ObservedObject var model: CompanionModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
     @State private var selectedCompactTaskCategory = DashboardMetricCategory.assignments
 
     private var taskCategories: [DashboardMetricCategory] {
@@ -5373,7 +7099,7 @@ private struct CompanionTasksScreen: View {
 
     var body: some View {
         CompanionScreenContainer(title: "과제/시험", model: model) {
-            if horizontalSizeClass == .regular {
+            if layoutMode == .wide {
                 WorkstationTasksWorkspace(model: model)
             } else {
                 compactTasksWorkspace
@@ -5422,11 +7148,11 @@ private struct CompanionTasksScreen: View {
 
 private struct CompanionSettingsScreen: View {
     @ObservedObject var model: CompanionModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
-            if horizontalSizeClass == .regular {
+            if layoutMode == .wide {
                 settingsRegularWorkspace
             } else {
                 settingsPrimaryColumn
@@ -5476,6 +7202,7 @@ private struct CompanionSettingsScreen: View {
             CompanionImmediateSettingsPanel(
                 selectedAppearanceMode: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue) ?? .system,
                 noticeNotesEnabled: model.sharedNoticeUpdateNotesEnabled,
+                noticeNotesUpdatePending: model.isSharedNoticeUpdatePending,
                 updateAppearanceMode: { mode in
                     await model.updateSharedAppearanceMode(mode.rawValue)
                 },
@@ -5483,7 +7210,7 @@ private struct CompanionSettingsScreen: View {
                     await model.updateSharedNoticeNotes(enabled)
                 }
             )
-            RemoteSettingsPanel(model: model, usesWideGrid: horizontalSizeClass == .regular)
+            RemoteSettingsPanel(model: model, usesWideGrid: layoutMode == .wide)
         }
     }
 
@@ -5539,6 +7266,7 @@ private struct CompanionSettingsScreen: View {
 private struct CompanionImmediateSettingsPanel: View {
     var selectedAppearanceMode: KLMSAppearanceMode
     var noticeNotesEnabled: Bool
+    var noticeNotesUpdatePending: Bool
     var updateAppearanceMode: (KLMSAppearanceMode) async -> Void
     var updateNoticeNotes: (Bool) async -> Void
     @AppStorage("KLMSAppearanceMode") private var localAppearanceModeRaw = KLMSAppearanceMode.system.rawValue
@@ -5602,8 +7330,9 @@ private struct CompanionImmediateSettingsPanel: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: effectiveNoticeNotesEnabled ? .success : .soft))
+                    .disabled(noticeNotesUpdatePending)
                     .accessibilityLabel("공지 메모 갱신")
-                    .accessibilityValue(effectiveNoticeNotesEnabled ? "켜짐" : "꺼짐")
+                    .accessibilityValue(noticeNotesUpdatePending ? "저장 중" : (effectiveNoticeNotesEnabled ? "켜짐" : "꺼짐"))
                     .accessibilityHint("원격 동기화에서 Notes 공지 메모를 쓸지 정합니다.")
                 }
             }
@@ -5878,11 +7607,11 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
 private struct CompanionHistoryScreen: View {
     @ObservedObject var model: CompanionModel
     @State private var selectedLogSummaryKind: RemoteLogSummaryKind? = .status
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     var body: some View {
         CompanionScreenContainer(title: "로그", model: model) {
-            if horizontalSizeClass == .regular {
+            if layoutMode == .wide {
                 historyRegularWorkspace
             } else {
                 historySummaryColumn
@@ -5962,8 +7691,8 @@ private struct CompanionHistoryScreen: View {
             RemoteLogSummaryPanel(
                 snapshot: remoteLogSummarySnapshot,
                 compact: false,
-                showsInlineDetail: horizontalSizeClass != .regular,
-                selectedKind: horizontalSizeClass == .regular ? $selectedLogSummaryKind : nil,
+                showsInlineDetail: layoutMode != .wide,
+                selectedKind: layoutMode == .wide ? $selectedLogSummaryKind : nil,
                 clearRemoteLogs: {
                     Task {
                         await model.clearRemoteLogs()
@@ -6128,11 +7857,11 @@ private struct CompanionScreenContainer<Content: View>: View {
     var title: String
     let model: CompanionModel
     @ViewBuilder var content: () -> Content
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     var body: some View {
         Group {
-            if horizontalSizeClass == .regular {
+            if layoutMode == .wide {
                 screenContent
             } else {
                 NavigationStack {
@@ -6152,10 +7881,10 @@ private struct CompanionScreenContainer<Content: View>: View {
                 }
                 .padding(
                     .horizontal,
-                    horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16
+                    layoutMode == .wide ? CompanionWorkstationMetrics.horizontalPadding : 16
                 )
-                .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
-                .padding(.bottom, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.bottomPadding : 20)
+                .padding(.top, layoutMode == .wide ? CompanionWorkstationMetrics.topPadding : 2)
+                .padding(.bottom, layoutMode == .wide ? CompanionWorkstationMetrics.bottomPadding : 20)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
         }
@@ -6194,8 +7923,8 @@ private struct CompanionScreenContainer<Content: View>: View {
                 }
             )
             .accessibilitySortPriority(100)
-            .padding(.horizontal, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.horizontalPadding : 16)
-            .padding(.top, horizontalSizeClass == .regular ? CompanionWorkstationMetrics.topPadding : 2)
+            .padding(.horizontal, layoutMode == .wide ? CompanionWorkstationMetrics.horizontalPadding : 16)
+            .padding(.top, layoutMode == .wide ? CompanionWorkstationMetrics.topPadding : 2)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(Color.klmsScreenBackground)
@@ -6206,11 +7935,11 @@ private struct CompanionScreenContainer<Content: View>: View {
 private struct CompanionScreenHeader: View {
     var title: String
     let model: CompanionModel
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     var body: some View {
         Group {
-            if horizontalSizeClass == .regular {
+            if layoutMode == .wide {
                 regularHeader
             } else {
                 compactHeader
@@ -6222,25 +7951,34 @@ private struct CompanionScreenHeader: View {
     }
 
     private var compactHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(title)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(Color.klmsPrimaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-            Spacer(minLength: 8)
-            CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
-        }
+        responsiveHeader
     }
 
     private var regularHeader: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(title)
-                .font(.title2.weight(.bold))
-                .foregroundStyle(Color.klmsPrimaryText)
-            Spacer(minLength: 8)
-            CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
+        responsiveHeader
+    }
+
+    private var responsiveHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                headerTitle
+                    .fixedSize(horizontal: true, vertical: false)
+                Spacer(minLength: 8)
+                CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                headerTitle
+                CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
+            }
         }
+    }
+
+    private var headerTitle: some View {
+        Text(title)
+            .font(.title2.weight(.bold))
+            .foregroundStyle(Color.klmsPrimaryText)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var headerStatusSnapshot: CompanionHeaderStatusSnapshot {
@@ -6282,11 +8020,10 @@ private struct CompanionHeaderStatusPillContent: View, Equatable {
         Text(headerStatusText)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(Color.klmsSecondaryText)
-            .lineLimit(1)
-            .minimumScaleFactor(0.82)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(Color.klmsSubtleCardBackground, in: Capsule())
+            .fixedSize(horizontal: true, vertical: false)
             .overlay {
                 Capsule()
                     .stroke(Color.klmsBorder, lineWidth: 1)
@@ -6299,7 +8036,7 @@ private struct CompanionHeaderStatusPillContent: View, Equatable {
 }
 
 private struct WholeScreenVerticalScrollView<Content: View>: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -6311,6 +8048,7 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
                     .padding(.bottom, bottomScrollInset)
             }
             .scrollIndicators(.visible)
+            .scrollDismissesKeyboard(.immediately)
             .background(Color.klmsScreenBackground)
             .clipped()
         }
@@ -6319,7 +8057,7 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
     }
 
     private var bottomScrollInset: CGFloat {
-        horizontalSizeClass == .compact ? 132 : 28
+        layoutMode != .wide ? 132 : 28
     }
 }
 
@@ -6392,6 +8130,31 @@ private struct RemoteRunningStatusBanner: View {
     @State private var localCancelSubmitting = false
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: 12) {
+                runningStatusContent
+                Spacer(minLength: 8)
+                cancelControl
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                runningStatusContent
+                cancelControl
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(bannerBorder.opacity(0.42), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityHint(cancelAlreadyRequested ? "Mac이 실행 중단 요청을 확인하고 있습니다." : "중요한 실행 상태입니다.")
+        .accessibilitySortPriority(90)
+    }
+
+    private var runningStatusContent: some View {
         HStack(alignment: .center, spacing: 12) {
             leadingStatusSymbol
             VStack(alignment: .leading, spacing: 3) {
@@ -6403,42 +8166,35 @@ private struct RemoteRunningStatusBanner: View {
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(snapshot.runningTitle). \(statusMessage)")
-            Spacer(minLength: 8)
-            if snapshot.shouldShowCancelControl {
-                Button(role: .destructive) {
-                    guard snapshot.canCancelRunningCommand, !localCancelSubmitting else {
-                        return
-                    }
-                    localCancelSubmitting = true
-                    Task {
-                        await onCancel()
-                        await MainActor.run {
-                            localCancelSubmitting = false
-                        }
-                    }
-                } label: {
-                    Label(cancelButtonTitle, systemImage: cancelAlreadyRequested ? "checkmark.circle" : "stop.fill")
-                        .labelStyle(.titleAndIcon)
-                        .frame(minHeight: 44)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(snapshot.runningTitle). \(statusMessage)")
+    }
+
+    @ViewBuilder
+    private var cancelControl: some View {
+        if snapshot.shouldShowCancelControl {
+            Button(role: .destructive) {
+                guard snapshot.canCancelRunningCommand, !localCancelSubmitting else {
+                    return
                 }
-                .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                .disabled(!snapshot.canCancelRunningCommand || localCancelSubmitting)
-                .accessibilityLabel(cancelButtonTitle)
-                .accessibilityHint(cancelAlreadyRequested ? "이미 중단 요청을 보냈습니다." : "실행 중인 동기화를 중단합니다.")
+                localCancelSubmitting = true
+                Task {
+                    await onCancel()
+                    await MainActor.run {
+                        localCancelSubmitting = false
+                    }
+                }
+            } label: {
+                Label(cancelButtonTitle, systemImage: cancelAlreadyRequested ? "checkmark.circle" : "stop.fill")
+                    .labelStyle(.titleAndIcon)
+                    .frame(minHeight: 44)
             }
+            .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
+            .disabled(!snapshot.canCancelRunningCommand || localCancelSubmitting)
+            .accessibilityLabel(cancelButtonTitle)
+            .accessibilityHint(cancelAlreadyRequested ? "이미 중단 요청을 보냈습니다." : "실행 중인 동기화를 중단합니다.")
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(bannerTint.opacity(0.42), lineWidth: 1)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityHint(cancelAlreadyRequested ? "Mac이 실행 중단 요청을 확인하고 있습니다." : "중요한 실행 상태입니다.")
-        .accessibilitySortPriority(90)
     }
 
     @ViewBuilder
@@ -6446,16 +8202,16 @@ private struct RemoteRunningStatusBanner: View {
         if cancelAlreadyRequested {
             Image(systemName: "stop.circle.fill")
                 .font(.subheadline.weight(.bold))
-                .foregroundStyle(bannerTint)
+                .foregroundStyle(statusTint)
                 .frame(width: 28, height: 28)
-                .background(bannerTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .background(statusTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 .accessibilityHidden(true)
         } else {
             ProgressView()
                 .controlSize(.small)
-                .tint(bannerTint)
+                .tint(statusTint)
                 .frame(width: 28, height: 28)
-                .background(bannerTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .background(statusTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                 .accessibilityHidden(true)
         }
     }
@@ -6478,7 +8234,11 @@ private struct RemoteRunningStatusBanner: View {
         return "중단"
     }
 
-    private var bannerTint: Color {
+    private var statusTint: Color {
+        cancelAlreadyRequested ? Color.klmsWarningForeground : Color.klmsCommandAccent
+    }
+
+    private var bannerBorder: Color {
         cancelAlreadyRequested ? Color.klmsWarningBorder : Color.klmsCommandAccent
     }
 }
@@ -6514,7 +8274,7 @@ private struct ServerRelayConnectionPanel: View {
                 HStack(spacing: 10) {
                     Image(systemName: isConfigured ? "checkmark.circle.fill" : "server.rack")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText)
+                        .foregroundStyle(isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText)
                         .frame(width: 44, height: 44)
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
@@ -6557,7 +8317,7 @@ private struct ServerRelayConnectionPanel: View {
                         detail: "서버 URL과 클라이언트 토큰을 관리합니다.",
                         systemImage: "link",
                         statusText: isConfigured ? "저장됨" : "미설정",
-                        statusTint: isConfigured ? Color.klmsSuccessBorder : Color.klmsSecondaryText
+                        statusTint: isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText
                     ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
@@ -6743,9 +8503,9 @@ private struct ConnectionNoticeBanner: View {
     private var tint: Color {
         switch succeeded {
         case .some(true):
-            return .klmsSuccessBorder
+            return .klmsSuccessForeground
         case .some(false):
-            return .klmsWarningBorder
+            return .klmsWarningForeground
         case nil:
             return .klmsCommandAccent
         }
@@ -6804,15 +8564,15 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
     var tint: Color {
         switch self {
         case .assignments:
-            Color.klmsWarningBorder
+            Color.klmsWarningForeground
         case .exams, .calendar:
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case .notices:
             Color.klmsCommandAccent
         case .files:
             Color.klmsSecondaryText
         case .quarantine:
-            Color.klmsDangerBorder
+            Color.klmsDangerForeground
         case .helpDesk:
             Color.klmsCommandAccent
         }
@@ -6936,9 +8696,9 @@ private enum DashboardMetricCategory: String, CaseIterable, Identifiable, Sendab
 private func companionItemKindTint(_ kind: String) -> Color {
     switch kind {
     case "assignment", "completedAssignment", "assignmentCandidate":
-        return Color.klmsWarningBorder
+        return Color.klmsWarningForeground
     case "exam", "examCandidate":
-        return Color.klmsSuccessBorder
+        return Color.klmsSuccessForeground
     case "notice", "helpDesk":
         return Color.klmsCommandAccent
     case "file":
@@ -7308,13 +9068,24 @@ private struct CompanionItemListInputKey: Hashable {
     var recentOnly: Bool
 
     func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool {
-        false
+        guard let previous, query != previous.query else { return false }
+        return itemsRevision == previous.itemsRevision
+            && category == previous.category
+            && sortOption == previous.sortOption
+            && visibilityFilter == previous.visibilityFilter
+            && statusFilter == previous.statusFilter
+            && selectedCourse == previous.selectedCourse
+            && selectedYear == previous.selectedYear
+            && selectedSemester == previous.selectedSemester
+            && newOnly == previous.newOnly
+            && recentOnly == previous.recentOnly
     }
 }
 
 private enum CompanionLargeList {
     static let initialVisibleLimit = 4
     static let regularInitialVisibleLimit = 12
+    static let uiTestLargeDatasetInitialVisibleLimit = 120
     static let previewVisibleLimit = 5
     static let regularPreviewVisibleLimit = 8
     static let calendarVisibleLimit = 6
@@ -7322,16 +9093,19 @@ private enum CompanionLargeList {
     static let logVisibleLimit = 10
     static let increment = 10
 
-    static func initialVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
-        horizontalSizeClass == .regular ? regularInitialVisibleLimit : initialVisibleLimit
+    static func initialVisibleLimit(layoutMode: AdaptiveLayoutMode) -> Int {
+        if ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_LARGE_DATASET") {
+            return uiTestLargeDatasetInitialVisibleLimit
+        }
+        return layoutMode == .wide ? regularInitialVisibleLimit : initialVisibleLimit
     }
 
-    static func previewVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
-        horizontalSizeClass == .regular ? regularPreviewVisibleLimit : previewVisibleLimit
+    static func previewVisibleLimit(layoutMode: AdaptiveLayoutMode) -> Int {
+        layoutMode == .wide ? regularPreviewVisibleLimit : previewVisibleLimit
     }
 
-    static func calendarVisibleLimit(horizontalSizeClass: UserInterfaceSizeClass?) -> Int {
-        horizontalSizeClass == .regular ? regularCalendarVisibleLimit : calendarVisibleLimit
+    static func calendarVisibleLimit(layoutMode: AdaptiveLayoutMode) -> Int {
+        layoutMode == .wide ? regularCalendarVisibleLimit : calendarVisibleLimit
     }
 }
 
@@ -7848,6 +9622,7 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
     var fieldPrompt: String
     @Binding var query: String
     @ViewBuilder var controls: Controls
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -7858,6 +9633,21 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
             TextField(fieldPrompt, text: $query)
                 .textFieldStyle(.roundedBorder)
                 .frame(minHeight: 44)
+                .focused($isSearchFocused)
+                .submitLabel(.search)
+                .onSubmit {
+                    isSearchFocused = false
+                }
+                .toolbar {
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("완료") {
+                            isSearchFocused = false
+                        }
+                        .accessibilityIdentifier("companion-search-dismiss-keyboard")
+                    }
+                }
+                .accessibilityIdentifier("companion-search-field")
 
             controls
         }
@@ -7928,20 +9718,28 @@ private struct CompanionControlBox<Content: View>: View {
 private struct RemoteDashboardSyncCard: View {
     @ObservedObject var model: CompanionModel
     var compact: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
-                Text("동기화")
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.klmsSecondaryText)
-                Spacer(minLength: 8)
-                syncStateChip
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 10) {
+                    syncSectionTitle
+                    Spacer(minLength: 8)
+                    syncStateChip(fixedHorizontal: true)
+                }
+                VStack(alignment: .leading, spacing: 7) {
+                    syncSectionTitle
+                    syncStateChip(fixedHorizontal: false)
+                }
             }
+
+            RemoteDashboardPrimarySyncAction(model: model, compact: compact)
 
             RemoteDashboardSyncCardContent(
                 snapshot: snapshot,
                 compact: compact,
+                usesAccessibilityLayout: dynamicTypeSize.isAccessibilitySize,
                 runOrCancel: { kind in
                     runOrCancel(kind)
                 }
@@ -7954,7 +9752,7 @@ private struct RemoteDashboardSyncCard: View {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "link.badge.plus")
                         .font(.caption.weight(.bold))
-                        .foregroundStyle(Color.klmsWarningBorder)
+                        .foregroundStyle(Color.klmsWarningForeground)
                     Text("서버 URL과 클라이언트 토큰을 저장하면 동기화 요청과 대시보드 갱신을 사용할 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
@@ -7977,11 +9775,14 @@ private struct RemoteDashboardSyncCard: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("dashboard-sync-section")
     }
 
     private var snapshot: RemoteDashboardSyncSnapshot {
         RemoteDashboardSyncSnapshot(
             isRemoteAvailable: model.isRemoteAvailable,
+            isSubmitting: model.isSubmitting,
             hasInFlightRequest: model.hasInFlightRequest,
             phase: model.status.phase,
             activeRequestLabel: model.activeRequestLabel,
@@ -7990,25 +9791,21 @@ private struct RemoteDashboardSyncCard: View {
         )
     }
 
-    private var syncStateChip: some View {
+    private var syncSectionTitle: some View {
+        Text("동기화")
+            .font(.system(.caption, design: .rounded, weight: .bold))
+            .foregroundStyle(Color.klmsSecondaryText)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func syncStateChip(fixedHorizontal: Bool) -> some View {
         Text(syncStateTitle)
             .font(.caption2.weight(.bold))
             .foregroundStyle(syncStateColor)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
             .background(syncStateColor.opacity(0.13), in: Capsule())
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
-    }
-
-    private func runOrCancel(_ kind: RemoteCommandKind) {
-        Task {
-            if model.latestDisplayStatus?.isInFlight == true && model.latestCommand?.kind == kind {
-                await model.cancelRunningCommand()
-            } else {
-                await model.createCommand(kind)
-            }
-        }
+            .fixedSize(horizontal: fixedHorizontal, vertical: true)
     }
 
     private var syncStateTitle: String {
@@ -8016,12 +9813,18 @@ private struct RemoteDashboardSyncCard: View {
     }
 
     private var syncStateColor: Color {
-        snapshot.isRunning ? Color.klmsCommandAccent : (snapshot.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningBorder)
+        snapshot.isRunning ? Color.klmsCommandAccent : (snapshot.isRemoteAvailable ? Color.klmsSecondaryText : Color.klmsWarningForeground)
+    }
+
+    private func runOrCancel(_ kind: RemoteCommandKind) {
+        guard !model.isSubmitting else { return }
+        model.runOrCancelRemoteCommand(kind)
     }
 }
 
 private struct RemoteDashboardSyncSnapshot: Equatable {
     var isRemoteAvailable: Bool
+    var isSubmitting: Bool
     var hasInFlightRequest: Bool
     var phase: String
     var activeRequestLabel: String
@@ -8040,7 +9843,13 @@ private struct RemoteDashboardSyncSnapshot: Equatable {
     }
 
     func commandDisabled(for kind: RemoteCommandKind) -> Bool {
-        hasInFlightRequest && !isCommandActive(kind)
+        if !isRemoteAvailable {
+            return true
+        }
+        if isSubmitting {
+            return true
+        }
+        return hasInFlightRequest && !isCommandActive(kind)
     }
 
     func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
@@ -8048,43 +9857,64 @@ private struct RemoteDashboardSyncSnapshot: Equatable {
     }
 }
 
-private struct RemoteDashboardSyncCardContent: View, Equatable {
-    var snapshot: RemoteDashboardSyncSnapshot
-    var compact: Bool
-    var runOrCancel: (RemoteCommandKind) -> Void
-
-    private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]
-    private let secondaryColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 7), count: 3)
-
-    nonisolated static func == (lhs: RemoteDashboardSyncCardContent, rhs: RemoteDashboardSyncCardContent) -> Bool {
-        lhs.snapshot == rhs.snapshot
-            && lhs.compact == rhs.compact
+private extension CompanionModel {
+    var remoteDashboardSyncSnapshot: RemoteDashboardSyncSnapshot {
+        RemoteDashboardSyncSnapshot(
+            isRemoteAvailable: isRemoteAvailable,
+            isSubmitting: isSubmitting,
+            hasInFlightRequest: hasInFlightRequest,
+            phase: status.phase,
+            activeRequestLabel: activeRequestLabel,
+            latestDisplayStatusIsInFlight: latestDisplayStatus?.isInFlight == true,
+            latestCommandKind: latestCommand?.kind
+        )
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            dashboardPrimaryButton
+    func runOrCancelRemoteCommand(_ kind: RemoteCommandKind) {
+        let intent = RemoteCommandActionIntent.capture(
+            kind: kind,
+            activeCommand: latestCommand
+        )
+        performRemoteCommandAction(intent)
+    }
 
-            LazyVGrid(columns: secondaryColumns, spacing: 7) {
-                ForEach(secondaryCommands, id: \.self) { command in
-                    dashboardSecondaryButton(command)
-                }
+    private func performRemoteCommandAction(_ intent: RemoteCommandActionIntent) {
+        guard !isSubmitting else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            switch intent {
+            case let .run(kind):
+                await self.createCommand(kind)
+            case let .cancel(kind: _, commandID: commandID):
+                await self.cancelRunningCommand(expectedCommandID: commandID)
             }
         }
     }
+}
 
-    private var dashboardPrimaryButton: some View {
-        let isRunning = isCommandActive(.fullSync)
-        let isDisabled = commandDisabled(for: .fullSync)
+private struct RemoteDashboardPrimarySyncAction: View {
+    @ObservedObject var model: CompanionModel
+    var compact: Bool
+
+    var body: some View {
+        let snapshot = model.remoteDashboardSyncSnapshot
+        let isRunning = snapshot.isCommandActive(.fullSync)
+        let isDisabled = snapshot.commandDisabled(for: .fullSync)
         return Button {
-            runOrCancel(.fullSync)
+            model.runOrCancelRemoteCommand(.fullSync)
         } label: {
-            HStack(alignment: .center, spacing: 12) {
-                Text(primaryCommandTitle(isRunning: isRunning, isDisabled: isDisabled))
-                    .font(.system(size: 19, weight: .heavy, design: .rounded))
-                Spacer(minLength: 0)
-                Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
-                    .font(.headline.weight(.black))
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    primaryCommandText(isRunning: isRunning)
+                        .fixedSize(horizontal: true, vertical: false)
+                    Spacer(minLength: 0)
+                    primaryCommandIcon(isRunning: isRunning, isDisabled: isDisabled)
+                }
+                VStack(alignment: .leading, spacing: 10) {
+                    primaryCommandText(isRunning: isRunning)
+                    primaryCommandIcon(isRunning: isRunning, isDisabled: isDisabled)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
             }
             .foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
@@ -8103,55 +9933,23 @@ private struct RemoteDashboardSyncCardContent: View, Equatable {
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")
         .accessibilityHint(isRunning ? "서버에 전체 동기화 중단 요청을 보냅니다." : "서버에 전체 동기화 실행 요청을 올립니다.")
+        .accessibilityIdentifier("dashboard-primary-full-sync")
+        .accessibilitySortPriority(90)
     }
 
-    private func dashboardSecondaryButton(_ kind: RemoteCommandKind) -> some View {
-        let isRunning = isCommandActive(kind)
-        let isDisabled = commandDisabled(for: kind)
-        return Button {
-            runOrCancel(kind)
-        } label: {
-            HStack(spacing: 5) {
-                if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 9, weight: .black, design: .rounded))
-                }
-                Text(shortTitle(for: kind))
-                    .font(.system(size: 11, weight: .bold, design: .rounded))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-            }
-            .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
-            .frame(maxWidth: .infinity, minHeight: compact ? 44 : 46, alignment: .center)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 9)
-            .background(
-                secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
-                in: RoundedRectangle(cornerRadius: 10)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(
-                        secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
-                        lineWidth: 1
-                    )
-            }
-        }
-        .buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))
-        .disabled(isDisabled)
-        .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
-        .accessibilityHint(isRunning ? "서버에 \(kind.displayName) 중단 요청을 보냅니다." : "서버에 \(kind.displayName) 실행 요청을 올립니다.")
+    private func primaryCommandText(isRunning: Bool) -> some View {
+        Text(primaryCommandTitle(isRunning: isRunning))
+            .font(.system(.title3, design: .rounded, weight: .heavy))
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func commandDisabled(for kind: RemoteCommandKind) -> Bool {
-        snapshot.commandDisabled(for: kind)
+    private func primaryCommandIcon(isRunning: Bool, isDisabled: Bool) -> some View {
+        Image(systemName: primaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled))
+            .font(.headline.weight(.black))
+            .accessibilityHidden(true)
     }
 
-    private func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
-        snapshot.isCommandActive(kind)
-    }
-
-    private func primaryCommandTitle(isRunning: Bool, isDisabled _: Bool) -> String {
+    private func primaryCommandTitle(isRunning: Bool) -> String {
         if isRunning { return "전체 동기화 중단" }
         return "전체 동기화"
     }
@@ -8174,6 +9972,84 @@ private struct RemoteDashboardSyncCardContent: View, Equatable {
     private func primaryCommandBorder(isRunning: Bool, isDisabled: Bool) -> Color {
         if isDisabled { return Color.klmsCommandButtonBorder.opacity(0.64) }
         return isRunning ? Color.klmsPrimaryCommandButtonBorder.opacity(0.78) : Color.klmsPrimaryCommandButtonBorder
+    }
+}
+
+private struct RemoteDashboardSyncCardContent: View, Equatable {
+    var snapshot: RemoteDashboardSyncSnapshot
+    var compact: Bool
+    var usesAccessibilityLayout: Bool
+    var runOrCancel: (RemoteCommandKind) -> Void
+
+    private let secondaryCommands: [RemoteCommandKind] = [.filesSync, .coreSync, .noticeSync]
+
+    private var secondaryColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 7),
+            count: usesAccessibilityLayout ? 1 : 3
+        )
+    }
+
+    nonisolated static func == (lhs: RemoteDashboardSyncCardContent, rhs: RemoteDashboardSyncCardContent) -> Bool {
+        lhs.snapshot == rhs.snapshot
+            && lhs.compact == rhs.compact
+            && lhs.usesAccessibilityLayout == rhs.usesAccessibilityLayout
+    }
+
+    var body: some View {
+        LazyVGrid(columns: secondaryColumns, spacing: 7) {
+            ForEach(secondaryCommands, id: \.self) { command in
+                dashboardSecondaryButton(command)
+            }
+        }
+        .accessibilityIdentifier("dashboard-secondary-sync-actions")
+    }
+
+    private func dashboardSecondaryButton(_ kind: RemoteCommandKind) -> some View {
+        let isRunning = isCommandActive(kind)
+        let isDisabled = commandDisabled(for: kind)
+        return Button {
+            runOrCancel(kind)
+        } label: {
+            HStack(spacing: 5) {
+                if let systemImage = secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled) {
+                    Image(systemName: systemImage)
+                        .font(.system(.caption2, design: .rounded, weight: .black))
+                }
+                Text(shortTitle(for: kind))
+                    .font(.system(.caption, design: .rounded, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .foregroundStyle(secondaryCommandForeground(isDisabled: isDisabled))
+            .frame(maxWidth: .infinity, minHeight: compact ? 44 : 46, alignment: .center)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 9)
+            .background(
+                secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
+                in: RoundedRectangle(cornerRadius: 10)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(
+                        secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
+                        lineWidth: 1
+                    )
+            }
+        }
+        .buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))
+        .disabled(isDisabled)
+        .accessibilityLabel(isRunning ? "\(kind.displayName) 중단" : "\(kind.displayName) 실행")
+        .accessibilityHint(isRunning ? "서버에 \(kind.displayName) 중단 요청을 보냅니다." : "서버에 \(kind.displayName) 실행 요청을 올립니다.")
+        .accessibilityIdentifier("dashboard-secondary-sync-\(kind.rawValue)")
+    }
+
+    private func commandDisabled(for kind: RemoteCommandKind) -> Bool {
+        snapshot.commandDisabled(for: kind)
+    }
+
+    private func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
+        snapshot.isCommandActive(kind)
     }
 
     private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
@@ -8223,12 +10099,22 @@ private struct RemoteDashboardMetricOverview: View {
     var showsCompactChangeDetail = true
     var onChangeSummaryTap: (RemoteChangeSummaryKind) -> Void
     private let metricSnapshot: RemoteDashboardMetricSnapshot
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let compactColumns = [
-        GridItem(.adaptive(minimum: 132), spacing: 8),
-    ]
-    private let workstationColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 2)
+    private var compactColumns: [GridItem] {
+        if dynamicTypeSize.isAccessibilitySize {
+            return [GridItem(.flexible(minimum: 0), spacing: 8)]
+        }
+        return [GridItem(.adaptive(minimum: 132), spacing: 8)]
+    }
+
+    private var workstationColumns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+            count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        )
+    }
 
     init(
         model: CompanionModel,
@@ -8310,7 +10196,7 @@ private struct RemoteDashboardMetricOverview: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
                     .padding(.horizontal, 2)
-                if horizontalSizeClass == .regular {
+                if layoutMode == .wide {
                     LazyVGrid(columns: workstationColumns, alignment: .leading, spacing: 8) {
                         ForEach(categories) { category in
                             WorkstationMetricCard(
@@ -8346,7 +10232,7 @@ private struct RemoteDashboardMetricOverview: View {
 
     private var shouldShowInlineEmptyDashboardMessage: Bool {
         isDataLoaded
-            && horizontalSizeClass != .regular
+            && layoutMode != .wide
             && metricSnapshot.primaryMetricCategories.isEmpty
             && metricSnapshot.attentionMetricCategories.isEmpty
             && !metricSnapshot.hasVisibleChangeSummary
@@ -8461,13 +10347,13 @@ private enum RemoteChangeSummaryKind: String, CaseIterable, Identifiable {
         case .newFiles:
             Color.klmsSecondaryText
         case .fileCleanup:
-            Color.klmsDangerBorder
+            Color.klmsDangerForeground
         case .calendarCreated:
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case .calendarUpdated:
             Color.klmsCommandAccent
         case .calendarDeleted:
-            Color.klmsDangerBorder
+            Color.klmsDangerForeground
         }
     }
 
@@ -8596,7 +10482,7 @@ private struct RemoteDashboardChangeSummary: View {
     let model: CompanionModel
     var showsCompactDetail = true
     var onSelect: (RemoteChangeSummaryKind) -> Void
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
 
     private var entries: [RemoteChangeSummaryEntry] {
         RemoteChangeSummaryKind.allCases.compactMap { kind in
@@ -8625,7 +10511,7 @@ private struct RemoteDashboardChangeSummary: View {
 
     @ViewBuilder
     private func compactChangeDetail(for kind: RemoteChangeSummaryKind) -> some View {
-        if horizontalSizeClass != .regular {
+        if layoutMode != .wide {
             RemoteChangeSummaryDetailPanel(
                 kind: kind,
                 status: status,
@@ -8642,11 +10528,14 @@ private struct FlowChipLayout: View {
     var entries: [RemoteChangeSummaryEntry]
     var selectedKind: RemoteChangeSummaryKind?
     var onSelect: (RemoteChangeSummaryKind) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    private let columns = [
-        GridItem(.flexible(minimum: 0), spacing: 7),
-        GridItem(.flexible(minimum: 0), spacing: 7),
-    ]
+    private var columns: [GridItem] {
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 7),
+            count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        )
+    }
 
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 7) {
@@ -8721,7 +10610,7 @@ private struct RemoteMetricTile: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .center, spacing: 7) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(.body, design: .rounded, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent)
                     .frame(width: 26, height: 26)
                     .background(
@@ -8730,14 +10619,13 @@ private struct RemoteMetricTile: View {
                     )
                 Spacer(minLength: 0)
                 Text("\(value)")
-                    .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
                     .foregroundStyle(Color.klmsPrimaryText)
             }
             Text(label)
-                .font(.system(size: 11, weight: .bold, design: .rounded))
+                .font(.system(.caption, design: .rounded, weight: .bold))
                 .foregroundStyle(Color.klmsSecondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .padding(11)
@@ -8811,17 +10699,34 @@ private extension View {
         cornerRadius: CGFloat = 10,
         action: @escaping () -> Void
     ) -> some View {
-        self
-            .frame(minWidth: 44, minHeight: 44)
-            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
-            .onTapGesture {
-                companionPerformWithoutAnimation(action)
-            }
-            .accessibilityAddTraits(.isButton)
+        Button {
+            companionPerformWithoutAnimation(action)
+        } label: {
+            self
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
+        }
+            .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: cornerRadius))
             .transaction { transaction in
                 transaction.animation = nil
                 transaction.disablesAnimations = true
             }
+    }
+
+    func companionUITestFrameMarker(
+        _ identifier: String,
+        label: String? = nil,
+        enabled: Bool
+    ) -> some View {
+        overlay {
+            if enabled {
+                Color.clear
+                    .accessibilityElement()
+                    .accessibilityLabel(label ?? identifier)
+                    .accessibilityIdentifier(identifier)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }
 
@@ -8991,7 +10896,7 @@ private struct CompanionDashboardDataLoadingCard: View {
 
     private var iconTint: Color {
         if !isServerConfigured || didFail {
-            return .klmsWarningBorder
+            return .klmsWarningForeground
         }
         return .klmsCommandAccent
     }
@@ -9029,7 +10934,7 @@ private struct CompanionDisconnectedRecoveryPanel: View {
                         .fill(Color.klmsWarningBorder.opacity(0.14))
                     Image(systemName: "link.badge.plus")
                         .font(.headline.weight(.bold))
-                        .foregroundStyle(Color.klmsWarningBorder)
+                        .foregroundStyle(Color.klmsWarningForeground)
                 }
                 .frame(width: 36, height: 36)
 
@@ -9074,7 +10979,7 @@ private struct WorkstationMetricCard: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .center, spacing: 8) {
                 Image(systemName: category.systemImage)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(.subheadline, design: .rounded, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent)
                     .frame(width: 26, height: 26)
                     .background(
@@ -9082,13 +10987,12 @@ private struct WorkstationMetricCard: View {
                         in: RoundedRectangle(cornerRadius: 8)
                     )
                 Text("\(category.title) \(value)개")
-                    .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                    .font(.system(.subheadline, design: .rounded, weight: .bold).monospacedDigit())
                     .foregroundStyle(Color.klmsPrimaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text(category.workstationDescription)
-                .font(.system(size: 11, weight: .regular, design: .rounded))
+                .font(.system(.caption, design: .rounded, weight: .regular))
                 .foregroundStyle(Color.klmsSecondaryText)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
@@ -9144,6 +11048,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
     var data: WorkstationDashboardOverviewData
     var showsMetrics = true
     var onOpenCategory: (DashboardMetricCategory) -> Void = { _ in }
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var status: SanitizedRemoteStatus {
         data.status
@@ -9202,19 +11107,19 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(alignment: .center, spacing: 8) {
                                     Image(systemName: metric.systemImage)
-                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .font(.system(.subheadline, design: .rounded, weight: .semibold))
                                         .foregroundStyle(metric.tint)
                                         .frame(width: 26, height: 26)
                                         .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
                                     Spacer(minLength: 0)
                                     Text("\(metric.value)")
-                                        .font(.system(size: 24, weight: .bold, design: .rounded).monospacedDigit())
+                                        .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
                                         .foregroundStyle(Color.klmsPrimaryText)
                                 }
                                 Text(metric.title)
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .font(.system(.caption, design: .rounded, weight: .bold))
                                     .foregroundStyle(Color.klmsSecondaryText)
-                                    .lineLimit(1)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             .padding(11)
                             .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
@@ -9249,7 +11154,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 WorkstationDashboardPreviewSection(
                     title: "과제/시험",
                     systemImage: "checklist",
-                    tint: Color.klmsWarningBorder,
+                    tint: Color.klmsWarningForeground,
                     category: .assignments,
                     items: previewTaskItems,
                     emptyMessage: "진행 중인 과제나 예정 시험이 없습니다.",
@@ -9287,7 +11192,10 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
     }
 
     private var overviewColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 2)
+        Array(
+            repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+            count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
+        )
     }
 
     private var overviewMetrics: [MetricSummary] {
@@ -9295,7 +11203,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
             MetricSummary(category: .files, title: "파일", value: status.fileTotal, systemImage: "folder", tint: Color.klmsCommandAccent),
             MetricSummary(category: .assignments, title: "과제", value: status.assignments, systemImage: "checklist", tint: Color.klmsCommandAccent),
             MetricSummary(category: .notices, title: "공지", value: status.notices, systemImage: "note.text", tint: Color.klmsCommandAccent),
-            MetricSummary(category: .exams, title: "시험", value: status.exams, systemImage: "calendar.badge.clock", tint: Color.klmsWarningBorder),
+            MetricSummary(category: .exams, title: "시험", value: status.exams, systemImage: "calendar.badge.clock", tint: Color.klmsWarningForeground),
         ].filter { $0.value > 0 }
     }
 
@@ -9753,7 +11661,7 @@ private struct KLMSActionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(.system(.caption, design: .rounded, weight: .semibold))
             .foregroundStyle(foreground)
             .frame(minWidth: 44, minHeight: 44)
             .padding(.horizontal, 8)
@@ -9849,11 +11757,11 @@ private struct KLMSCompactResetButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
+            .font(.system(.caption, design: .rounded, weight: .semibold))
             .foregroundStyle(Color.klmsSecondaryText)
             .labelStyle(.titleAndIcon)
             .padding(.horizontal, 8)
-            .frame(minHeight: 30)
+            .frame(minHeight: 44)
             .background(Color.klmsCommandButtonBackground.opacity(isEnabled ? 0.54 : 0.18), in: Capsule())
             .overlay {
                 Capsule()
@@ -9869,37 +11777,61 @@ private struct KLMSCompactTrashButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .bold, design: .rounded))
-            .foregroundStyle(isEnabled ? Color.klmsDangerCommandButtonForeground : Color.klmsSecondaryText.opacity(0.64))
-            .frame(width: 34, height: 34)
-            .background {
-                RoundedRectangle(cornerRadius: 9)
-                    .fill(compactTrashBackground)
-            }
+            .font(.system(.caption, design: .rounded, weight: .bold))
+            .foregroundStyle(isEnabled ? Color.klmsDangerForeground : Color.klmsSecondaryText.opacity(0.56))
+            .frame(width: 44, height: 44)
+            .background(compactTrashBackground(configuration: configuration), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 RoundedRectangle(cornerRadius: 9)
-                    .stroke(isEnabled ? Color.klmsDangerBorder.opacity(0.76) : Color.klmsCommandButtonBorder.opacity(0.22), lineWidth: isEnabled ? 1.15 : 1)
+                    .stroke(compactTrashBorder(configuration: configuration), lineWidth: 1)
             }
             .contentShape(RoundedRectangle(cornerRadius: 9))
-            .opacity(isEnabled ? 1.0 : 0.40)
-            .saturation(isEnabled ? 1.0 : 0.22)
-            .shadow(color: isEnabled ? Color.klmsDangerBorder.opacity(0.14) : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
+            .opacity(isEnabled ? 1.0 : 0.46)
+            .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1.0)
     }
 
-    private var compactTrashBackground: AnyShapeStyle {
+    private func compactTrashBackground(configuration: Configuration) -> Color {
         guard isEnabled else {
-            return AnyShapeStyle(Color.klmsCommandButtonBackground.opacity(0.18))
+            return Color.klmsCommandButtonBackground.opacity(0.14)
         }
-        return AnyShapeStyle(
-            LinearGradient(
-                colors: [
-                    Color.klmsDangerBorder.opacity(0.90),
-                    Color.klmsDangerBorder.opacity(0.66),
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        return Color.klmsDangerBackground.opacity(configuration.isPressed ? 0.20 : 0.08)
+    }
+
+    private func compactTrashBorder(configuration: Configuration) -> Color {
+        guard isEnabled else {
+            return Color.klmsCommandButtonBorder.opacity(0.18)
+        }
+        return Color.klmsDangerBorder.opacity(configuration.isPressed ? 0.58 : 0.34)
+    }
+}
+
+private struct KLMSConfirmedClearAction: View {
+    var accessibilityLabel: String
+    var confirmationTitle: String
+    var confirmationMessage: String
+    var confirmationButtonTitle: String
+    var accessibilityIdentifier: String
+    var isEnabled = true
+    var action: () -> Void
+    @State private var showsConfirmation = false
+
+    var body: some View {
+        Button(role: .destructive) {
+            showsConfirmation = true
+        } label: {
+            Image(systemName: "trash")
+        }
+        .buttonStyle(KLMSCompactTrashButtonStyle())
+        .disabled(!isEnabled)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("삭제 전에 확인합니다.")
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .alert(confirmationTitle, isPresented: $showsConfirmation) {
+            Button(confirmationButtonTitle, role: .destructive, action: action)
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text(confirmationMessage)
+        }
     }
 }
 
@@ -9909,7 +11841,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
+            .font(.system(.caption, design: .rounded, weight: .semibold))
             .foregroundStyle(foreground)
             .frame(minWidth: 44, minHeight: 44)
             .padding(.horizontal, 9)
@@ -9999,7 +11931,7 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
 }
 
 private struct DashboardCategoryInlineDetailPanel: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
     var category: DashboardMetricCategory
     let model: CompanionModel
     var itemPresentation: CompanionInlineItemRowsPresentation
@@ -10081,15 +12013,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
         .onChange(of: calendarChangesResetKey) { _, _ in
             calendarVisibleLimit = currentCalendarVisibleLimit
         }
-        .onChange(of: horizontalSizeClass) { _, _ in
-            calendarVisibleLimit = currentCalendarVisibleLimit
-        }
-        .onChange(of: model.dashboardSyncItemsRevision) { _, _ in
-            invalidateCachedListData()
-            Task { @MainActor in
-                await rebuildCachedListDataAfterInputSettles()
-            }
-        }
         .onAppear {
             applyInitialScopeIfNeeded()
             calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
@@ -10104,7 +12027,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private var currentCalendarVisibleLimit: Int {
-        CompanionLargeList.calendarVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+        CompanionLargeList.calendarVisibleLimit(layoutMode: layoutMode)
     }
 
     private var summaryHeader: some View {
@@ -10262,6 +12185,10 @@ private struct DashboardCategoryInlineDetailPanel: View {
         if cachedListInputKey == currentKey, cachedListData != nil {
             return
         }
+        if currentKey.shouldDebounceComparedTo(cachedListInputKey) {
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard !Task.isCancelled, currentKey == listInputKey else { return }
+        }
         if seedDefaultListDataIfAvailable(for: currentKey) {
             return
         }
@@ -10271,10 +12198,6 @@ private struct DashboardCategoryInlineDetailPanel: View {
             return
         }
         await rebuildCachedListData(for: currentKey)
-    }
-
-    private func invalidateCachedListData() {
-        cachedListInputKey = nil
     }
 
     private func applyInitialScopeIfNeeded() {
@@ -10377,6 +12300,12 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     let model: CompanionModel
     @State private var selectedItemID: String?
 
+    init(category: DashboardMetricCategory, model: CompanionModel) {
+        self.category = category
+        self.model = model
+        _selectedItemID = State(initialValue: model.rememberedDashboardSelection(for: category.rawValue))
+    }
+
     private var items: [ServerRelaySyncItem] {
         model.cachedVisibleDashboardItems(for: category.rawValue)
     }
@@ -10400,6 +12329,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         categoryRegularWorkspace
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .onAppear {
+                restoreRememberedSelectionIfAvailable()
                 clearStaleExternalSelectionIfNeeded()
             }
             .onChange(of: itemsResetKey) { _, _ in
@@ -10408,24 +12338,32 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var categoryRegularWorkspace: some View {
-        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+        CompanionAdaptiveTwoColumnLayout {
             categoryListPanel
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    maxWidth: .infinity,
                     alignment: .topLeading
+                )
+                .companionUITestFrameMarker(
+                    "workstation-category-\(category.rawValue)-list",
+                    enabled: model.usesUITestFrameMarkers
                 )
 
             categoryDetailPanel
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
+                .companionUITestFrameMarker(
+                    "workstation-category-\(category.rawValue)-detail",
+                    enabled: model.usesUITestFrameMarkers
+                )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .companionUITestFrameMarker(
+            "workstation-category-\(category.rawValue)-workspace",
+            enabled: model.usesUITestFrameMarkers
+        )
     }
 
     private var categoryListPanel: some View {
@@ -10446,6 +12384,10 @@ private struct WorkstationDashboardCategoryWorkspace: View {
             emptyMessage: "목록에서 항목을 선택해 주세요.",
             model: model
         )
+        .accessibilityIdentifier(
+            selectedItem.map { "dashboard-selected-detail-\($0.id)" }
+                ?? "dashboard-selected-detail-empty-\(category.rawValue)"
+        )
     }
 
     private func selectItem(_ item: ServerRelaySyncItem) {
@@ -10457,6 +12399,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
         withTransaction(transaction) {
             selectedItemID = item.id
         }
+        model.rememberDashboardSelection(item.id, for: category.rawValue)
     }
 
     private func clearStaleExternalSelectionIfNeeded() {
@@ -10467,6 +12410,18 @@ private struct WorkstationDashboardCategoryWorkspace: View {
 
         companionPerformWithoutAnimation {
             selectedItemID = nil
+        }
+        model.rememberDashboardSelection(nil, for: category.rawValue)
+    }
+
+    private func restoreRememberedSelectionIfAvailable() {
+        guard selectedItemID == nil,
+              let rememberedItemID = model.rememberedDashboardSelection(for: category.rawValue),
+              model.cachedVisibleDashboardItem(for: rememberedItemID, categoryID: category.rawValue) != nil else {
+            return
+        }
+        companionPerformWithoutAnimation {
+            selectedItemID = rememberedItemID
         }
     }
 }
@@ -10544,24 +12499,32 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var tasksRegularWorkspace: some View {
-        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+        CompanionAdaptiveTwoColumnLayout {
             tasksListPanel
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    maxWidth: .infinity,
                     alignment: .topLeading
+                )
+                .companionUITestFrameMarker(
+                    "workstation-tasks-list",
+                    enabled: model.usesUITestFrameMarkers
                 )
 
             tasksDetailPanel
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
+                .companionUITestFrameMarker(
+                    "workstation-tasks-detail",
+                    enabled: model.usesUITestFrameMarkers
+                )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .companionUITestFrameMarker(
+            "workstation-tasks-workspace",
+            enabled: model.usesUITestFrameMarkers
+        )
     }
 
     private var tasksListPanel: some View {
@@ -10743,24 +12706,32 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     private var calendarRegularWorkspace: some View {
-        HStack(alignment: .top, spacing: CompanionWorkstationMetrics.columnSpacing) {
+        CompanionAdaptiveTwoColumnLayout {
             calendarListPanel
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.listColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.listColumnIdealWidth,
-                    maxWidth: CompanionWorkstationMetrics.listColumnMaxWidth,
+                    maxWidth: .infinity,
                     alignment: .topLeading
+                )
+                .companionUITestFrameMarker(
+                    "workstation-calendar-list",
+                    enabled: model.usesUITestFrameMarkers
                 )
 
             calendarDetailPanel
                 .frame(
-                    minWidth: CompanionWorkstationMetrics.detailColumnMinWidth,
-                    idealWidth: CompanionWorkstationMetrics.detailColumnIdealWidth,
                     maxWidth: .infinity,
                     alignment: .topLeading
                 )
+                .companionUITestFrameMarker(
+                    "workstation-calendar-detail",
+                    enabled: model.usesUITestFrameMarkers
+                )
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .companionUITestFrameMarker(
+            "workstation-calendar-workspace",
+            enabled: model.usesUITestFrameMarkers
+        )
     }
 
     private var calendarListPanel: some View {
@@ -10911,11 +12882,11 @@ private struct WorkstationCalendarWorkspace: View {
     private func calendarActionTint(_ change: CalendarChange) -> Color {
         switch change.action {
         case "created", "mail":
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case "updated":
             Color.klmsCommandAccent
         case "deleted":
-            Color.klmsDangerBorder
+            Color.klmsDangerForeground
         default:
             Color.klmsSecondaryText
         }
@@ -10995,7 +12966,7 @@ private enum CompanionInlineItemRowsPresentation {
 }
 
 private struct CompanionInlineItemRowsView: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
     var category: DashboardMetricCategory
     var items: [ServerRelaySyncItem]
     var itemIDs: Set<String>
@@ -11023,6 +12994,11 @@ private struct CompanionInlineItemRowsView: View {
         self.presentation = presentation
         self.externalSelectedItemID = externalSelectedItemID
         self.onSelectItem = onSelectItem
+        _selectedItemID = State(
+            initialValue: presentation == .inlineDetail
+                ? model.rememberedDashboardSelection(for: category.rawValue)
+                : nil
+        )
     }
 
     var body: some View {
@@ -11042,6 +13018,7 @@ private struct CompanionInlineItemRowsView: View {
                     .companionStableTap(action: { select(item) })
                     .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
                     .accessibilityHint(presentation == .inlineDetail ? "항목 상세를 목록 위에 표시합니다." : "상세 패널에 항목을 표시합니다.")
+                    .accessibilityIdentifier("dashboard-item-\(item.id)")
                 }
                 if items.count > visibleItems.count {
                     CompanionShowMoreRowsButton(
@@ -11051,6 +13028,17 @@ private struct CompanionInlineItemRowsView: View {
                         visibleLimit += CompanionLargeList.increment
                     }
                 }
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_LARGE_DATASET") {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement()
+                    .accessibilityLabel("\(category.title) lazy render window")
+                    .accessibilityValue("\(visibleItems.count)/\(items.count)")
+                    .accessibilityIdentifier("dashboard-lazy-render-window-\(category.rawValue)")
+                    .allowsHitTesting(false)
             }
         }
         .onChange(of: visibleItemsResetKey) { _, _ in
@@ -11065,9 +13053,6 @@ private struct CompanionInlineItemRowsView: View {
         .onChange(of: optimisticExternalSelectionStillVisible) { _, isVisible in
             guard !isVisible else { return }
             clearStaleExternalSelectionIfNeeded()
-        }
-        .onChange(of: horizontalSizeClass) { _, _ in
-            visibleLimit = currentInitialVisibleLimit
         }
         .onChange(of: externalSelectedItemID) { _, newValue in
             guard presentation == .externalDetail else { return }
@@ -11088,6 +13073,7 @@ private struct CompanionInlineItemRowsView: View {
                 companionPerformWithoutAnimation {
                     selectedItemID = nil
                 }
+                model.rememberDashboardSelection(nil, for: category.rawValue)
             }
         }
     }
@@ -11105,7 +13091,7 @@ private struct CompanionInlineItemRowsView: View {
     }
 
     private var currentInitialVisibleLimit: Int {
-        CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+        CompanionLargeList.initialVisibleLimit(layoutMode: layoutMode)
     }
 
     private var visibleItemsResetKey: String {
@@ -11151,12 +13137,14 @@ private struct CompanionInlineItemRowsView: View {
         withTransaction(transaction) {
             selectedItemID = nextID
         }
+        model.rememberDashboardSelection(nextID, for: category.rawValue)
     }
 
     private func clearStaleInlineSelectionIfNeeded() {
         if let selectedItemID,
            !containsItemID(selectedItemID) {
             self.selectedItemID = nil
+            model.rememberDashboardSelection(nil, for: category.rawValue)
         }
     }
 
@@ -11190,7 +13178,7 @@ private struct CompanionFloatingItemDetailOverlay: View {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -11211,6 +13199,7 @@ private struct CompanionFloatingItemDetailOverlay: View {
                 .stroke(Color.klmsBorder.opacity(0.92), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.16), radius: 18, x: 0, y: 10)
+        .accessibilityIdentifier("dashboard-selected-detail-\(item.id)")
         .transaction { transaction in
             transaction.animation = nil
             transaction.disablesAnimations = true
@@ -11234,7 +13223,7 @@ private struct CompanionFloatingMailDetailOverlay: View {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -11263,7 +13252,7 @@ private struct CompanionFloatingMailDetailOverlay: View {
 }
 
 private struct CompanionSelectableItemListRows: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
     var items: [ServerRelaySyncItem]
     var itemIDs: Set<String>
     var onSelect: (ServerRelaySyncItem) -> Void
@@ -11287,8 +13276,9 @@ private struct CompanionSelectableItemListRows: View {
                 ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                     .equatable()
                     .companionStableTap(action: { select(item) })
-                .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
-                .accessibilityHint("항목 상세를 엽니다.")
+                    .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
+                    .accessibilityHint("항목 상세를 엽니다.")
+                    .accessibilityIdentifier("dashboard-item-\(item.id)")
             }
             if items.count > visibleItems.count {
                 CompanionShowMoreRowsButton(
@@ -11307,9 +13297,6 @@ private struct CompanionSelectableItemListRows: View {
             guard !isVisible else { return }
             clearStaleSelectionIfNeeded()
         }
-        .onChange(of: horizontalSizeClass) { _, _ in
-            visibleLimit = currentInitialVisibleLimit
-        }
         .onAppear {
             visibleLimit = max(visibleLimit, currentInitialVisibleLimit)
             clearStaleSelectionIfNeeded()
@@ -11320,7 +13307,7 @@ private struct CompanionSelectableItemListRows: View {
     }
 
     private var currentInitialVisibleLimit: Int {
-        CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+        CompanionLargeList.initialVisibleLimit(layoutMode: layoutMode)
     }
 
     private var visibleItemsResetKey: String {
@@ -11389,7 +13376,7 @@ private struct CompanionShowMoreRowsButton: View {
 }
 
 private struct RemoteChangeSummaryDetailPanel: View {
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.companionLayoutMode) private var layoutMode
     var kind: RemoteChangeSummaryKind
     var status: SanitizedRemoteStatus
     var changedItems: [ServerRelaySyncItem]
@@ -11428,9 +13415,6 @@ private struct RemoteChangeSummaryDetailPanel: View {
             guard !isVisible else { return }
             clearStaleSelectedItemIfNeeded()
         }
-        .onChange(of: horizontalSizeClass) { _, _ in
-            resetVisibleLimits()
-        }
         .onAppear {
             visibleItemLimit = max(visibleItemLimit, currentInitialVisibleLimit)
             calendarVisibleLimit = max(calendarVisibleLimit, currentCalendarVisibleLimit)
@@ -11440,22 +13424,22 @@ private struct RemoteChangeSummaryDetailPanel: View {
     }
 
     private var currentInitialVisibleLimit: Int {
-        CompanionLargeList.initialVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+        CompanionLargeList.initialVisibleLimit(layoutMode: layoutMode)
     }
 
     private var currentCalendarVisibleLimit: Int {
-        CompanionLargeList.calendarVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+        CompanionLargeList.calendarVisibleLimit(layoutMode: layoutMode)
     }
 
     private var currentPreviewVisibleLimit: Int {
-        CompanionLargeList.previewVisibleLimit(horizontalSizeClass: horizontalSizeClass)
+        CompanionLargeList.previewVisibleLimit(layoutMode: layoutMode)
     }
 
     private func resetVisibleLimits() {
-        selectedItemID = nil
         visibleItemLimit = currentInitialVisibleLimit
         calendarVisibleLimit = currentCalendarVisibleLimit
         cleanupVisibleLimit = currentPreviewVisibleLimit
+        clearStaleSelectedItemIfNeeded()
     }
 
     private var selectedChangedItemStillVisible: Bool {
@@ -11985,8 +13969,8 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 8)], alignment: .leading, spacing: 8) {
                     MailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
                     MailAnalysisPill(title: "과목", value: analysis.course.nilIfEmpty ?? "미확인", tint: Color.klmsCommandAccent)
-                    MailAnalysisPill(title: "일정", value: analysis.dueText.nilIfEmpty ?? "미확인", tint: Color.klmsWarningBorder)
-                    MailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? Color.klmsSuccessBorder : Color.klmsWarningBorder)
+                    MailAnalysisPill(title: "일정", value: analysis.dueText.nilIfEmpty ?? "미확인", tint: Color.klmsWarningForeground)
+                    MailAnalysisPill(title: "신뢰도", value: "\(analysis.confidence)%", tint: analysis.confidence >= 70 ? Color.klmsSuccessForeground : Color.klmsWarningForeground)
                 }
 
                 MailAnalysisProcessView(steps: analysis.analysisSteps)
@@ -12061,7 +14045,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                         HStack(spacing: 8) {
                             Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(Color.klmsSuccessBorder)
+                                .foregroundStyle(Color.klmsSuccessForeground)
                             Spacer(minLength: 0)
                             Button {
                                 dashboardEditItem = editableItem
@@ -12339,9 +14323,9 @@ private enum MailAnalysisStepTone: String, Equatable, Sendable {
         case .secondary:
             Color.klmsSecondaryText
         case .orange:
-            Color.klmsWarningBorder
+            Color.klmsWarningForeground
         case .green:
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case .teal:
             Color.klmsCommandAccent
         case .blue:
@@ -12472,9 +14456,9 @@ private enum MailPasteDetectedKind: String, Sendable {
         case .none:
             Color.klmsSecondaryText
         case .assignment:
-            Color.klmsWarningBorder
+            Color.klmsWarningForeground
         case .exam:
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case .notice:
             Color.klmsCommandAccent
         case .file:
@@ -13251,7 +15235,7 @@ private struct RemoteCalendarActionPanel: View {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(Color.klmsWarningBorder)
+                    .foregroundStyle(Color.klmsWarningForeground)
                     .frame(width: 28, height: 28)
                     .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 7))
                 VStack(alignment: .leading, spacing: 3) {
@@ -13273,7 +15257,7 @@ private struct RemoteCalendarActionPanel: View {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 44)
             }
-            .buttonStyle(KLMSActionButtonStyle(tone: .accent(Color.klmsWarningBorder)))
+            .buttonStyle(KLMSActionButtonStyle(tone: .accent(Color.klmsWarningForeground)))
         }
         .padding(compact ? 10 : 0)
         .background(compact ? Color.klmsSubtleCardBackground : Color.clear)
@@ -13430,11 +15414,11 @@ private struct DashboardCalendarChangeDetailRow: View {
     private var tint: Color {
         switch change.action {
         case "created":
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case "updated":
             Color.klmsCommandAccent
         case "deleted":
-            Color.klmsDangerBorder
+            Color.klmsDangerForeground
         default:
             Color.klmsSecondaryText
         }
@@ -13647,99 +15631,6 @@ private struct DashboardCountPill: View {
     }
 }
 
-private struct RemoteChangeSummaryPanel: View {
-    var status: SanitizedRemoteStatus
-
-    private let columns = [
-        GridItem(.adaptive(minimum: 150), spacing: 8),
-    ]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("변경 요약")
-                    .font(.headline)
-                Spacer()
-                Text(status.phase.klmsRemotePhaseName)
-                    .font(.caption)
-                    .foregroundStyle(Color.klmsSecondaryText)
-            }
-
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
-                RemoteSummaryCard(
-                    title: "공지",
-                    systemImage: "megaphone",
-                    tint: Color.klmsCommandAccent,
-                    lines: [
-                        "표시 \(status.notices)",
-                        "새 \(status.noticeNew)",
-                        "수정 \(status.noticeUpdated)",
-                        status.noticeIgnored > 0 ? "보관 \(status.noticeIgnored)" : nil,
-                    ]
-                )
-                RemoteSummaryCard(
-                    title: "파일",
-                    systemImage: "folder",
-                    tint: Color.klmsSecondaryText,
-                    lines: [
-                        status.fileTotal > 0 ? "전체 \(status.fileTotal)" : nil,
-                        "새 \(status.newFiles)",
-                        status.fileCleanupTotal > 0 ? "정리 \(status.fileCleanupTotal)" : nil,
-                        status.quarantine > 0 ? "격리 \(status.quarantine)" : nil,
-                    ]
-                )
-                RemoteSummaryCard(
-                    title: "캘린더",
-                    systemImage: "calendar",
-                    tint: Color.klmsSuccessBorder,
-                    lines: [
-                        "생성 \(status.calendarCreated)",
-                        "수정 \(status.calendarUpdated)",
-                        "삭제 \(status.calendarDeleted)",
-                    ]
-                )
-            }
-        }
-        .padding(12)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.klmsBorder, lineWidth: 1)
-        }
-    }
-}
-
-private struct RemoteSummaryCard: View {
-    var title: String
-    var systemImage: String
-    var tint: Color
-    var lines: [String?]
-
-    private var displayLines: [String] {
-        let values = lines.compactMap { value in
-            value?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-        }
-        return values.isEmpty ? ["변경 없음"] : values
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(title, systemImage: systemImage)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(tint)
-            Text(displayLines.joined(separator: " · "))
-                .font(.caption)
-                .foregroundStyle(Color.klmsSecondaryText)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .frame(maxWidth: .infinity, minHeight: 70, alignment: .topLeading)
-        .padding(10)
-        .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-}
-
 private struct ServerSyncDataPanel: View {
     var items: [ServerRelaySyncItem]
     var itemsRevision: Int
@@ -13808,12 +15699,6 @@ private struct ServerSyncDataPanel: View {
             .task(id: listInputKey) {
                 await rebuildCachedListDataAfterInputSettles()
             }
-            .onChange(of: itemsRevision) { _, _ in
-                invalidateCachedListData()
-                Task { @MainActor in
-                    await rebuildCachedListDataAfterInputSettles()
-                }
-            }
         }
     }
 
@@ -13838,16 +15723,16 @@ private struct ServerSyncDataPanel: View {
         if cachedListInputKey == currentKey, cachedListData != nil {
             return
         }
+        if currentKey.shouldDebounceComparedTo(cachedListInputKey) {
+            try? await Task.sleep(nanoseconds: 180_000_000)
+            guard !Task.isCancelled, currentKey == listInputKey else { return }
+        }
         if let preloadedData = CompanionItemListPreloadStore.cachedData(for: currentKey) {
             cachedListData = preloadedData
             cachedListInputKey = currentKey
             return
         }
         await rebuildCachedListData(for: currentKey)
-    }
-
-    private func invalidateCachedListData() {
-        cachedListInputKey = nil
     }
 
     private func rebuildCachedListData(for inputKey: CompanionItemListInputKey) async {
@@ -14397,10 +16282,15 @@ private struct RemoteItemToggleButton: View {
 
 private extension Array where Element == ServerRelaySyncItem {
     func companionSorted(by option: CompanionItemSortOption) -> [ServerRelaySyncItem] {
-        sorted { lhs, rhs in
+        if case .recent = option {
+            return map(CompanionRecentSortEntry.init(item:))
+                .sorted(by: CompanionRecentSortEntry.areInIncreasingOrder)
+                .map(\.item)
+        }
+        return sorted { lhs, rhs in
             switch option {
             case .recent:
-                return ServerRelaySyncItem.dashboardDefaultSort(lhs, rhs)
+                return false
             case .updated:
                 if let result = ServerRelaySyncItem.descendingCompare(lhs.updatedAt, rhs.updatedAt) {
                     return result
@@ -14434,6 +16324,80 @@ private extension Array where Element == ServerRelaySyncItem {
             }
             return lhs.id.localizedStandardCompare(rhs.id) == .orderedAscending
         }
+    }
+}
+
+private struct CompanionRecentSortEntry {
+    private enum Mode {
+        case upcoming
+        case recent
+        case updated
+    }
+
+    var item: ServerRelaySyncItem
+    private var mode: Mode
+    private var timestampEpoch: Int?
+    private var kindPriority: Int
+
+    init(item: ServerRelaySyncItem) {
+        self.item = item
+        timestampEpoch = item.dashboardTimestampEpoch
+        switch item.kind {
+        case "assignment", "assignmentCandidate", "completedAssignment", "exam", "examCandidate", "helpDesk":
+            mode = .upcoming
+        case "notice", "file":
+            mode = .recent
+        default:
+            mode = .updated
+        }
+        switch item.kind {
+        case "assignment":
+            kindPriority = 10
+        case "assignmentCandidate":
+            kindPriority = 11
+        case "exam":
+            kindPriority = 20
+        case "examCandidate":
+            kindPriority = 21
+        case "helpDesk":
+            kindPriority = 30
+        case "notice":
+            kindPriority = 40
+        case "file":
+            kindPriority = 50
+        case "completedAssignment":
+            kindPriority = 60
+        default:
+            kindPriority = 90
+        }
+    }
+
+    static func areInIncreasingOrder(_ lhs: Self, _ rhs: Self) -> Bool {
+        let bothUpcoming = lhs.mode == .upcoming && rhs.mode == .upcoming
+        let bothRecent = lhs.mode == .recent && rhs.mode == .recent
+        if (bothUpcoming || bothRecent),
+           let leftTimestamp = lhs.timestampEpoch,
+           let rightTimestamp = rhs.timestampEpoch,
+           leftTimestamp != rightTimestamp {
+            return bothUpcoming ? leftTimestamp < rightTimestamp : leftTimestamp > rightTimestamp
+        }
+        if (bothUpcoming || bothRecent), lhs.timestampEpoch != nil || rhs.timestampEpoch != nil {
+            return lhs.timestampEpoch != nil
+        }
+        if lhs.mode != rhs.mode, lhs.kindPriority != rhs.kindPriority {
+            return lhs.kindPriority < rhs.kindPriority
+        }
+        if let result = ServerRelaySyncItem.dashboardDescendingCompare(lhs.item.updatedAt, rhs.item.updatedAt),
+           lhs.item.kind != "file" || rhs.item.kind != "file" {
+            return result
+        }
+        if let result = ServerRelaySyncItem.dashboardAscendingCompare(lhs.item.course, rhs.item.course) {
+            return result
+        }
+        if let result = ServerRelaySyncItem.dashboardAscendingCompare(lhs.item.title, rhs.item.title) {
+            return result
+        }
+        return lhs.item.id.localizedStandardCompare(rhs.item.id) == .orderedAscending
     }
 }
 
@@ -15036,7 +17000,7 @@ private struct RemoteStageDurationSummaryView: View {
     private func tint(for stage: String) -> Color {
         switch stage {
         case "core":
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         case "notice":
             return Color.klmsCommandAccent
         case "files":
@@ -15061,7 +17025,7 @@ private struct RemoteVerifySummaryPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: checkSummary.hasIssues ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
-                    .foregroundStyle(checkSummary.hasIssues ? Color.klmsWarningBorder : Color.klmsSuccessBorder)
+                    .foregroundStyle(checkSummary.hasIssues ? Color.klmsWarningForeground : Color.klmsSuccessForeground)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("상태 검사 해설")
                         .font(.subheadline.weight(.semibold))
@@ -15254,12 +17218,12 @@ private struct RemoteVerifyCheckRow: View {
 
     private var tint: Color {
         if ["fail", "failed", "error"].contains(status) {
-            return Color.klmsDangerBorder
+            return Color.klmsDangerForeground
         }
         if ["warn", "warning"].contains(status) {
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         }
-        return Color.klmsSuccessBorder
+        return Color.klmsSuccessForeground
     }
 
     private var isIssue: Bool {
@@ -15949,12 +17913,15 @@ private struct RemoteLogSummaryPanel: View {
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-                Button(action: clearRemoteLogs) {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(KLMSCompactTrashButtonStyle())
-                .disabled(snapshot.clearDisabled)
-                .accessibilityLabel("전체 기록 지우기")
+                KLMSConfirmedClearAction(
+                    accessibilityLabel: "전체 기록 지우기",
+                    confirmationTitle: "전체 기록을 지울까요?",
+                    confirmationMessage: "완료된 실행, 서버 요청, 파일 요청, 항목·설정 변경과 동기화 단계 기록을 지웁니다. 진행 중인 요청은 유지됩니다.",
+                    confirmationButtonTitle: "전체 기록 지우기",
+                    accessibilityIdentifier: "history-clear-all",
+                    isEnabled: !snapshot.clearDisabled,
+                    action: clearRemoteLogs
+                )
             }
 
             VStack(spacing: 8) {
@@ -16027,18 +17994,18 @@ private struct RemoteLogSummaryPanel: View {
 
     private var statusTint: Color {
         if snapshot.authDigits != nil || snapshot.loginRequired {
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         }
         if snapshot.hasInFlightRequest || snapshot.phase == "running" {
             return .klmsCommandAccent
         }
         if snapshot.latestDisplayStatus == .failed || snapshot.latestDisplayStatus == .macUnavailable {
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         }
         if snapshot.latestDisplayStatus == .cancelled {
             return Color.klmsSecondaryText
         }
-        return Color.klmsSuccessBorder
+        return Color.klmsSuccessForeground
     }
 
     private var recentCommandValue: String {
@@ -16075,11 +18042,11 @@ private struct RemoteLogSummaryPanel: View {
         case .pending, .running:
             return .klmsCommandAccent
         case .completed:
-            return Color.klmsSuccessBorder
+            return Color.klmsSuccessForeground
         case .cancelled:
             return Color.klmsSecondaryText
         case .failed, .macUnavailable:
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         case nil:
             return Color.klmsSecondaryText
         }
@@ -16123,9 +18090,9 @@ private struct RemoteLogSummaryPanel: View {
         case .pending, .running:
             return .klmsCommandAccent
         case .completed:
-            return Color.klmsSuccessBorder
+            return Color.klmsSuccessForeground
         case .failed, .macUnavailable:
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         case nil:
             return Color.klmsSecondaryText
         }
@@ -16286,12 +18253,15 @@ private struct SharedRunLogsView: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
                 if let clearAction {
-                    Button(action: clearAction) {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(KLMSCompactTrashButtonStyle())
-                    .accessibilityLabel("동기화 단계 기록 지우기")
-                    .disabled(clearDisabled)
+                    KLMSConfirmedClearAction(
+                        accessibilityLabel: "동기화 단계 기록 지우기",
+                        confirmationTitle: "동기화 단계 기록을 지울까요?",
+                        confirmationMessage: "모든 기기에서 공유되는 완료된 동기화 단계 기록을 지웁니다.",
+                        confirmationButtonTitle: "동기화 단계 기록 지우기",
+                        accessibilityIdentifier: "history-clear-shared-run-logs",
+                        isEnabled: !clearDisabled,
+                        action: clearAction
+                    )
                 }
             }
             Text("단계별 시간과 마지막 로그를 보여줍니다.")
@@ -16406,7 +18376,7 @@ private struct SharedRunLogRow: View {
         if log.wasCancelled {
             return Color.klmsSecondaryText
         }
-        return log.needsAttention ? Color.klmsWarningBorder : Color.klmsSuccessBorder
+        return log.needsAttention ? Color.klmsWarningForeground : Color.klmsSuccessForeground
     }
 
 }
@@ -16451,12 +18421,15 @@ private struct RecentFileAccessRequestsView: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
                 if let clearAction {
-                    Button(action: clearAction) {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(KLMSCompactTrashButtonStyle())
-                    .accessibilityLabel("파일 요청 기록 지우기")
-                    .disabled(clearDisabled)
+                    KLMSConfirmedClearAction(
+                        accessibilityLabel: "파일 요청 기록 지우기",
+                        confirmationTitle: "파일 요청 기록을 지울까요?",
+                        confirmationMessage: "완료된 파일 요청 기록을 지웁니다. 진행 중인 파일 요청은 유지됩니다.",
+                        confirmationButtonTitle: "파일 요청 기록 지우기",
+                        accessibilityIdentifier: "history-clear-file-access",
+                        isEnabled: !clearDisabled,
+                        action: clearAction
+                    )
                 }
             }
             if requests.isEmpty {
@@ -16511,12 +18484,15 @@ private struct RecentServerRequestLogView: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
                 if let clearAction {
-                    Button(action: clearAction) {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(KLMSCompactTrashButtonStyle())
-                    .accessibilityLabel("서버 요청 기록 지우기")
-                    .disabled(clearDisabled)
+                    KLMSConfirmedClearAction(
+                        accessibilityLabel: "서버 요청 기록 지우기",
+                        confirmationTitle: "서버 요청 기록을 지울까요?",
+                        confirmationMessage: "완료된 서버 요청 기록을 모든 기기에서 지웁니다.",
+                        confirmationButtonTitle: "서버 요청 기록 지우기",
+                        accessibilityIdentifier: "history-clear-request-log",
+                        isEnabled: !clearDisabled,
+                        action: clearAction
+                    )
                 }
             }
             if entries.isEmpty {
@@ -16665,11 +18641,11 @@ private struct ServerRequestLogRow: View {
     private var tint: Color {
         switch entry.status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "failed", "rejected", "error":
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         case "running":
             return Color.klmsCommandAccent
         default:
-            return Color.klmsSuccessBorder
+            return Color.klmsSuccessForeground
         }
     }
 }
@@ -16771,9 +18747,9 @@ private struct RemoteFileAccessRequestRow: View {
         case .pending, .running:
             return Color.klmsCommandAccent
         case .completed:
-            return Color.klmsSuccessBorder
+            return Color.klmsSuccessForeground
         case .failed, .macUnavailable:
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         }
     }
 }
@@ -16904,9 +18880,9 @@ private struct CompanionReadableLogHighlightsView: View {
     private func tint(for level: String) -> Color {
         switch level {
         case "error", "warning", "auth":
-            return Color.klmsWarningBorder
+            return Color.klmsWarningForeground
         case "success":
-            return Color.klmsSuccessBorder
+            return Color.klmsSuccessForeground
         case "summary":
             return Color.klmsCommandAccent
         default:
@@ -17168,12 +19144,15 @@ private struct RecentRemoteCommandsView: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
                 if let clearAction {
-                    Button(action: clearAction) {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(KLMSCompactTrashButtonStyle())
-                    .accessibilityLabel("최근 요청 기록 지우기")
-                    .disabled(clearDisabled)
+                    KLMSConfirmedClearAction(
+                        accessibilityLabel: "최근 요청 기록 지우기",
+                        confirmationTitle: "최근 실행 요청 기록을 지울까요?",
+                        confirmationMessage: "완료된 실행 요청 기록을 지웁니다. 진행 중인 요청은 유지됩니다.",
+                        confirmationButtonTitle: "최근 요청 기록 지우기",
+                        accessibilityIdentifier: "history-clear-commands",
+                        isEnabled: !clearDisabled,
+                        action: clearAction
+                    )
                 }
             }
             if commands.isEmpty {
@@ -17247,16 +19226,16 @@ private struct RemoteCommandRow: View {
                         if let authDigits = command.summary.authDigits {
                             Text("인증 \(authDigits)")
                                 .font(.caption2.monospacedDigit())
-                                .foregroundStyle(Color.klmsWarningBorder)
+                                .foregroundStyle(Color.klmsWarningForeground)
                         } else if command.displayStatus().isInFlight,
                                   let authStatusMessage = command.summary.authStatusMessage {
                             Text(authStatusMessage)
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(Color.klmsSuccessBorder)
+                                .foregroundStyle(Color.klmsSuccessForeground)
                         } else if command.loginRequired {
                             Text("로그인 필요")
                                 .font(.caption2)
-                                .foregroundStyle(Color.klmsWarningBorder)
+                                .foregroundStyle(Color.klmsWarningForeground)
                         } else if let exitCode = command.lastExitCode {
                             Text("종료 \(exitCode)")
                                 .font(.caption2.monospacedDigit())
@@ -17291,11 +19270,11 @@ private struct RemoteCommandRow: View {
         case .pending, .running:
             Color.klmsCommandAccent
         case .completed:
-            Color.klmsSuccessBorder
+            Color.klmsSuccessForeground
         case .cancelled:
             Color.klmsSecondaryText
         case .failed, .macUnavailable:
-            Color.klmsWarningBorder
+            Color.klmsWarningForeground
         }
     }
 
@@ -17387,7 +19366,7 @@ private struct CompanionExpansionBadge: View {
     var body: some View {
         HStack(spacing: compact ? 4 : 5) {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: compact ? 9 : 10, weight: .bold))
+                .font(.caption2.weight(.bold))
             Text(isExpanded ? "접기" : "펼치기")
                 .font(.caption2.weight(.semibold))
         }
@@ -17447,7 +19426,7 @@ private struct ErrorBanner: View {
     var body: some View {
         Label(message, systemImage: "exclamationmark.triangle")
             .font(.subheadline)
-            .foregroundStyle(Color.klmsDangerBorder)
+            .foregroundStyle(Color.klmsDangerForeground)
             .lineLimit(2)
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -17469,7 +19448,7 @@ private struct AuthSuccessBanner: View {
     var body: some View {
         Label(message, systemImage: "checkmark.circle.fill")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.klmsSuccessBorder)
+            .foregroundStyle(Color.klmsSuccessForeground)
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsSuccessBackground, in: RoundedRectangle(cornerRadius: 8))
@@ -17498,9 +19477,9 @@ private struct AuthCodeHero: View {
             }
             Spacer(minLength: 0)
             Text(digits)
-                .font(.system(size: 38, weight: .black, design: .rounded))
+                .font(.system(.largeTitle, design: .rounded, weight: .black))
                 .monospacedDigit()
-                .foregroundStyle(Color.klmsWarningBorder)
+                .foregroundStyle(Color.klmsWarningForeground)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 12))
@@ -17529,7 +19508,7 @@ private struct LoginAttentionBanner: View {
     var body: some View {
         Label(message, systemImage: "key")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Color.klmsWarningBorder)
+            .foregroundStyle(Color.klmsWarningForeground)
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 8))
@@ -17782,6 +19761,25 @@ private extension Color {
         #endif
     }
 
+    /// Text/icon color paired with `klmsWarningBackground`. Kept separate
+    /// from the softer border token so status copy remains AA-readable in
+    /// both appearances and at larger accessibility text sizes.
+    static var klmsWarningForeground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.420, green: 0.290, blue: 0.000, alpha: 1.0),
+            dark: UIColor(red: 1.000, green: 0.847, blue: 0.541, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.420, green: 0.290, blue: 0.000, alpha: 1.0),
+            dark: NSColor(red: 1.000, green: 0.847, blue: 0.541, alpha: 1.0)
+        )
+        #else
+        return Color.orange
+        #endif
+    }
+
     static var klmsDangerBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
@@ -17814,6 +19812,22 @@ private extension Color {
         #endif
     }
 
+    static var klmsDangerForeground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.545, green: 0.157, blue: 0.122, alpha: 1.0),
+            dark: UIColor(red: 1.000, green: 0.706, blue: 0.659, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.545, green: 0.157, blue: 0.122, alpha: 1.0),
+            dark: NSColor(red: 1.000, green: 0.706, blue: 0.659, alpha: 1.0)
+        )
+        #else
+        return Color.red
+        #endif
+    }
+
     static var klmsSuccessBackground: Color {
         #if canImport(UIKit)
         return klmsAdaptiveColor(
@@ -17843,6 +19857,22 @@ private extension Color {
         )
         #else
         return Color.green.opacity(0.42)
+        #endif
+    }
+
+    static var klmsSuccessForeground: Color {
+        #if canImport(UIKit)
+        return klmsAdaptiveColor(
+            light: UIColor(red: 0.180, green: 0.357, blue: 0.141, alpha: 1.0),
+            dark: UIColor(red: 0.663, green: 0.847, blue: 0.604, alpha: 1.0)
+        )
+        #elseif canImport(AppKit)
+        return klmsAppKitAdaptiveColor(
+            light: NSColor(red: 0.180, green: 0.357, blue: 0.141, alpha: 1.0),
+            dark: NSColor(red: 0.663, green: 0.847, blue: 0.604, alpha: 1.0)
+        )
+        #else
+        return Color.green
         #endif
     }
 
