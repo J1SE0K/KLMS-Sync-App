@@ -247,7 +247,7 @@ const activeFileUploadClaims = new Set();
 const db = new DatabaseSync(DB_PATH);
 initDatabase();
 recoverStaleFileDownloadReservations({ notify: false });
-await recoverInterruptedFileUploads({ recoverDeletionClaims: true });
+await recoverInterruptedFileUploads({ recoverDeletionClaims: true, pruneEmptyDirectories: true });
 let state = loadState();
 const realtimeClients = new Set();
 const authorizedRequestRateWindows = new Map();
@@ -3386,7 +3386,10 @@ function expireStaleFileAccessRequests() {
   }
 }
 
-async function recoverInterruptedFileUploads({ recoverDeletionClaims = false } = {}) {
+async function recoverInterruptedFileUploads({
+  recoverDeletionClaims = false,
+  pruneEmptyDirectories = false,
+} = {}) {
   const interrupted = db.prepare(`
     SELECT id, upload_claim, pending_object_key, reserved_upload_bytes, reserved_upload_quota_key
     FROM file_access_requests
@@ -3450,10 +3453,10 @@ async function recoverInterruptedFileUploads({ recoverDeletionClaims = false } =
       }
     }
   }
-  await cleanupUnreferencedFileObjects();
+  await cleanupUnreferencedFileObjects({ pruneEmptyDirectories });
 }
 
-async function cleanupUnreferencedFileObjects() {
+async function cleanupUnreferencedFileObjects({ pruneEmptyDirectories = false } = {}) {
   const storageRoot = path.join(FILE_DIR, "file-access");
   let requestDirectories;
   try {
@@ -3488,7 +3491,9 @@ async function cleanupUnreferencedFileObjects() {
         if (error?.code !== "ENOENT") console.error("failed to remove unreferenced file object", error);
       });
     }
-    await fs.rmdir(directoryPath).catch(() => {});
+    // At runtime an upload can reserve this directory after the reference snapshot
+    // but before its first file write. Directory pruning is safe only before listen().
+    if (pruneEmptyDirectories) await fs.rmdir(directoryPath).catch(() => {});
   }
 }
 

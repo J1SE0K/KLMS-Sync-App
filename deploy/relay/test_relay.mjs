@@ -417,6 +417,7 @@ try {
   assert.match(hostilePageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
   assert.doesNotMatch(hostilePageHTML, /<img src=x onerror=/);
 
+  let runtimeOrphanDirectory;
   {
     const orphanRequestID = crypto.randomUUID();
     const orphanPath = path.join(
@@ -425,10 +426,17 @@ try {
       orphanRequestID,
       `${crypto.randomUUID()}-orphan.txt`
     );
-    await fs.mkdir(path.dirname(orphanPath), { recursive: true });
+    runtimeOrphanDirectory = path.dirname(orphanPath);
+    await fs.mkdir(runtimeOrphanDirectory, { recursive: true });
     await fs.writeFile(orphanPath, "orphan", "utf8");
     await request("/v1/status");
     await waitForPathRemoval(orphanPath);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    assert.equal(
+      (await fs.stat(runtimeOrphanDirectory)).isDirectory(),
+      true,
+      "runtime orphan cleanup must not remove directories that a concurrent upload can claim"
+    );
   }
 
   const terminalRaceRequest = await jsonRequest("/v1/file-access", {
@@ -944,6 +952,11 @@ try {
   restartedChild.stderr.setEncoding("utf8");
   restartedChild.stderr.on("data", (chunk) => { restartedStderr += chunk; });
   await waitForServerProcess(restartedChild, () => restartedStderr);
+  await assert.rejects(
+    fs.stat(runtimeOrphanDirectory),
+    { code: "ENOENT" },
+    "startup cleanup must prune empty orphan directories before accepting uploads"
+  );
   const recoveredDB = new DatabaseSync(dbPath, { readOnly: true });
   try {
     const sanitizedRows = recoveredDB.prepare(`
@@ -1312,6 +1325,12 @@ try {
   }
 
   console.log("node relay integration ok");
+} catch (error) {
+  const relayDiagnostics = stderr.trim();
+  if (relayDiagnostics) {
+    throw new Error(`${error.message}\nrelay stderr:\n${relayDiagnostics}`, { cause: error });
+  }
+  throw error;
 } finally {
   if (publicURLChild && publicURLChild.exitCode == null) {
     publicURLChild.kill("SIGKILL");
