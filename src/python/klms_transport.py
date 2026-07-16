@@ -77,10 +77,16 @@ def page_requested_url(page: dict[str, Any]) -> str:
 
 def page_fingerprint(page: dict[str, Any]) -> str:
     requested_url = page_requested_url(page)
+    final_url = str(page.get("url") or page.get("finalUrl") or "")
+    status = str(page.get("status") or "")
     title = str(page.get("title") or "")
     html = str(page.get("html") or "")
     digest = hashlib.sha256()
     digest.update(requested_url.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(final_url.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(status.encode("utf-8"))
     digest.update(b"\0")
     digest.update(title.encode("utf-8"))
     digest.update(b"\0")

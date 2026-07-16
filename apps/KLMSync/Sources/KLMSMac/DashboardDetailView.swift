@@ -1978,7 +1978,7 @@ private struct DashboardRangeField<Content: View>: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .frame(minWidth: minWidth, minHeight: 34, maxHeight: 40, alignment: .leading)
+        .frame(minWidth: minWidth, minHeight: 44, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
@@ -3608,6 +3608,8 @@ private struct DashboardControlChip: View {
         }
         .buttonStyle(KLMSMacPressFeedbackButtonStyle())
         .help(help)
+        .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -3627,7 +3629,7 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
-            .frame(minWidth: 40, minHeight: 40)
+            .frame(minWidth: 44, minHeight: 44)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .background(background, in: RoundedRectangle(cornerRadius: 10))
@@ -3696,7 +3698,7 @@ private struct KLMSMacCompactResetButtonStyle: ButtonStyle {
             .foregroundStyle(Color.klmsMacSecondaryText)
             .labelStyle(.titleAndIcon)
             .padding(.horizontal, 8)
-            .frame(minHeight: 28)
+            .frame(minHeight: 44)
             .background(Color.klmsMacCommandButtonBackground.opacity(isEnabled ? 0.56 : 0.18), in: Capsule())
             .overlay {
                 Capsule()
@@ -3712,6 +3714,8 @@ private struct KLMSMacPressFeedbackButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(minHeight: 44)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill(Color.klmsMacCommandButtonPressedOverlay.opacity(0.0))
@@ -3743,7 +3747,6 @@ private struct KLMSMacIconButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1.0 : 0.40)
             .saturation(isEnabled ? 1.0 : 0.30)
-            .shadow(color: isEnabled ? Color.klmsMacCommandButtonBorder.opacity(0.12) : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
     }
 }

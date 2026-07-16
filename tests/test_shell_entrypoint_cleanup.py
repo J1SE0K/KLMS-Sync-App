@@ -1651,7 +1651,13 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("final_git_head", build_script)
         self.assertIn("final_git_tree", build_script)
         self.assertIn("final_git_status", build_script)
-        self.assertIn('VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"', build_script)
+        self.assertIn('VENDORED_PYTHON_PACKAGES="$BUILD_ROOT/vendor/python-packages"', build_script)
+        self.assertIn('source_path="$BUILD_ROOT/$relative_path"', build_script)
+        self.assertIn('"$BUILD_ROOT/tools/verify_klms_engine_payload.py"', build_script)
+        self.assertIn('"$BUILD_ROOT/tools/verify_klms_app_provenance.py"', build_script)
+        self.assertIn('git -C "$ROOT_DIR" archive --format=tar "$source_revision"', build_script)
+        self.assertIn('BUILD_ROOT="$SOURCE_SNAPSHOT_DIR"', build_script)
+        self.assertGreaterEqual(build_script.count("__klms_prov"), 2)
         self.assertIn('PYTHON_PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePythonPayloadAllowlist.txt"', build_script)
         self.assertIn('done < "$PYTHON_PAYLOAD_ALLOWLIST"', build_script)
         self.assertNotIn('ditto --norsrc "$VENDORED_PYTHON_PACKAGES"', build_script)
@@ -1754,6 +1760,10 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertTrue(inventory["candidateBinding"]["fullCommitSHARequired"])
         gate_ids = [gate["id"] for gate in inventory["automatedGates"]]
         self.assertEqual(len(gate_ids), len(set(gate_ids)))
+        for gate in inventory["automatedGates"]:
+            self.assertGreater(gate["execution"]["timeoutSeconds"], 0)
+            self.assertGreater(gate["execution"]["maxOutputBytes"], 0)
+            self.assertLessEqual(gate["execution"]["maxOutputBytes"], 96 * 1024 * 1024)
         swift_gate = next(
             gate for gate in inventory["automatedGates"] if gate["id"] == "swift-clients"
         )
@@ -1950,8 +1960,9 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-client-mac\")", model)
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-worker-mac\")", model)
         self.assertIn("Self.persistRelayToken(", model)
-        self.assertIn("serverRelayClientToken,", model)
-        self.assertIn("serverRelayWorkerToken,", model)
+        self.assertIn("serverRelayClientToken = nextValue", model)
+        self.assertIn("serverRelayWorkerToken = nextValue", model)
+        self.assertIn("guard saved else", model)
         self.assertIn("account: \"server-relay-client-mac\"", model)
         self.assertIn("account: \"server-relay-worker-mac\"", model)
         self.assertIn("LocalRemoteTokenStore.delete(account: \"server-relay-mac\")", model)

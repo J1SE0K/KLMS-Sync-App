@@ -92,7 +92,20 @@ function normalizedHostname(hostname) {
   return String(hostname || "").toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
 }
 
+function configWithoutLegacyPlaintextToken(config) {
+  const sanitized = config && typeof config === "object" ? { ...config } : {};
+  const hasLegacyPlaintext = typeof sanitized.token === "string"
+    && sanitized.token.length > 0
+    && sanitized.tokenEncrypted !== true;
+  if (hasLegacyPlaintext) {
+    delete sanitized.token;
+    delete sanitized.tokenEncrypted;
+  }
+  return { config: sanitized, changed: hasLegacyPlaintext };
+}
+
 module.exports = {
+  configWithoutLegacyPlaintextToken,
   isLoopbackHost,
   isPrivateHost,
   normalizeExternalURL,

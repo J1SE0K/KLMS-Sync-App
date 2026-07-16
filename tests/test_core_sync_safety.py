@@ -129,13 +129,15 @@ console.log(JSON.stringify({{
                 "uniqueStrings",
                 "looksLikeLoginPage",
                 "assertNoLoginPages",
+                "isExactKlmsHttpsUrl",
+                "exactKlmsCoursePageID",
                 "assertAuthoritativePageCoverage",
             )
         )
         script = f"""
 {helpers}
 const urls = ["https://klms.kaist.ac.kr/a", "https://klms.kaist.ac.kr/b"];
-const valid = urls.map((requestedUrl) => ({{ requestedUrl, url: requestedUrl, html: "<main>ok</main>" }}));
+const valid = urls.map((requestedUrl) => ({{ requestedUrl, url: requestedUrl, status: 200, html: "<main>ok</main>" }}));
 function rejected(pages) {{
   try {{
     assertAuthoritativePageCoverage("test", pages, urls);

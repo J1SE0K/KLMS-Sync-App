@@ -30,6 +30,8 @@
       "execution": {
         "workingDirectory": ".",
         "environment": {"PYTHONPATH": "vendor/python-packages"},
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
         "steps": [
           {"argv": ["python3", "-B", "-m", "unittest", "discover", "-s", "tests"]}
         ]
@@ -41,6 +43,8 @@
       "execution": {
         "workingDirectory": ".",
         "environment": {},
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
         "steps": [
           {"argv": ["swift", "test", "--enable-xctest", "--disable-swift-testing", "--package-path", "apps/KLMSync", "--scratch-path", "<isolated-path>", "--jobs", "1"]}
         ]
@@ -58,6 +62,8 @@
           "KLMS_READINESS_IOS_BUILD": "0",
           "KLMS_READINESS_IOS_LAUNCH": "0"
         },
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
         "steps": [
           {"argv": ["tools/verify_klms_app_readiness.sh"]}
         ]
@@ -72,6 +78,8 @@
           "OUTPUT_APP": "<candidate-app>",
           "KLMS_PAYLOAD_REQUIRE_CLEAN": "1"
         },
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
         "steps": [
           {"argv": ["tools/build_klms_mac_app.sh"]}
         ]
@@ -86,6 +94,8 @@
           "DERIVED_DATA_PATH": "<isolated-path>",
           "MODULE_CACHE_DIR": "<isolated-module-cache>"
         },
+        "timeoutSeconds": 3600,
+        "maxOutputBytes": 100663296,
         "steps": [
           {"argv": ["tools/test_klms_ios_ui_matrix.sh"]}
         ]
@@ -98,6 +108,8 @@
       "execution": {
         "workingDirectory": "apps/KLMSyncWindows",
         "environment": {},
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 16777216,
         "steps": [
           {"argv": ["npm", "test"]}
         ]
@@ -110,6 +122,8 @@
       "execution": {
         "workingDirectory": "apps/KLMSyncWindows",
         "environment": {},
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
         "steps": [
           {"argv": ["npm", "run", "test:e2e"]}
         ]
@@ -121,6 +135,8 @@
       "execution": {
         "workingDirectory": ".",
         "environment": {},
+        "timeoutSeconds": 600,
+        "maxOutputBytes": 33554432,
         "steps": [
           {"argv": ["node", "--test", "deploy/relay/test_relay.mjs"]},
           {"argv": ["node", "--test", "deploy/relay/test_restore_db.mjs"]}
@@ -134,6 +150,8 @@
       "execution": {
         "workingDirectory": "deploy/cloudflare-worker",
         "environment": {},
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
         "steps": [
           {"argv": ["npm", "run", "check"]},
           {"argv": ["npm", "test"]},
@@ -147,6 +165,8 @@
       "execution": {
         "workingDirectory": ".",
         "environment": {"KLMS_SECURITY_REQUIRE_CLEAN": "1"},
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 100663296,
         "steps": [
           {"argv": ["tools/security/run_security_evidence.sh", "<private-evidence-dir>", "<scanner-root>"]}
         ]

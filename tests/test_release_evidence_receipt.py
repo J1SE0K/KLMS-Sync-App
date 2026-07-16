@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -273,6 +275,88 @@ class ReleaseEvidenceReceiptTests(unittest.TestCase):
             self.assertEqual(json.loads(output.read_text(encoding="utf-8"))["schemaVersion"], 1)
             self.assertEqual(os.stat(output).st_mode & 0o777, 0o600)
 
+    def test_app_receipt_requests_json_provenance_for_both_executables(self) -> None:
+        candidate = "a" * 40
+        source_tree = "b" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "KLMS Sync.app"
+            payload = app / "Contents" / "Resources" / "EnginePayload"
+            payload.mkdir(parents=True)
+            (payload / "EnginePayloadManifest.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 2,
+                        "sourceRevision": candidate,
+                        "payloadVersion": candidate,
+                        "dirty": False,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            provenance = app / "Contents" / "Resources" / "KLMSAppBuildProvenance.json"
+            provenance.write_text("{}\n", encoding="utf-8")
+            main = app / "Contents" / "MacOS" / "KLMSMac"
+            helper = (
+                app
+                / "Contents"
+                / "Helpers"
+                / "KLMSNoticeNativeNote.app"
+                / "Contents"
+                / "MacOS"
+                / "KLMSNoticeNativeNote"
+            )
+            main.parent.mkdir(parents=True)
+            helper.parent.mkdir(parents=True)
+            main.write_bytes(b"main")
+            helper.write_bytes(b"helper")
+            artifact = {
+                "schemaVersion": 1,
+                "sourceRevision": candidate,
+                "sourceTree": source_tree,
+                "dirty": False,
+                "artifactSHA256": "c" * 64,
+                "buildProvenanceSHA256": receipt_module.sha256(provenance),
+                "executables": [
+                    {
+                        "relativePath": "Contents/MacOS/KLMSMac",
+                        "sha256": receipt_module.sha256(main),
+                        "cdHash": "d" * 40,
+                        "teamIdentifier": "TEAM",
+                        "signature": "signed",
+                    },
+                    {
+                        "relativePath": "Contents/Helpers/KLMSNoticeNativeNote.app/Contents/MacOS/KLMSNoticeNativeNote",
+                        "sha256": receipt_module.sha256(helper),
+                        "cdHash": "e" * 40,
+                        "teamIdentifier": "TEAM",
+                        "signature": "signed",
+                    },
+                ],
+            }
+
+            def run(command: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+                if command[0] == "/usr/bin/codesign":
+                    return subprocess.CompletedProcess(command, 0, "", "")
+                if command[1].endswith("verify_klms_app_provenance.py"):
+                    self.assertIn("--json", command)
+                    return subprocess.CompletedProcess(command, 0, json.dumps(artifact), "")
+                return subprocess.CompletedProcess(command, 0, "{}", "")
+
+            with mock.patch.object(receipt_module, "run_git", return_value=source_tree), mock.patch.object(
+                receipt_module.subprocess,
+                "run",
+                side_effect=run,
+            ):
+                description = receipt_module.verify_app(PROJECT_DIR, app, candidate)
+
+                for entry in artifact["executables"]:
+                    entry["teamIdentifier"] = None
+                with self.assertRaises(SystemExit):
+                    receipt_module.verify_app(PROJECT_DIR, app, candidate)
+
+            self.assertEqual(description["executableSHA256"], receipt_module.sha256(main))
+            self.assertEqual(description["helperExecutableSHA256"], receipt_module.sha256(helper))
+
     def test_score_model_is_exact_and_external_evidence_caps_it_at_94(self) -> None:
         inventory = receipt_module.load_inventory(
             PROJECT_DIR / "docs" / "quality-gate-inventory.json"
@@ -334,6 +418,40 @@ class ReleaseEvidenceReceiptTests(unittest.TestCase):
 
             with self.assertRaises(SystemExit):
                 gate_runner_module.private_directory(alias, repo)
+
+    def test_gate_runner_bounds_subprocess_time_and_output(self) -> None:
+        timeout_process = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(10)"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        status, output_bytes, reason = gate_runner_module.stream_process(
+            timeout_process,
+            io.BytesIO(),
+            timeout_seconds=0.05,
+            max_output_bytes=1024,
+            mirror_output=False,
+        )
+        self.assertEqual((status, output_bytes, reason), (124, 0, "timeout"))
+        self.assertIsNotNone(timeout_process.returncode)
+
+        output_log = io.BytesIO()
+        output_process = subprocess.Popen(
+            [sys.executable, "-c", "import os; os.write(1, b'x' * 4096)"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        status, output_bytes, reason = gate_runner_module.stream_process(
+            output_process,
+            output_log,
+            timeout_seconds=2,
+            max_output_bytes=512,
+            mirror_output=False,
+        )
+        self.assertEqual((status, output_bytes, reason), (74, 512, "output-limit"))
+        self.assertEqual(len(output_log.getvalue()), 512)
 
     def test_review_recorder_writes_private_exact_sha_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

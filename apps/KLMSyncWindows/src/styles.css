@@ -1022,7 +1022,7 @@ body.viewport-resizing .sidebar {
   max-block-size: 6em;
   overflow: hidden;
   line-height: 1.5;
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: normal;
 }
 

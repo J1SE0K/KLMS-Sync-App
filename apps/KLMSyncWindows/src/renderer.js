@@ -1838,17 +1838,13 @@ function renderHeader() {
   const subtitle = statusSubtitle();
   const subtitleElement = $("statusSubtitle");
   const disclosure = $("statusMessageDisclosure");
-  const subtitleCharacters = Array.from(subtitle);
-  subtitleElement.textContent = subtitleCharacters.length > 96
-    ? [0, 32, 64].map((offset) => subtitleCharacters.slice(offset, offset + 32).join("")).join("\n") + "…"
-    : subtitle;
+  subtitleElement.textContent = subtitle;
   subtitleElement.setAttribute("aria-label", subtitle);
   subtitleElement.title = subtitle;
   $("statusFullMessage").textContent = subtitle;
   window.requestAnimationFrame(() => {
     if (subtitleElement.getAttribute("aria-label") !== subtitle) return;
-    const isTruncated = subtitleCharacters.length > 96
-      || subtitleElement.scrollHeight > subtitleElement.clientHeight + 1;
+    const isTruncated = subtitleElement.scrollHeight > subtitleElement.clientHeight + 1;
     disclosure.classList.toggle("hidden", !isTruncated);
     if (!isTruncated) disclosure.open = false;
   });

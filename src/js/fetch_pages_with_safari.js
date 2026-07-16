@@ -212,7 +212,8 @@ function fetchPagesViaXHRBatch(tab, urls) {
     throw new Error(`Unexpected batch XHR page count: ${Array.isArray(payload) ? payload.length : "invalid"}`);
   }
   return payload.map((page, index) => {
-    if (!page || !page.html || Number(page.status || 0) <= 0) {
+    const status = Number(page && page.status);
+    if (!page || !page.html || !isSuccessfulHttpStatus(status)) {
       throw new Error(
         `Batch XHR fetch failed for ${urls[index]}: ${(page && (page.error || page.status)) || "empty"}`
       );
@@ -220,6 +221,7 @@ function fetchPagesViaXHRBatch(tab, urls) {
     return {
       url: String(page.url || urls[index]),
       title: String(page.title || ""),
+      status,
       html: String(page.html || ""),
     };
   });
@@ -271,14 +273,20 @@ function fetchPageViaXHR(tab, targetUrl) {
   } catch (_error) {
     throw new Error(`Invalid XHR response for ${targetUrl}: ${raw.slice(0, 200)}`);
   }
-  if (!payload.html || Number(payload.status || 0) <= 0) {
+  const status = Number(payload.status);
+  if (!payload.html || !isSuccessfulHttpStatus(status)) {
     throw new Error(`XHR fetch failed for ${targetUrl}: ${payload.error || payload.status || "empty"}`);
   }
   return {
     url: String(payload.url || targetUrl),
     title: String(payload.title || ""),
+    status,
     html: String(payload.html || ""),
   };
+}
+
+function isSuccessfulHttpStatus(status) {
+  return Number.isFinite(status) && status >= 200 && status < 300;
 }
 
 function waitForPage(tab, waitSeconds, minWaitSeconds, stablePolls) {
@@ -289,6 +297,7 @@ function waitForPage(tab, waitSeconds, minWaitSeconds, stablePolls) {
   let latest = {
     url: "",
     title: "",
+    status: null,
     html: "",
   };
 
@@ -316,6 +325,7 @@ function readTab(tab) {
   return {
     url: safeString(() => tab.url()),
     title: safeString(() => tab.name()),
+    status: null,
     html: safeString(() => tab.source()),
   };
 }

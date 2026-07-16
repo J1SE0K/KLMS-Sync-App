@@ -1714,6 +1714,73 @@ function assertAuthoritativePageCoverage(context, pages, requestedUrls) {
     `${context}: KLMS login page was returned for an authoritative input`,
     authoritativePages
   );
+
+  for (let index = 0; index < expected.length; index += 1) {
+    const requestedUrl = expected[index];
+    const page = authoritativePages[index];
+    const status = Number(page && page.status);
+    if (!Number.isFinite(status) || status < 200 || status >= 300) {
+      throw new Error(
+        `${context}: authoritative page lacks a successful HTTP response (${requestedUrl}; status=${String(
+          page && page.status
+        )})`
+      );
+    }
+
+    const finalUrl = String((page && (page.url || page.finalUrl)) || "").trim();
+    if (!isExactKlmsHttpsUrl(finalUrl)) {
+      throw new Error(
+        `${context}: authoritative page ended outside the exact KLMS HTTPS origin (${requestedUrl}; final=${finalUrl || "missing"})`
+      );
+    }
+
+    const requestedCourseID = exactKlmsCoursePageID(requestedUrl);
+    if (requestedCourseID) {
+      const finalCourseID = exactKlmsCoursePageID(finalUrl);
+      if (finalCourseID !== requestedCourseID) {
+        throw new Error(
+          `${context}: authoritative course response identity changed (${requestedUrl}; final=${finalUrl})`
+        );
+      }
+    }
+  }
+}
+
+function isExactKlmsHttpsUrl(value) {
+  return /^https:\/\/klms\.kaist\.ac\.kr(?::443)?(?:[/?#]|$)/i.test(
+    String(value || "").trim()
+  );
+}
+
+function exactKlmsCoursePageID(value) {
+  const text = String(value || "").trim();
+  const match = text.match(
+    /^https:\/\/klms\.kaist\.ac\.kr(?::443)?\/course\/view\.php(?:\?([^#]*))?(?:#.*)?$/i
+  );
+  if (!match) {
+    return "";
+  }
+  const ids = [];
+  for (const component of String(match[1] || "").split("&")) {
+    if (!component) {
+      continue;
+    }
+    const separator = component.indexOf("=");
+    const rawKey = separator >= 0 ? component.slice(0, separator) : component;
+    const rawValue = separator >= 0 ? component.slice(separator + 1) : "";
+    let key;
+    let decodedValue;
+    try {
+      key = decodeURIComponent(rawKey.replace(/\+/g, " "));
+      decodedValue = decodeURIComponent(rawValue.replace(/\+/g, " "));
+    } catch (_error) {
+      return "";
+    }
+    if (key === "id") {
+      ids.push(decodedValue);
+    }
+  }
+  return ids.length === 1 && /^\d+$/.test(ids[0]) ? ids[0] : "";
 }
 
 function mergePagesByRequestedUrl(pages) {

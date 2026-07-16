@@ -421,16 +421,41 @@ public struct RemoteCommandTerminalOutboxPolicy: Sendable, Equatable {
         maximumQuarantineTotalBytes: Int = 12 * 1_024 * 1_024,
         quarantineTTL: TimeInterval = 7 * 24 * 60 * 60
     ) {
-        self.maximumDocumentBytes = maximumDocumentBytes
-        self.maximumEncodedEntryBytes = maximumEncodedEntryBytes
-        self.maximumEntriesPerIdentity = maximumEntriesPerIdentity
-        self.maximumEntries = maximumEntries
-        self.entryTTL = entryTTL
-        self.maximumFutureSkew = maximumFutureSkew
-        self.maximumQuarantineFiles = maximumQuarantineFiles
-        self.maximumQuarantineBytes = maximumQuarantineBytes
-        self.maximumQuarantineTotalBytes = maximumQuarantineTotalBytes
-        self.quarantineTTL = quarantineTTL
+        self.maximumDocumentBytes = min(max(maximumDocumentBytes, 1), 64 * 1_024 * 1_024)
+        self.maximumEncodedEntryBytes = min(max(maximumEncodedEntryBytes, 1), 16 * 1_024 * 1_024)
+        self.maximumEntriesPerIdentity = min(max(maximumEntriesPerIdentity, 1), 10_000)
+        self.maximumEntries = min(max(maximumEntries, 1), 10_000)
+        self.entryTTL = Self.boundedInterval(
+            entryTTL,
+            fallback: 30 * 24 * 60 * 60,
+            minimum: 1,
+            maximum: 366 * 24 * 60 * 60
+        )
+        self.maximumFutureSkew = Self.boundedInterval(
+            maximumFutureSkew,
+            fallback: 5 * 60,
+            minimum: 0,
+            maximum: 24 * 60 * 60
+        )
+        self.maximumQuarantineFiles = min(max(maximumQuarantineFiles, 0), 64)
+        self.maximumQuarantineBytes = min(max(maximumQuarantineBytes, 1), 64 * 1_024 * 1_024)
+        self.maximumQuarantineTotalBytes = min(max(maximumQuarantineTotalBytes, 1), 256 * 1_024 * 1_024)
+        self.quarantineTTL = Self.boundedInterval(
+            quarantineTTL,
+            fallback: 7 * 24 * 60 * 60,
+            minimum: 1,
+            maximum: 366 * 24 * 60 * 60
+        )
+    }
+
+    private static func boundedInterval(
+        _ value: TimeInterval,
+        fallback: TimeInterval,
+        minimum: TimeInterval,
+        maximum: TimeInterval
+    ) -> TimeInterval {
+        guard value.isFinite else { return fallback }
+        return min(max(value, minimum), maximum)
     }
 }
 
@@ -747,7 +772,8 @@ public actor RemoteCommandTerminalOutboxStore {
         var retainedBytes = 0
         for (index, file) in files.enumerated() {
             let exceedsCount = index >= policy.maximumQuarantineFiles
-            let exceedsBytes = retainedBytes + file.size > policy.maximumQuarantineTotalBytes
+            let remainingBytes = policy.maximumQuarantineTotalBytes - retainedBytes
+            let exceedsBytes = file.size > remainingBytes
             if exceedsCount || exceedsBytes {
                 try? FileManager.default.removeItem(at: file.url)
             } else {

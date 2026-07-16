@@ -557,15 +557,37 @@ final class KLMSMacModel: ObservableObject {
         }
         LocalRemoteTokenStore.delete(account: "mac")
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)
-        let legacyToken = LocalRemoteTokenStore.load(account: "server-relay-mac")
+        let storedClientToken = LocalRemoteTokenStore.load(account: "server-relay-client-mac")
+        let storedWorkerToken = LocalRemoteTokenStore.load(account: "server-relay-worker-mac")
+        let secureLegacyWorkerToken = LocalRemoteTokenStore.load(account: "server-relay-mac")
+        let legacyClientToken = UserDefaults.standard.string(forKey: Self.serverRelayClientTokenKey)
+        let legacyWorkerToken = UserDefaults.standard.string(forKey: Self.serverRelayWorkerTokenKey)
             ?? UserDefaults.standard.string(forKey: Self.deprecatedServerRelayTokenKey)
-        let clientToken = LocalRemoteTokenStore.load(account: "server-relay-client-mac")
-            ?? UserDefaults.standard.string(forKey: Self.serverRelayClientTokenKey)
-        let workerToken = LocalRemoteTokenStore.load(account: "server-relay-worker-mac")
-            ?? UserDefaults.standard.string(forKey: Self.serverRelayWorkerTokenKey)
-            ?? legacyToken
-        serverRelayClientToken = clientToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        serverRelayWorkerToken = workerToken?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
+        let clientCandidate = (storedClientToken ?? legacyClientToken)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let workerCandidate = (storedWorkerToken ?? legacyWorkerToken ?? secureLegacyWorkerToken)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let clientTokenSaved = storedClientToken != nil || clientCandidate.isEmpty || Self.persistRelayToken(
+            clientCandidate,
+            account: "server-relay-client-mac",
+            defaultsKey: Self.serverRelayClientTokenKey
+        )
+        let workerTokenSaved = storedWorkerToken != nil || workerCandidate.isEmpty || Self.persistRelayToken(
+            workerCandidate,
+            account: "server-relay-worker-mac",
+            defaultsKey: Self.serverRelayWorkerTokenKey
+        )
+        serverRelayClientToken = clientTokenSaved ? clientCandidate : ""
+        let workerCanUseSecureLegacy = storedWorkerToken == nil
+            && legacyWorkerToken == nil
+            && secureLegacyWorkerToken != nil
+        serverRelayWorkerToken = workerTokenSaved || workerCanUseSecureLegacy ? workerCandidate : ""
+        let credentialPersistenceFailed =
+            (!clientCandidate.isEmpty && !clientTokenSaved)
+            || (!workerCandidate.isEmpty && !workerTokenSaved && !workerCanUseSecureLegacy)
         self.paths = paths
         let startupSnapshot = EngineSnapshotStore(paths: paths).load()
         snapshot = startupSnapshot
@@ -574,33 +596,16 @@ final class KLMSMacModel: ObservableObject {
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
         rebuildMailDashboardCaches()
-        let clientTokenSaved = Self.persistRelayToken(
-            serverRelayClientToken,
-            account: "server-relay-client-mac",
-            defaultsKey: Self.serverRelayClientTokenKey
-        )
-        let workerTokenSaved = Self.persistRelayToken(
-            serverRelayWorkerToken,
-            account: "server-relay-worker-mac",
-            defaultsKey: Self.serverRelayWorkerTokenKey
-        )
-        let credentialPersistenceFailed =
-            (!serverRelayClientToken.isEmpty && !clientTokenSaved)
-            || (!serverRelayWorkerToken.isEmpty && !workerTokenSaved)
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
         if credentialPersistenceFailed {
             serverRelayClientToken = ""
             serverRelayWorkerToken = ""
             serverRelayEnabled = false
             UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
-            LocalRemoteTokenStore.delete(account: "server-relay-client-mac")
-            LocalRemoteTokenStore.delete(account: "server-relay-worker-mac")
-            LocalRemoteTokenStore.delete(account: "server-relay-mac")
             serverRelayStatusMessage = "키체인에 서버 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
         } else {
-            LocalRemoteTokenStore.delete(account: "server-relay-mac")
+            if workerTokenSaved {
+                LocalRemoteTokenStore.delete(account: "server-relay-mac")
+            }
             applyCachedServerRelaySyncDataForStartup()
         }
     }
@@ -611,13 +616,10 @@ final class KLMSMacModel: ObservableObject {
         guard !trimmedToken.isEmpty else {
             LocalRemoteTokenStore.delete(account: account)
             UserDefaults.standard.removeObject(forKey: defaultsKey)
-            return true
+            return LocalRemoteTokenStore.load(account: account) == nil
         }
         let saved = LocalRemoteTokenStore.save(trimmedToken, account: account)
         UserDefaults.standard.removeObject(forKey: defaultsKey)
-        if !saved {
-            LocalRemoteTokenStore.delete(account: account)
-        }
         return saved
     }
 
@@ -1029,20 +1031,17 @@ final class KLMSMacModel: ObservableObject {
     func setServerRelayClientToken(_ value: String) {
         let nextValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard nextValue != serverRelayClientToken else { return }
-        resetServerRelaySessionForConnectionChange()
-        serverRelayClientToken = nextValue
         let saved = Self.persistRelayToken(
-            serverRelayClientToken,
+            nextValue,
             account: "server-relay-client-mac",
             defaultsKey: Self.serverRelayClientTokenKey
         )
         guard saved else {
-            serverRelayClientToken = ""
-            serverRelayEnabled = false
-            UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
-            serverRelayStatusMessage = "키체인에 클라이언트 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
+            serverRelayStatusMessage = "키체인에 클라이언트 토큰을 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
             return
         }
+        resetServerRelaySessionForConnectionChange()
+        serverRelayClientToken = nextValue
         if serverRelayEnabled {
             configureServerRelayRealtime()
         }
@@ -1051,20 +1050,17 @@ final class KLMSMacModel: ObservableObject {
     func setServerRelayWorkerToken(_ value: String) {
         let nextValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard nextValue != serverRelayWorkerToken else { return }
-        resetServerRelaySessionForConnectionChange()
-        serverRelayWorkerToken = nextValue
         let saved = Self.persistRelayToken(
-            serverRelayWorkerToken,
+            nextValue,
             account: "server-relay-worker-mac",
             defaultsKey: Self.serverRelayWorkerTokenKey
         )
         guard saved else {
-            serverRelayWorkerToken = ""
-            serverRelayEnabled = false
-            UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
-            serverRelayStatusMessage = "키체인에 Mac 전용 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
+            serverRelayStatusMessage = "키체인에 Mac 전용 토큰을 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
             return
         }
+        resetServerRelaySessionForConnectionChange()
+        serverRelayWorkerToken = nextValue
         UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
         if serverRelayEnabled {
             configureServerRelayRealtime()

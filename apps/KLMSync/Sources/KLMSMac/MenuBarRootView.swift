@@ -238,6 +238,8 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .frame(minHeight: 44)
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -4110,8 +4112,10 @@ private struct DashboardMainScopeBarView: View {
             Spacer(minLength: 4)
             scopePicker("연도", selection: normalizedYearBinding, values: options.years)
                 .frame(width: 132)
+                .frame(minHeight: 44)
             scopePicker("학기", selection: normalizedSemesterBinding, values: options.semesters)
                 .frame(width: 150)
+                .frame(minHeight: 44)
             if hasActiveScope {
                 Button {
                     selectedYear = DashboardTermFilter.allYears
@@ -4121,7 +4125,10 @@ private struct DashboardMainScopeBarView: View {
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .help("연도와 학기 범위를 전체로 되돌립니다.")
+                .accessibilityLabel("동기화 범위 초기화")
             }
         }
         .padding(10)
@@ -5803,7 +5810,7 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .padding(.horizontal, compact ? 6 : 8)
                 .padding(.vertical, compact ? 4 : 6)
-                .frame(maxWidth: .infinity, minHeight: compact ? 36 : 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .background(Color.klmsMacSubtleCardBackground.opacity(compact ? 0.18 : 0.30), in: RoundedRectangle(cornerRadius: 7))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7)
@@ -5812,7 +5819,8 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                 .contentShape(RoundedRectangle(cornerRadius: 7))
             }
             .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 7))
-            .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityLabel(title)
+            .accessibilityValue(isExpanded ? "펼쳐짐" : "접힘")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
 
             DeferredMacInteractionExpansion(isExpanded: isExpanded) {
@@ -6205,6 +6213,9 @@ private struct RunLogArchivePanelView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
+                    .accessibilityLabel("실행 로그")
+                    .accessibilityValue(isHistoryExpanded ? "펼쳐짐" : "접힘")
+                    .accessibilityHint(isHistoryExpanded ? "실행 로그 접기" : "실행 로그 펼치기")
 
                     KLMSMacConfirmedClearAction(
                         shortLabel: nil,
@@ -6319,6 +6330,9 @@ private struct RunLogArchivePanelView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(MacPressFeedbackButtonStyle())
+                        .accessibilityLabel("서버 로그")
+                        .accessibilityValue(showingSystemLogs ? "펼쳐짐" : "접힘")
+                        .accessibilityHint(showingSystemLogs ? "서버 로그 접기" : "서버 로그 펼치기")
 
                         KLMSMacConfirmedClearAction(
                             shortLabel: nil,

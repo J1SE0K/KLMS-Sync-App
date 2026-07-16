@@ -4,6 +4,7 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const WebSocket = require("ws");
 const {
+  configWithoutLegacyPlaintextToken,
   normalizeEndpoint,
   normalizeExternalURL,
   normalizeRelayURL,
@@ -144,7 +145,11 @@ async function readConfigFile() {
   try {
     const raw = await fs.readFile(configPath(), "utf8");
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const sanitized = configWithoutLegacyPlaintextToken(parsed);
+    if (sanitized.changed) {
+      await writeConfigFile(sanitized.config);
+    }
+    return sanitized.config;
   } catch (error) {
     if (error.code === "ENOENT") {
       return {};

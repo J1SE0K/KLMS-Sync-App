@@ -357,6 +357,7 @@ class FetchPagesBackendTests(unittest.TestCase):
         fallback_page = {
             "requestedUrl": url,
             "url": url,
+            "status": 200,
             "title": "Board",
             "html": "<html>fresh pagination</html>",
         }

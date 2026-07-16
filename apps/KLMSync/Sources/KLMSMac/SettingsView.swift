@@ -1503,14 +1503,15 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
             .foregroundStyle(foreground)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
+            .frame(minHeight: 44)
             .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
             .overlay {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: isEnabled ? 1.15 : 1)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 8))
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.40)
             .saturation(isEnabled ? 1.0 : 0.28)
-            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
     }
 
@@ -1542,12 +1543,4 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
         }
     }
 
-    private var activeShadowColor: Color {
-        switch tone {
-        case .soft:
-            return Color.klmsMacCommandButtonBorder.opacity(0.12)
-        case .destructive:
-            return Color.klmsMacDangerBorder.opacity(0.14)
-        }
-    }
 }

@@ -3,6 +3,41 @@ import XCTest
 @testable import KLMSShared
 
 final class RemoteCommandTerminalOutboxTests: XCTestCase {
+    func testOutboxPolicySanitizesHostilePublicLimits() async throws {
+        let policy = RemoteCommandTerminalOutboxPolicy(
+            maximumDocumentBytes: Int.max,
+            maximumEncodedEntryBytes: Int.min,
+            maximumEntriesPerIdentity: Int.min,
+            maximumEntries: Int.max,
+            entryTTL: .nan,
+            maximumFutureSkew: -.infinity,
+            maximumQuarantineFiles: Int.min,
+            maximumQuarantineBytes: Int.max,
+            maximumQuarantineTotalBytes: Int.min,
+            quarantineTTL: .infinity
+        )
+
+        XCTAssertEqual(policy.maximumDocumentBytes, 64 * 1_024 * 1_024)
+        XCTAssertEqual(policy.maximumEncodedEntryBytes, 1)
+        XCTAssertEqual(policy.maximumEntriesPerIdentity, 1)
+        XCTAssertEqual(policy.maximumEntries, 10_000)
+        XCTAssertEqual(policy.entryTTL, 30 * 24 * 60 * 60)
+        XCTAssertEqual(policy.maximumFutureSkew, 5 * 60)
+        XCTAssertEqual(policy.maximumQuarantineFiles, 0)
+        XCTAssertEqual(policy.maximumQuarantineBytes, 64 * 1_024 * 1_024)
+        XCTAssertEqual(policy.maximumQuarantineTotalBytes, 1)
+        XCTAssertEqual(policy.quarantineTTL, 7 * 24 * 60 * 60)
+
+        try await withTemporaryStore { url in
+            let store = RemoteCommandTerminalOutboxStore(url: url, policy: policy)
+            let pending = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            XCTAssertTrue(pending.isEmpty)
+        }
+    }
+
     func testPublicLogRedactorRemovesCredentialsURLsAndCrossPlatformPaths() {
         let input = """
         Authorization: Bearer relay-secret-value

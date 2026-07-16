@@ -236,28 +236,8 @@ final class CompanionModel: ObservableObject {
     @Published var shouldUpdateNoticeNotes: Bool {
         didSet { UserDefaults.standard.set(shouldUpdateNoticeNotes, forKey: Self.shouldUpdateNoticeNotesKey) }
     }
-    @Published var serverURL: String {
-        didSet {
-            UserDefaults.standard.set(serverURL, forKey: Self.serverURLKey)
-            if oldValue != serverURL {
-                resetRemoteSessionForConnectionChange()
-            }
-        }
-    }
-    @Published var serverToken: String {
-        didSet {
-            if !suppressServerTokenPersistence {
-                if serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    clearPersistedServerToken()
-                } else {
-                    schedulePersistServerToken(serverToken)
-                }
-            }
-            if oldValue != serverToken {
-                resetRemoteSessionForConnectionChange()
-            }
-        }
-    }
+    @Published private(set) var serverURL: String
+    @Published private(set) var serverToken: String
 
     private var lastAuthSuccessAlertMessage = ""
     private var lastAuthSuccessAlertAt: Date?
@@ -265,12 +245,9 @@ final class CompanionModel: ObservableObject {
     private var notifiedCancelCompletionCommandIDs = Set<UUID>()
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
-    private var serverTokenPersistTask: Task<Void, Never>?
-    private var serverTokenPersistTaskGeneration: UInt64?
     private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator
     private var lastPersistedServerToken = ""
     private var lastPersistedServerTokenGeneration: UInt64 = 0
-    private var suppressServerTokenPersistence = false
     private var itemActionResolutionTasksByID: [UUID: Task<Void, Never>] = [:]
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
@@ -328,6 +305,7 @@ final class CompanionModel: ObservableObject {
     private struct PersistedServerCredential: Sendable {
         var token: String
         var generation: UInt64
+        var migrationFailed = false
     }
     private struct PendingItemActionOverlay {
         var action: ServerRelayItemAction
@@ -698,6 +676,12 @@ final class CompanionModel: ObservableObject {
             connectionMessage = "저장된 서버 요약을 먼저 보여주고, 최신 상태를 다시 불러옵니다."
             connectionSucceeded = nil
         }
+        if persistedCredential.migrationFailed {
+            let message = "기존 클라이언트 토큰을 키체인으로 옮기지 못해 연결하지 않았습니다. 토큰을 다시 입력해 주세요."
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+        }
         rebuildDashboardDerivedState()
         rebuildVisibleCalendarChanges()
     }
@@ -1013,8 +997,10 @@ final class CompanionModel: ObservableObject {
             calendarResolutionSnapshots: []
         )
         replaceRecentItemAction(localAction) { $0.itemID == item.id }
+        invalidateItemActionEndpointOwners()
         do {
             let savedAction = try await store.createItemAction(action)
+            invalidateItemActionEndpointOwners()
             guard isCurrentRelaySession(generation: generation) else { return }
             guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else {
                 return
@@ -1046,6 +1032,7 @@ final class CompanionModel: ObservableObject {
             }
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
+            invalidateItemActionEndpointOwners()
             guard var overlay = pendingItemActionOverlaysByID[action.id] else { return }
             if Self.isDefinitiveItemActionSubmissionFailure(error) {
                 pendingItemActionOverlaysByID.removeValue(forKey: action.id)
@@ -2401,14 +2388,14 @@ final class CompanionModel: ObservableObject {
 
     private func scheduleItemActionResolutionRefresh(for id: UUID) {
         guard var overlay = pendingItemActionOverlaysByID[id],
-              overlay.submissionPhase != .submitting,
-              overlay.resolutionAttemptCount < 3 else {
+              overlay.submissionPhase != .submitting else {
             return
         }
-        overlay.resolutionAttemptCount += 1
+        overlay.resolutionAttemptCount = min(overlay.resolutionAttemptCount + 1, 6)
         pendingItemActionOverlaysByID[id] = overlay
         let lookupVersion = overlay.lookupVersion
-        let delayNanoseconds = UInt64(overlay.resolutionAttemptCount) * 1_000_000_000
+        let delaySeconds = min(30, 1 << max(0, overlay.resolutionAttemptCount - 1))
+        let delayNanoseconds = UInt64(delaySeconds) * 1_000_000_000
         itemActionResolutionTasksByID[id]?.cancel()
         itemActionResolutionTasksByID[id] = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: delayNanoseconds)
@@ -2425,6 +2412,11 @@ final class CompanionModel: ObservableObject {
                 scope: .itemActions
             )
         }
+    }
+
+    private func invalidateItemActionEndpointOwners() {
+        _ = relayEndpointApplyEpochs.begin(for: .itemActions)
+        _ = relayEndpointApplyEpochs.begin(for: .syncData)
     }
 
     private func itemActionMutationKey(itemID: String) -> String {
@@ -2786,7 +2778,9 @@ final class CompanionModel: ObservableObject {
             }
             connectionSucceeded = true
             errorMessage = ""
+            invalidateItemActionEndpointOwners()
             let savedAction = try await serverRelayStore.createItemAction(action)
+            invalidateItemActionEndpointOwners()
             guard isCurrentRelaySession(generation: generation) else { return }
             guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else {
                 return
@@ -2822,6 +2816,7 @@ final class CompanionModel: ObservableObject {
             }
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
+            invalidateItemActionEndpointOwners()
             guard var overlay = pendingItemActionOverlaysByID[action.id] else { return }
             if Self.isDefinitiveItemActionSubmissionFailure(error) {
                 pendingItemActionOverlaysByID.removeValue(forKey: action.id)
@@ -2905,7 +2900,9 @@ final class CompanionModel: ObservableObject {
             connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
             connectionSucceeded = true
             errorMessage = ""
+            invalidateItemActionEndpointOwners()
             let savedAction = try await serverRelayStore.createItemAction(action)
+            invalidateItemActionEndpointOwners()
             guard isCurrentRelaySession(generation: generation) else { return }
             guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else {
                 return
@@ -2941,6 +2938,7 @@ final class CompanionModel: ObservableObject {
             }
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
+            invalidateItemActionEndpointOwners()
             guard let pendingActionID,
                   var overlay = pendingItemActionOverlaysByID[pendingActionID] else {
                 return
@@ -3169,13 +3167,16 @@ final class CompanionModel: ObservableObject {
             message: "이 기기에서 처리했고 서버 화면에도 반영했습니다."
         )
         do {
+            invalidateItemActionEndpointOwners()
             let savedAction = try await store.createItemAction(action)
+            invalidateItemActionEndpointOwners()
             guard isCurrentRelaySession(generation: generation) else { return }
             recordResolvedCalendarChanges([savedAction])
             replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
             schedulePostActionRefresh(scope: .itemActionServerState)
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
+            invalidateItemActionEndpointOwners()
             guard !isCancellationError(error) else { return }
             errorMessage = "캘린더 처리는 끝났지만 서버 반영에 실패했습니다. \(userFacingMessage(for: error))"
         }
@@ -3415,7 +3416,6 @@ final class CompanionModel: ObservableObject {
         relayEventBatchTask?.cancel()
         pasteboardClearTask?.cancel()
         cancelFollowUpTask?.cancel()
-        serverTokenPersistTask?.cancel()
         itemActionResolutionTasksByID.values.forEach { $0.cancel() }
         cachedSyncDataPersistTask?.cancel()
         Task { @MainActor [sharedSettingMutationQueue] in
@@ -4510,29 +4510,76 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    func pasteServerRelayConnectionInfo() {
+    func applyServerRelayConnection(serverURL rawURL: String, serverToken rawToken: String) async -> Bool {
+        guard let publicURL = ServerRelayConnectionInfo.normalizedPublicRelayURL(rawURL) else {
+            let message = "서버 URL에는 공개 HTTPS 주소를 입력해 주세요."
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            return false
+        }
+        let nextServerURL = publicURL.absoluteString
+        let nextServerToken = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !nextServerToken.isEmpty else {
+            let message = "클라이언트 토큰을 입력해 주세요."
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            return false
+        }
+        if nextServerToken != serverToken,
+           !(await persistConnectionToken(nextServerToken)) {
+            return false
+        }
+        commitServerRelayConnection(serverURL: nextServerURL, serverToken: nextServerToken)
+        connectionMessage = "서버 연결 정보를 안전하게 저장했습니다. 최신 요약을 바로 불러옵니다."
+        connectionSucceeded = nil
+        errorMessage = ""
+        refreshAfterServerRelayConnectionChange()
+        return true
+    }
+
+    private func commitServerRelayConnection(serverURL nextServerURL: String, serverToken nextServerToken: String) {
+        guard nextServerURL != serverURL || nextServerToken != serverToken else { return }
+        resetRemoteSessionForConnectionChange()
+        serverURL = nextServerURL
+        serverToken = nextServerToken
+        if nextServerURL.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.serverURLKey)
+        } else {
+            UserDefaults.standard.set(nextServerURL, forKey: Self.serverURLKey)
+        }
+        UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
+    }
+
+    func pasteServerRelayConnectionInfo() async -> Bool {
         #if canImport(UIKit)
         guard let text = UIPasteboard.general.string,
               let connectionInfo = ServerRelayConnectionInfo.parse(urlText: text) else {
             errorMessage = "붙여넣은 텍스트에서 서버 URL과 클라이언트 토큰을 찾지 못했습니다."
-            return
+            return false
         }
         let nextServerURL = connectionInfo.baseURL.absoluteString
         let nextServerToken = ServerRelayConnectionInfo.labeledToken(
             in: text,
             labels: ServerRelayConnectionInfo.clientTokenLabels + ServerRelayConnectionInfo.legacyTokenLabels
         ) ?? connectionInfo.token
-        serverURL = nextServerURL
-        serverToken = nextServerToken
+        guard await applyServerRelayConnection(
+            serverURL: nextServerURL,
+            serverToken: nextServerToken
+        ) else {
+            return false
+        }
         if UIPasteboard.general.string == text {
             UIPasteboard.general.string = ""
         }
         connectionMessage = "서버 연결 정보를 붙여넣었습니다. 최신 요약을 바로 불러옵니다."
         connectionSucceeded = nil
         errorMessage = ""
-        refreshAfterServerRelayConnectionChange()
+        return true
         #else
         errorMessage = "이 빌드는 클립보드 붙여넣기를 사용할 수 없습니다."
+        return false
         #endif
     }
 
@@ -4589,10 +4636,9 @@ final class CompanionModel: ObservableObject {
         ServerRelayConnectionInfo.normalizedPublicRelayURL(serverURL)?.absoluteString
     }
 
-    func clearServerRelayConnectionInfo() {
-        serverURL = ""
-        serverToken = ""
-        UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
+    func clearServerRelayConnectionInfo() async {
+        guard await persistConnectionToken("") else { return }
+        commitServerRelayConnection(serverURL: "", serverToken: "")
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
         errorMessage = ""
@@ -4648,7 +4694,6 @@ final class CompanionModel: ObservableObject {
         locallyHiddenItemActionIDs = []
         locallyHiddenSettingActionIDs = []
         resolvedCalendarChangeIDs = []
-        mailDashboardItems = []
         clearLoadedServerSyncData()
         connectionMessage = ""
         errorMessage = ""
@@ -4658,7 +4703,6 @@ final class CompanionModel: ObservableObject {
         isLoadingServerSyncData = false
         isSubmitting = false
         UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
-        UserDefaults.standard.removeObject(forKey: Self.mailDashboardItemsKey)
         UserDefaults.standard.removeObject(forKey: Self.resolvedCalendarChangeIDsKey)
         UserDefaults.standard.removeObject(forKey: Self.trackedReportNotificationCommandIDsKey)
         rebuildRemoteLogDerivedState()
@@ -6102,92 +6146,56 @@ final class CompanionModel: ObservableObject {
         return didChange
     }
 
-    private func schedulePersistServerToken(_ token: String) {
-        serverTokenPersistTask?.cancel()
+    private func persistConnectionToken(_ token: String) async -> Bool {
         let persistenceCoordinator = serverTokenPersistenceCoordinator
         let persistenceGeneration = persistenceCoordinator.begin(
             after: Self.loadServerTokenPersistenceGeneration()
         )
-        serverTokenPersistTaskGeneration = persistenceGeneration
-        serverTokenPersistTask = Task { [weak self, token, persistenceCoordinator] in
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            guard !Task.isCancelled else { return }
-            let result = await persistenceCoordinator.persist(token, generation: persistenceGeneration) { envelope in
-                Self.persistServerToken(envelope)
-            }
-            await MainActor.run {
-                self?.completeServerTokenPersistence(
-                    result,
-                    requestedToken: token,
-                    taskGeneration: persistenceGeneration
-                )
-            }
+        let result = await persistenceCoordinator.persist(
+            token.trimmingCharacters(in: .whitespacesAndNewlines),
+            generation: persistenceGeneration
+        ) { envelope in
+            Self.persistServerToken(envelope)
         }
-    }
-
-    private func clearPersistedServerToken() {
-        serverTokenPersistTask?.cancel()
-        let persistenceCoordinator = serverTokenPersistenceCoordinator
-        let persistenceGeneration = persistenceCoordinator.begin(
-            after: Self.loadServerTokenPersistenceGeneration()
-        )
-        serverTokenPersistTaskGeneration = persistenceGeneration
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-        serverTokenPersistTask = Task { [weak self, persistenceCoordinator] in
-            let result = await persistenceCoordinator.persist("", generation: persistenceGeneration) { envelope in
-                Self.persistServerToken(envelope)
-            }
-            await MainActor.run {
-                self?.completeServerTokenPersistence(
-                    result,
-                    requestedToken: "",
-                    taskGeneration: persistenceGeneration
-                )
-            }
-        }
-    }
-
-    private func completeServerTokenPersistence(
-        _ result: CredentialPersistenceResult,
-        requestedToken: String,
-        taskGeneration: UInt64
-    ) {
-        let trimmedRequestedToken = requestedToken.trimmingCharacters(in: .whitespacesAndNewlines)
         switch result {
         case let .persisted(envelope):
             if envelope.generation >= lastPersistedServerTokenGeneration {
                 lastPersistedServerToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
                 lastPersistedServerTokenGeneration = envelope.generation
             }
+            return true
         case .superseded:
-            break
+            let message = "더 최신 연결 정보 저장 요청이 있어 이 변경은 적용하지 않았습니다."
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            return false
         case let .failed(lastPersisted):
             if lastPersisted.generation >= lastPersistedServerTokenGeneration {
                 lastPersistedServerToken = lastPersisted.value.trimmingCharacters(in: .whitespacesAndNewlines)
                 lastPersistedServerTokenGeneration = lastPersisted.generation
             }
-            guard serverTokenPersistTaskGeneration == taskGeneration,
-                  serverToken.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedRequestedToken else {
-                return
-            }
-            suppressServerTokenPersistence = true
-            serverToken = lastPersistedServerToken
-            suppressServerTokenPersistence = false
-            let message = "클라이언트 토큰을 안전하게 저장하지 못해 마지막 저장값으로 되돌렸습니다. 잠시 후 다시 시도해 주세요."
+            let message = "클라이언트 토큰을 안전하게 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
             userAlert = UserAlert(title: "토큰 저장 실패", message: message)
-        }
-        if serverTokenPersistTaskGeneration == taskGeneration {
-            serverTokenPersistTask = nil
-            serverTokenPersistTaskGeneration = nil
+            return false
         }
     }
 
     @discardableResult
     nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope) -> Bool {
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         let trimmedToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedToken.isEmpty {
+            LocalRemoteTokenStore.delete(account: "server-relay-ios")
+            guard LocalRemoteTokenStore.load(account: "server-relay-ios") == nil else {
+                return false
+            }
+            storeServerTokenPersistenceGeneration(envelope.generation)
+            return true
+        }
         guard let encoded = try? VersionedCredentialEnvelope(
             generation: envelope.generation,
             value: trimmedToken
@@ -6197,13 +6205,16 @@ final class CompanionModel: ObservableObject {
         let saved = LocalRemoteTokenStore.save(encoded, account: "server-relay-ios")
         if saved {
             storeServerTokenPersistenceGeneration(envelope.generation)
-            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         }
         return saved
     }
 
     nonisolated private static func loadServerRelayCredentialMigratingUserDefaults() -> PersistedServerCredential {
         let minimumGeneration = loadServerTokenPersistenceGeneration()
+        let legacyDefaultsToken = UserDefaults.standard.string(
+            forKey: klmsServerRelayTokenDefaultsKey
+        ) ?? ""
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         if let storedCredential = LocalRemoteTokenStore.load(account: "server-relay-ios"),
            !storedCredential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if let envelope = VersionedCredentialEnvelope.acceptedEnvelope(
@@ -6212,11 +6223,9 @@ final class CompanionModel: ObservableObject {
             ) {
                 let token = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
                 storeServerTokenPersistenceGeneration(envelope.generation)
-                UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
                 return PersistedServerCredential(token: token, generation: envelope.generation)
             }
             if VersionedCredentialEnvelope.decode(storedCredential) != nil {
-                UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
                 return PersistedServerCredential(token: "", generation: minimumGeneration)
             }
             if minimumGeneration == 0 {
@@ -6231,23 +6240,23 @@ final class CompanionModel: ObservableObject {
                     generation: migrated ? migrationGeneration : 0
                 )
             }
-            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
             return PersistedServerCredential(token: "", generation: minimumGeneration)
         }
-        let legacyToken = UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey) ?? ""
         guard minimumGeneration == 0,
-              !legacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+              !legacyDefaultsToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return PersistedServerCredential(token: "", generation: minimumGeneration)
         }
         let migrationGeneration: UInt64 = 1
         let migrated = persistServerToken(VersionedCredentialEnvelope(
             generation: migrationGeneration,
-            value: legacyToken
+            value: legacyDefaultsToken
         ))
         return PersistedServerCredential(
-            token: legacyToken.trimmingCharacters(in: .whitespacesAndNewlines),
-            generation: migrated ? migrationGeneration : 0
+            token: migrated
+                ? legacyDefaultsToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                : "",
+            generation: migrated ? migrationGeneration : 0,
+            migrationFailed: !migrated
         )
     }
 
@@ -6598,6 +6607,7 @@ private struct CompanionAdaptiveRootView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if layoutMode != .wide {
                 CompanionCompactTabBar(selectedSection: sectionBinding)
+                    .id("compact-tab-\(layoutMode.rawValue)")
                     .padding(.horizontal, 16)
                     .padding(.top, 7)
                     .padding(.bottom, 8)
@@ -7903,6 +7913,9 @@ private struct CompanionTasksScreen: View {
 private struct CompanionSettingsScreen: View {
     @ObservedObject var model: CompanionModel
     @Environment(\.companionLayoutMode) private var layoutMode
+    @State private var serverURLDraft = ""
+    @State private var serverTokenDraft = ""
+    @State private var initializedConnectionDrafts = false
 
     var body: some View {
         CompanionScreenContainer(title: "설정", model: model) {
@@ -7912,6 +7925,11 @@ private struct CompanionSettingsScreen: View {
                 settingsPrimaryColumn
                 settingsSupportColumn
             }
+        }
+        .onAppear {
+            guard !initializedConnectionDrafts else { return }
+            syncConnectionDrafts()
+            initializedConnectionDrafts = true
         }
     }
 
@@ -7980,6 +7998,7 @@ private struct CompanionSettingsScreen: View {
             }
             ServerRelayConnectionPanel(
                 isConfigured: model.serverRelayConfigured,
+                hasUnsavedChanges: connectionDraftsHaveChanges,
                 connectionMessage: model.connectionMessage,
                 connectionSucceeded: model.connectionSucceeded,
                 serverURL: serverURLBinding,
@@ -7987,7 +8006,23 @@ private struct CompanionSettingsScreen: View {
                 isRefreshing: model.isRefreshing,
                 isSubmitting: model.isSubmitting,
                 hasInFlightRequest: model.hasInFlightRequest,
-                pasteConnectionInfo: model.pasteServerRelayConnectionInfo,
+                saveConnectionInfo: {
+                    let saved = await model.applyServerRelayConnection(
+                        serverURL: serverURLDraft,
+                        serverToken: serverTokenDraft
+                    )
+                    if saved {
+                        syncConnectionDrafts()
+                    }
+                    return saved
+                },
+                pasteConnectionInfo: {
+                    let pasted = await model.pasteServerRelayConnectionInfo()
+                    if pasted {
+                        syncConnectionDrafts()
+                    }
+                    return pasted
+                },
                 checkConnection: {
                     await model.checkServerRelayConnection()
                 },
@@ -7997,22 +8032,37 @@ private struct CompanionSettingsScreen: View {
                 copyURL: model.copyServerRelayURL,
                 copyConnectionInfo: model.copyServerRelayConnectionInfo,
                 copyClientToken: model.copyServerRelayClientToken,
-                clearConnectionInfo: model.clearServerRelayConnectionInfo
+                clearConnectionInfo: {
+                    await model.clearServerRelayConnectionInfo()
+                    syncConnectionDrafts()
+                }
             )
         }
     }
 
+    private var connectionDraftsHaveChanges: Bool {
+        serverURLDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            != model.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            || serverTokenDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            != model.serverToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func syncConnectionDrafts() {
+        serverURLDraft = model.serverURL
+        serverTokenDraft = model.serverToken
+    }
+
     private var serverURLBinding: Binding<String> {
         Binding(
-            get: { model.serverURL },
-            set: { model.serverURL = $0 }
+            get: { serverURLDraft },
+            set: { serverURLDraft = $0 }
         )
     }
 
     private var serverTokenBinding: Binding<String> {
         Binding(
-            get: { model.serverToken },
-            set: { model.serverToken = $0 }
+            get: { serverTokenDraft },
+            set: { serverTokenDraft = $0 }
         )
     }
 }
@@ -8999,6 +9049,7 @@ private struct RemoteRunningStatusBanner: View {
 
 private struct ServerRelayConnectionPanel: View {
     var isConfigured: Bool
+    var hasUnsavedChanges: Bool
     var connectionMessage: String
     var connectionSucceeded: Bool?
     @Binding var serverURL: String
@@ -9006,13 +9057,14 @@ private struct ServerRelayConnectionPanel: View {
     var isRefreshing: Bool
     var isSubmitting: Bool
     var hasInFlightRequest: Bool
-    var pasteConnectionInfo: () -> Void
+    var saveConnectionInfo: () async -> Bool
+    var pasteConnectionInfo: () async -> Bool
     var checkConnection: () async -> Void
     var refreshSummary: () async -> Void
     var copyURL: () -> Void
     var copyConnectionInfo: () -> Void
     var copyClientToken: () -> Void
-    var clearConnectionInfo: () -> Void
+    var clearConnectionInfo: () async -> Void
     @State private var isExpanded = false
     private let actionColumns = [
         GridItem(.adaptive(minimum: 145), spacing: 8),
@@ -9034,14 +9086,14 @@ private struct ServerRelayConnectionPanel: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("서버 릴레이")
                             .font(.headline)
-                        Text(isConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요.")
+                        Text(hasUnsavedChanges ? "저장하지 않은 변경이 있습니다." : isConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                     VStack(alignment: .trailing, spacing: 5) {
-                        Text(isConfigured ? "저장됨" : "미설정")
+                        Text(hasUnsavedChanges ? "저장 필요" : isConfigured ? "저장됨" : "미설정")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.klmsSecondaryText)
                             .padding(.horizontal, 8)
@@ -9053,7 +9105,7 @@ private struct ServerRelayConnectionPanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityLabel("서버 릴레이 \(isConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityLabel("서버 릴레이 \(hasUnsavedChanges ? "저장 필요" : isConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
             .accessibilityIdentifier("server-relay-disclosure")
 
@@ -9070,8 +9122,8 @@ private struct ServerRelayConnectionPanel: View {
                         title: "서버 연결 정보",
                         detail: "서버 URL과 클라이언트 토큰을 관리합니다.",
                         systemImage: "link",
-                        statusText: isConfigured ? "저장됨" : "미설정",
-                        statusTint: isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText
+                        statusText: hasUnsavedChanges ? "저장 필요" : isConfigured ? "저장됨" : "미설정",
+                        statusTint: hasUnsavedChanges ? Color.klmsWarningForeground : isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText
                     ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
@@ -9084,6 +9136,10 @@ private struct ServerRelayConnectionPanel: View {
                             text: $serverToken,
                             secure: true
                         )
+                        connectionAsyncButton("변경 저장", systemImage: "lock.shield") {
+                            _ = await saveConnectionInfo()
+                        }
+                        .disabled(!hasUnsavedChanges || isSubmitting)
                         CompanionSettingHelpText("실제 KLMS 수집은 Mac 앱이 처리합니다.")
                     }
 
@@ -9093,17 +9149,17 @@ private struct ServerRelayConnectionPanel: View {
                         systemImage: "checkmark.shield"
                     ) {
                         LazyVGrid(columns: actionColumns, spacing: 8) {
-                            connectionButton("붙여넣기", systemImage: "doc.on.clipboard") {
-                                pasteConnectionInfo()
+                            connectionAsyncButton("붙여넣기", systemImage: "doc.on.clipboard") {
+                                _ = await pasteConnectionInfo()
                             }
                             connectionAsyncButton("연결 확인", systemImage: "checkmark.seal") {
                                 await checkConnection()
                             }
-                            .disabled(!isConfigured || isRefreshing)
+                            .disabled(!isConfigured || hasUnsavedChanges || isRefreshing)
                             connectionAsyncButton("요약 갱신", systemImage: "arrow.triangle.2.circlepath") {
                                 await refreshSummary()
                             }
-                            .disabled(!isConfigured || isSubmitting || hasInFlightRequest)
+                            .disabled(!isConfigured || hasUnsavedChanges || isSubmitting || hasInFlightRequest)
                         }
                         CompanionSettingHelpText("연결 확인은 동기화 없이 서버 응답만 검사합니다.")
                     }
@@ -9117,15 +9173,15 @@ private struct ServerRelayConnectionPanel: View {
                             connectionButton("URL 복사", systemImage: "link") {
                                 copyURL()
                             }
-                            .disabled(serverURL.isEmpty)
+                            .disabled(hasUnsavedChanges || serverURL.isEmpty)
                             connectionButton("연결 정보 복사", systemImage: "doc.on.doc") {
                                 copyConnectionInfo()
                             }
-                            .disabled(serverURL.isEmpty || serverToken.isEmpty)
+                            .disabled(hasUnsavedChanges || serverURL.isEmpty || serverToken.isEmpty)
                             connectionButton("클라이언트 토큰 복사", systemImage: "key") {
                                 copyClientToken()
                             }
-                            .disabled(serverToken.isEmpty)
+                            .disabled(hasUnsavedChanges || serverToken.isEmpty)
                         }
                         CompanionSettingHelpText("복사된 토큰은 보안을 위해 60초 뒤 클립보드에서 자동으로 지워집니다.")
                     }
@@ -9136,7 +9192,9 @@ private struct ServerRelayConnectionPanel: View {
                         systemImage: "trash"
                     ) {
                         Button(role: .destructive) {
-                            clearConnectionInfo()
+                            Task {
+                                await clearConnectionInfo()
+                            }
                         } label: {
                             Label("연결 정보 지우기", systemImage: "trash")
                                 .frame(maxWidth: .infinity)

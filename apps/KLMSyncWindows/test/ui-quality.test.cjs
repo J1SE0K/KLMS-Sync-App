@@ -65,12 +65,20 @@ test("responsive data surfaces wrap and forced-color selections use system highl
   assert.match(styles, /\.field-value[\s\S]*-webkit-line-clamp: 4/);
   assert.match(styles, /#syncStatusRegion,[\s\S]*max-inline-size: 100%/);
   assert.match(styles, /\.status-message-disclosure[\s\S]*max-inline-size: 100%/);
+  assert.match(styles, /#statusSubtitle\s*\{[^}]*white-space: normal;/);
   assert.match(styles, /button:not\(\.sidebar-backdrop\)[\s\S]*border: 1px solid ButtonText/);
   assert.match(styles, /button \.icon[\s\S]*forced-color-adjust: none/);
   assert.match(styles, /\.metric-card\.active,[\s\S]*forced-color-adjust: none;[\s\S]*background: Highlight;[\s\S]*color: HighlightText;/);
   assert.match(styles, /\.item-row\.active \.badge[\s\S]*background: Canvas;[\s\S]*color: CanvasText;/);
   assert.match(styles, /\.panel\s*\{[^}]*box-shadow: none;/);
   assert.match(styles, /\.connection-panel > \.button-row:not\(\.three\) button\s*\{[^}]*white-space: nowrap;/);
+});
+
+test("status preview wraps at the available width without fixed character breaks", () => {
+  const renderer = read("src/renderer.js");
+
+  assert.match(renderer, /subtitleElement\.textContent = subtitle;/);
+  assert.doesNotMatch(renderer, /\[0, 32, 64\]|slice\(offset, offset \+ 32\)/);
 });
 
 test("copied state includes the complete rendered status message", () => {

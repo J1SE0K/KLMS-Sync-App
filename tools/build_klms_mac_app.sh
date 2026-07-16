@@ -64,6 +64,8 @@ STAGING_DIR=""
 APP_BUNDLE=""
 BACKUP_APP_BUNDLE=""
 BUILD_PROVENANCE_FILE=""
+SOURCE_SNAPSHOT_DIR=""
+BUILD_ROOT="$ROOT_DIR"
 target_app_moved=0
 
 restore_previous_app() {
@@ -92,6 +94,9 @@ cleanup_build() {
   if [[ -n "$STAGING_DIR" ]]; then
     rm -rf "$STAGING_DIR"
   fi
+  if [[ -n "$SOURCE_SNAPSHOT_DIR" ]]; then
+    rm -rf "$SOURCE_SNAPSHOT_DIR"
+  fi
   if (( REMOVE_SWIFT_SCRATCH == 1 )); then
     rm -rf "$SWIFT_SCRATCH_PATH"
   fi
@@ -105,6 +110,16 @@ STAGING_DIR="$(mktemp -d "$TARGET_APP_PARENT/.klms-sync-app-build.XXXXXX")"
 APP_BUNDLE="$STAGING_DIR/$TARGET_APP_NAME"
 BACKUP_APP_BUNDLE="$STAGING_DIR/previous.app"
 BUILD_PROVENANCE_FILE="$STAGING_DIR/KLMSAppBuildProvenance.json"
+
+if [[ "${KLMS_PAYLOAD_REQUIRE_CLEAN:-0}" == "1" ]]; then
+  SOURCE_SNAPSHOT_DIR="$(mktemp -d "${TMPDIR:-/private/tmp}/klmsync-source-snapshot.XXXXXX")"
+  git -C "$ROOT_DIR" archive --format=tar "$source_revision" | /usr/bin/tar -xf - -C "$SOURCE_SNAPSHOT_DIR"
+  BUILD_ROOT="$SOURCE_SNAPSHOT_DIR"
+fi
+APP_PACKAGE_DIR="$BUILD_ROOT/apps/KLMSync"
+APP_ICON_SOURCE="$APP_PACKAGE_DIR/Resources/AppIcon.icns"
+PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePayloadAllowlist.txt"
+PYTHON_PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePythonPayloadAllowlist.txt"
 
 python3 - "$BUILD_PROVENANCE_FILE" "$source_revision" "$git_tree" "$payload_dirty" <<'PY'
 import json
@@ -202,17 +217,21 @@ helper_info_plist_args=(
   -Xlinker __TEXT
   -Xlinker __info_plist
   -Xlinker "$HELPER_EXECUTABLE_INFO_PLIST"
+  -Xlinker -sectcreate
+  -Xlinker __TEXT
+  -Xlinker __klms_prov
+  -Xlinker "$BUILD_PROVENANCE_FILE"
 )
 if [[ -x "/usr/bin/xcrun" ]]; then
   /usr/bin/xcrun --sdk macosx swiftc \
-    "$ROOT_DIR/src/swift/notice_native_note_support.swift" \
-    "$ROOT_DIR/src/swift/update_notice_native_note.swift" \
+    "$BUILD_ROOT/src/swift/notice_native_note_support.swift" \
+    "$BUILD_ROOT/src/swift/update_notice_native_note.swift" \
     "${helper_info_plist_args[@]}" \
     -o "$NATIVE_NOTICE_HELPER"
 else
   swiftc \
-    "$ROOT_DIR/src/swift/notice_native_note_support.swift" \
-    "$ROOT_DIR/src/swift/update_notice_native_note.swift" \
+    "$BUILD_ROOT/src/swift/notice_native_note_support.swift" \
+    "$BUILD_ROOT/src/swift/update_notice_native_note.swift" \
     "${helper_info_plist_args[@]}" \
     -o "$NATIVE_NOTICE_HELPER"
 fi
@@ -234,7 +253,7 @@ while IFS= read -r relative_path || [[ -n "$relative_path" ]]; do
       exit 1
       ;;
   esac
-  source_path="$ROOT_DIR/$relative_path"
+  source_path="$BUILD_ROOT/$relative_path"
   if [[ ! -f "$source_path" || -L "$source_path" ]]; then
     print -r -- "missing or non-regular engine payload file: $relative_path" >&2
     exit 1
@@ -243,7 +262,7 @@ while IFS= read -r relative_path || [[ -n "$relative_path" ]]; do
   cp -X "$source_path" "$PAYLOAD_ROOT/$relative_path"
 done < "$PAYLOAD_ALLOWLIST"
 
-VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"
+VENDORED_PYTHON_PACKAGES="$BUILD_ROOT/vendor/python-packages"
 if [[ ! -f "$PYTHON_PAYLOAD_ALLOWLIST" ]]; then
   print -r -- "missing Python payload allowlist: $PYTHON_PAYLOAD_ALLOWLIST" >&2
   exit 1
@@ -330,7 +349,7 @@ manifest_path.write_text(
 PY
 
 payload_verify_args=(
-  "$ROOT_DIR/tools/verify_klms_engine_payload.py"
+  "$BUILD_ROOT/tools/verify_klms_engine_payload.py"
   "$PAYLOAD_ROOT"
   --allowlist "$PAYLOAD_ALLOWLIST"
   --python-allowlist "$PYTHON_PAYLOAD_ALLOWLIST"
@@ -452,7 +471,7 @@ EOF
 fi
 
 provenance_verify_args=(
-  "$ROOT_DIR/tools/verify_klms_app_provenance.py"
+  "$BUILD_ROOT/tools/verify_klms_app_provenance.py"
   "$APP_BUNDLE"
   --expected-revision "$source_revision"
   --expected-tree "$git_tree"
@@ -488,5 +507,8 @@ trap - EXIT
 rm -rf "$STAGING_DIR"
 if (( REMOVE_SWIFT_SCRATCH == 1 )); then
   rm -rf "$SWIFT_SCRATCH_PATH"
+fi
+if [[ -n "$SOURCE_SNAPSHOT_DIR" ]]; then
+  rm -rf "$SOURCE_SNAPSHOT_DIR"
 fi
 print -r -- "$TARGET_APP_BUNDLE"

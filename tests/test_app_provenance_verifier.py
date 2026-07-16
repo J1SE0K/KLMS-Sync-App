@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -38,6 +39,29 @@ class AppProvenanceVerifierTests(unittest.TestCase):
     def test_otool_section_rejects_missing_bytes(self) -> None:
         with self.assertRaises(SystemExit):
             provenance.parse_otool_section("Contents of (__TEXT,__klms_prov) section\n")
+
+    def test_codesign_metadata_distinguishes_ad_hoc_signing(self) -> None:
+        metadata = provenance.parse_codesign_metadata(
+            "Executable=/tmp/KLMSMac\nIdentifier=com.local.KLMSync\n"
+            "Signature=adhoc\nTeamIdentifier=not set\nCDHash=" + "a" * 40
+        )
+
+        self.assertEqual(metadata["cdHash"], "a" * 40)
+        self.assertIsNone(metadata["teamIdentifier"])
+        self.assertEqual(metadata["signature"], "adhoc")
+
+    def test_artifact_digest_is_deterministic_and_rejects_symlinks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            app = Path(tmp) / "KLMS Sync.app"
+            executable = app / "Contents" / "MacOS" / "KLMSMac"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"binary")
+            first = provenance.artifact_tree_sha256(app)
+            self.assertEqual(first, provenance.artifact_tree_sha256(app))
+
+            (app / "Contents" / "linked").symlink_to(executable)
+            with self.assertRaises(SystemExit):
+                provenance.artifact_tree_sha256(app)
 
 
 if __name__ == "__main__":

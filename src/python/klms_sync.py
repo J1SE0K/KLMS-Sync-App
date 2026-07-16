@@ -980,6 +980,8 @@ class CoursePageSemanticCertificate:
     module_urls: tuple[str, ...] = ()
     explicit_empty: bool = False
     fetch_evidence_at: str = ""
+    transport_authoritative: bool = False
+    transport_reason: str = ""
     reason: str = ""
 
 
@@ -2770,6 +2772,7 @@ def course_page_semantic_certificate(
     fetch_evidence_at = normalize_whitespace(
         str(page.get("_klms_sync_fetched_at") or "")
     )
+    transport_reason = course_page_transport_error(page, requested_url)
     html = str(page.get("html") or "")
     if not html.strip():
         return CoursePageSemanticCertificate(
@@ -2948,13 +2951,56 @@ def course_page_semantic_certificate(
         module_urls=tuple(sorted(module_urls)),
         explicit_empty=explicit_empty,
         fetch_evidence_at=fetch_evidence_at,
+        transport_authoritative=not transport_reason,
+        transport_reason=transport_reason,
         reason=reason,
     )
+
+
+def exact_klms_course_page_id(url: str) -> str:
+    try:
+        parsed = urlparse(normalize_whitespace(url))
+        port = parsed.port
+    except ValueError:
+        return ""
+    if (
+        parsed.scheme.casefold() != "https"
+        or parsed.hostname != "klms.kaist.ac.kr"
+        or port not in (None, 443)
+        or parsed.path != "/course/view.php"
+    ):
+        return ""
+    query_items = parse_qsl(parsed.query, keep_blank_values=True)
+    course_ids = [value for key, value in query_items if key == "id"]
+    if len(course_ids) != 1 or not course_ids[0].isdigit():
+        return ""
+    return course_ids[0]
+
+
+def course_page_transport_error(page: dict[str, Any], requested_url: str = "") -> str:
+    try:
+        status = int(page.get("status"))
+    except (TypeError, ValueError):
+        return "KLMS 과목 페이지의 HTTP 응답 상태를 확인할 수 없어 기존 동기화 상태를 유지했어."
+    if not 200 <= status < 300:
+        return f"KLMS 과목 페이지가 HTTP {status} 응답을 반환해 기존 동기화 상태를 유지했어."
+    requested_course_id = exact_klms_course_page_id(
+        requested_url or page_requested_url(page)
+    )
+    final_url = normalize_whitespace(
+        str(page.get("url") or page.get("finalUrl") or "")
+    )
+    final_course_id = exact_klms_course_page_id(final_url)
+    if not requested_course_id or final_course_id != requested_course_id:
+        return "KLMS 과목 페이지의 최종 주소가 요청한 과목과 일치하지 않아 기존 동기화 상태를 유지했어."
+    return ""
 
 
 def course_pages_semantic_error(pages: list[dict[str, Any]]) -> str:
     for page in pages:
         certificate = course_page_semantic_certificate(page)
+        if not certificate.transport_authoritative:
+            return certificate.transport_reason
         if not certificate.authoritative:
             return certificate.reason
     return ""
@@ -5199,6 +5245,101 @@ def tracked_state_module_urls(state: dict[str, Any]) -> set[str]:
     return set(tracked_state_module_courses(state))
 
 
+def tracked_state_record_identity(record: dict[str, Any]) -> tuple[str, ...]:
+    url = normalize_url(str(record.get("url") or ""))
+    category = normalize_whitespace(
+        str(record.get("category") or record.get("type") or "")
+    ).casefold()
+    course = normalize_whitespace(
+        str(record.get("course_id") or record.get("course") or "")
+    ).casefold()
+    title = normalize_whitespace(str(record.get("title") or "")).casefold()
+    due = normalize_whitespace(
+        str(record.get("sync_due") or record.get("due") or "")
+    ).casefold()
+    start = normalize_whitespace(str(record.get("sync_start") or "")).casefold()
+    return (url, category, course, title, due, start)
+
+
+def tracked_state_section_identities(
+    state: dict[str, Any],
+    section: str,
+    *,
+    record_status: str = "",
+) -> set[tuple[str, ...]]:
+    content = state.get("content")
+    if not isinstance(content, dict):
+        return set()
+    records = content.get(section)
+    if not isinstance(records, list):
+        return set()
+    identities: set[tuple[str, ...]] = set()
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        if record_status and normalize_whitespace(
+            str(record.get("record_status") or "")
+        ).casefold() != record_status:
+            continue
+        identity = tracked_state_record_identity(record)
+        parsed = urlparse(identity[0])
+        if parsed.hostname == "klms.kaist.ac.kr" and parsed.path.startswith("/mod/"):
+            identities.add(identity)
+    return identities
+
+
+def tracked_state_logical_identities_by_url(
+    state: dict[str, Any],
+) -> dict[str, set[tuple[str, ...]]]:
+    content = state.get("content")
+    if not isinstance(content, dict):
+        return {}
+    identities_by_url: dict[str, set[tuple[str, ...]]] = {}
+    for section in TRACKED_STATE_SECTIONS:
+        records = content.get(section)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            identity = tracked_state_record_identity(record)
+            parsed = urlparse(identity[0])
+            if parsed.hostname != "klms.kaist.ac.kr" or not parsed.path.startswith("/mod/"):
+                continue
+            identities_by_url.setdefault(identity[0], set()).add(identity)
+    return identities_by_url
+
+
+def tracked_state_representation_regressed(
+    previous_state: dict[str, Any], next_state: dict[str, Any]
+) -> bool:
+    pair_specs = (
+        ("assignments", "assignment_records", "active"),
+        ("completed_assignments", "assignment_records", "completed"),
+        ("exam_items", "exam_records", "active"),
+        ("exam_candidates", "exam_records", "candidate"),
+        ("past_exams", "exam_records", "completed"),
+    )
+    for section, record_section, record_status in pair_specs:
+        previous_primary = tracked_state_section_identities(previous_state, section)
+        previous_records = tracked_state_section_identities(
+            previous_state,
+            record_section,
+            record_status=record_status,
+        )
+        if not previous_primary or previous_primary != previous_records:
+            continue
+        next_primary = tracked_state_section_identities(next_state, section)
+        next_records = tracked_state_section_identities(
+            next_state,
+            record_section,
+            record_status=record_status,
+        )
+        if next_primary != next_records:
+            return True
+    return False
+
+
 def tracked_state_module_semantic_values(
     state: dict[str, Any],
 ) -> dict[str, dict[str, set[str]]]:
@@ -5264,7 +5405,7 @@ def authoritative_course_module_urls(
             tuple[str, ...], list[CoursePageSemanticCertificate]
         ] = {}
         for certificate in certificates:
-            if certificate.authoritative:
+            if certificate.authoritative and certificate.transport_authoritative:
                 certificates_by_module_set.setdefault(
                     certificate.module_urls, []
                 ).append(certificate)
@@ -5286,26 +5427,20 @@ def authoritative_course_module_urls(
                 if parsed_fetch_time.tzinfo is None:
                     continue
                 normalized_fetch_time = parsed_fetch_time.astimezone(timezone.utc)
+                if (
+                    latest_fetch_evidence_after is not None
+                    and normalized_fetch_time
+                    <= latest_fetch_evidence_after.astimezone(timezone.utc)
+                ):
+                    continue
                 fetch_evidence.append((role, normalized_fetch_time))
-            newest_fetch_time = max(
-                (fetched_at for _, fetched_at in fetch_evidence),
-                default=None,
-            )
             has_temporally_independent_pair = any(
                 first_role != second_role
                 and abs((first_time - second_time).total_seconds()) >= 60
                 for index, (first_role, first_time) in enumerate(fetch_evidence)
                 for second_role, second_time in fetch_evidence[index + 1 :]
             )
-            if (
-                has_temporally_independent_pair
-                and newest_fetch_time is not None
-                and (
-                    latest_fetch_evidence_after is None
-                    or newest_fetch_time
-                    > latest_fetch_evidence_after.astimezone(timezone.utc)
-                )
-            ):
+            if has_temporally_independent_pair:
                 independently_confirmed_sets.append(module_set)
         if len(independently_confirmed_sets) == 1:
             authoritative[course_id] = set(independently_confirmed_sets[0])
@@ -5366,6 +5501,26 @@ def destructive_state_delta_error(
     next_urls = tracked_state_module_urls(next_state)
     previous_semantic_values = tracked_state_module_semantic_values(previous_state)
     next_semantic_values = tracked_state_module_semantic_values(next_state)
+    if tracked_state_representation_regressed(previous_state, next_state):
+        return (
+            "KLMS 일정과 과제의 내부 기록 일부가 갑자기 사라져 파싱 오류 가능성이 있어 기존 동기화 상태를 유지했어. "
+            "KLMS 화면을 확인한 뒤 다시 동기화해 줘."
+        )
+    previous_logical_identities = tracked_state_logical_identities_by_url(
+        previous_state
+    )
+    next_logical_identities = tracked_state_logical_identities_by_url(next_state)
+    partially_removed_logical_urls = {
+        url
+        for url, previous_identities in previous_logical_identities.items()
+        if url in next_logical_identities
+        and len(next_logical_identities[url]) < len(previous_identities)
+    }
+    if partially_removed_logical_urls:
+        return (
+            "같은 KLMS 항목에 연결된 일정과 과제 일부가 갑자기 사라져 파싱 오류 가능성이 있어 기존 동기화 상태를 유지했어. "
+            "KLMS 화면을 확인한 뒤 다시 동기화해 줘."
+        )
     regressed_urls = {
         url
         for url in previous_urls & next_urls

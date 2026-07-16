@@ -35,7 +35,11 @@ def project_root() -> Path:
 
 
 def page_has_usable_html(page: dict[str, Any]) -> bool:
-    return bool(str(page.get("html") or "").strip())
+    try:
+        status = int(page.get("status"))
+    except (TypeError, ValueError):
+        return False
+    return 200 <= status < 300 and bool(str(page.get("html") or "").strip())
 
 
 def load_previous_pages(
@@ -908,8 +912,7 @@ def fetch_pages_with_safari(
                 next_remaining_urls.append(url)
                 continue
 
-            html = str(page.get("html") or "").strip()
-            if not html:
+            if not page_has_usable_html(page):
                 next_remaining_urls.append(url)
                 continue
 

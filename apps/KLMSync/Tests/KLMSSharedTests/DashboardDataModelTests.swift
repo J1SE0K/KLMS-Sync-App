@@ -1492,13 +1492,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardFilterBar.contains("Label(\"초기화\", systemImage: \"arrow.counterclockwise\")"))
         XCTAssertTrue(dashboardFilterBar.contains(".buttonStyle(KLMSMacCompactResetButtonStyle())"))
         XCTAssertTrue(detail.contains("private struct KLMSMacCompactResetButtonStyle: ButtonStyle"))
-        XCTAssertTrue(detail.contains(".frame(minHeight: 28)"))
+        XCTAssertTrue(detail.contains(".frame(minHeight: 44)"))
         XCTAssertFalse(dashboardFilterBar.contains("Label(\"필터 초기화\", systemImage: \"arrow.counterclockwise\")"))
         XCTAssertTrue(dashboardControlBox.contains(".stroke(Color.klmsMacBorder"))
         XCTAssertTrue(dashboardControlBox.contains(".background(Color.klmsMacSubtleCardBackground"))
         XCTAssertTrue(dashboardRangeField.contains(".stroke(Color.klmsMacBorder"))
         XCTAssertTrue(dashboardRangeField.contains("HStack(alignment: .center"))
-        XCTAssertTrue(dashboardRangeField.contains(".frame(minWidth: minWidth, minHeight: 34, maxHeight: 40, alignment: .leading)"))
+        XCTAssertTrue(dashboardRangeField.contains(".frame(minWidth: minWidth, minHeight: 44, alignment: .leading)"))
         XCTAssertFalse(dashboardRangeField.contains("VStack(alignment: .leading, spacing: 5)"))
         XCTAssertTrue(detail.contains("private func noticeMatchesDashboardBaseFilters("))
         XCTAssertTrue(noticeListView.contains("@State private var presentation: NoticeDashboardPresentation"))
@@ -1672,6 +1672,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(app.contains("button.title = state.menuBarTitle"))
         XCTAssertTrue(app.contains("button.imagePosition = state.menuBarTitle.isEmpty ? .imageOnly : .imageLeading"))
         XCTAssertTrue(app.contains("private struct KLMSAuthDigitsOverlayView"))
+        XCTAssertTrue(app.contains(".accessibilityElement(children: .contain)"))
+        XCTAssertTrue(app.contains(".frame(minWidth: 44, minHeight: 44)"))
         XCTAssertTrue(app.contains("private var authDigitsOverlayWindow: NSPanel?"))
         XCTAssertTrue(app.contains("updateAuthDigitsOverlay(for: state)"))
         XCTAssertTrue(app.contains("styleMask: [.borderless, .nonactivatingPanel]"))
@@ -1698,7 +1700,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains("MacDesignMetricKind"))
         XCTAssertFalse(view.contains("private struct SectionPickerView"))
         XCTAssertTrue(rootActionButtonStyle.contains(".frame(minWidth: 40, minHeight: 40)"))
-        XCTAssertTrue(actionButtonStyle.contains(".frame(minWidth: 40, minHeight: 40)"))
+        XCTAssertTrue(actionButtonStyle.contains(".frame(minWidth: 44, minHeight: 44)"))
         XCTAssertTrue(iconButtonStyle.contains(".frame(width: 44, height: 44)"))
         XCTAssertTrue(stateItemRowView.contains(".contentShape(Rectangle())"))
         XCTAssertTrue(noticeRowView.contains(".contentShape(Rectangle())"))
@@ -2064,7 +2066,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains(".stroke(border, lineWidth: isEnabled ? 1.15 : 1)"))
         XCTAssertFalse(actionButtonStyle.contains(".shadow("))
         XCTAssertTrue(actionButtonStyle.contains(".scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)"))
-        XCTAssertTrue(iconButtonStyle.contains(".shadow(color: isEnabled ? Color.klmsMacCommandButtonBorder.opacity(0.12) : .clear"))
+        XCTAssertFalse(iconButtonStyle.contains(".shadow("))
+        XCTAssertTrue(detailPressFeedbackStyle.contains(".frame(minHeight: 44)"))
         XCTAssertFalse(actionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
         XCTAssertFalse(actionButtonStyle.contains("background(isPressed:"))
         XCTAssertFalse(actionButtonStyle.contains("border(isPressed:"))
@@ -2117,7 +2120,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBorder.opacity(0.46)"))
         XCTAssertTrue(macSettingsButtonStyle.contains("Color.klmsMacDangerBorder.opacity(isEnabled ? (isPressed ? 0.78 : 0.56) : 0.20)"))
         XCTAssertTrue(macSettingsButtonStyle.contains(".stroke(border(isPressed: configuration.isPressed), lineWidth: isEnabled ? 1.15 : 1)"))
-        XCTAssertTrue(macSettingsButtonStyle.contains(".shadow(color: isEnabled ? activeShadowColor : .clear"))
+        XCTAssertFalse(macSettingsButtonStyle.contains(".shadow("))
+        XCTAssertTrue(macSettingsButtonStyle.contains(".frame(minHeight: 44)"))
         XCTAssertTrue(macSettingsButtonStyle.contains(".scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)"))
         XCTAssertTrue(mac.contains("Image(systemName: systemImage)"))
         XCTAssertTrue(mac.contains(".font(.headline.weight(.black))"))
@@ -2867,6 +2871,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionWorkstationMetrics.contains("static let listColumnMaxWidth: CGFloat = 700"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
         XCTAssertTrue(compactRoot.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
+        XCTAssertTrue(compactRoot.contains(".id(\"compact-tab-\\(layoutMode.rawValue)\")"))
         XCTAssertFalse(compactRoot.contains("CompanionCompactTabBar(selectedSection: $selectedSection)\n                .padding(.horizontal, 16)\n                .padding(.top, 7)\n                .padding(.bottom, 10)"))
         XCTAssertTrue(compactRoot.contains("CompanionStableSectionPane(section: currentSection, model: model, openSection: select)"))
         XCTAssertFalse(compactRoot.contains("CompanionDeferredSectionContent(section: selectedSection, model: model)"))
@@ -3464,6 +3469,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(serverRelayConnectionPanel.contains("@ObservedObject var model"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("@Binding var serverURL: String"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("@Binding var serverToken: String"))
+        XCTAssertTrue(serverRelayConnectionPanel.contains("var hasUnsavedChanges: Bool"))
+        XCTAssertTrue(serverRelayConnectionPanel.contains("var saveConnectionInfo: () async -> Bool"))
+        XCTAssertTrue(serverRelayConnectionPanel.contains("var pasteConnectionInfo: () async -> Bool"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("var checkConnection: () async -> Void"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("var refreshSummary: () async -> Void"))
         XCTAssertTrue(serverRelayConnectionPanel.contains("RemotePrivacyNote()"))
@@ -3472,6 +3480,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settingsScreen.contains("serverToken: serverTokenBinding"))
         XCTAssertTrue(settingsScreen.contains("private var serverURLBinding: Binding<String>"))
         XCTAssertTrue(settingsScreen.contains("private var serverTokenBinding: Binding<String>"))
+        XCTAssertTrue(settingsScreen.contains("@State private var serverURLDraft"))
+        XCTAssertTrue(settingsScreen.contains("@State private var serverTokenDraft"))
+        XCTAssertTrue(settingsScreen.contains("await model.applyServerRelayConnection("))
+        XCTAssertTrue(settingsScreen.contains("get: { serverURLDraft }"))
+        XCTAssertTrue(settingsScreen.contains("get: { serverTokenDraft }"))
+        XCTAssertFalse(settingsScreen.contains("set: { model.serverURL = $0 }"))
+        XCTAssertFalse(settingsScreen.contains("set: { model.serverToken = $0 }"))
         XCTAssertTrue(settingsScreen.contains("await model.checkServerRelayConnection()"))
         XCTAssertTrue(settingsScreen.contains("await model.createCommand(.report)"))
         XCTAssertTrue(remoteDiagnosticPanel.contains("var verifySummary: ServerRelayVerifySummary?"))
@@ -3534,7 +3549,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(relayConnectionPanel.contains("withAnimation(.easeInOut(duration: 0.08))"))
         XCTAssertFalse(relayConnectionPanel.contains(".transition(.opacity)"))
         XCTAssertTrue(relayConnectionPanel.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))"))
-        XCTAssertTrue(relayConnectionPanel.contains(".accessibilityLabel(\"서버 릴레이 \\(isConfigured ? \"저장됨\" : \"미설정\") \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(relayConnectionPanel.contains(".accessibilityLabel(\"서버 릴레이 \\(hasUnsavedChanges ? \"저장 필요\" : isConfigured ? \"저장됨\" : \"미설정\") \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(relayConnectionPanel.contains("CompanionSettingsSubsectionCard("))
         XCTAssertTrue(relayConnectionPanel.contains("title: \"서버 연결 정보\""))
         XCTAssertTrue(relayConnectionPanel.contains("title: \"연결 확인\""))
@@ -5188,9 +5203,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(doctorPanelView.contains("DiagnosticChecksDisclosure("))
         XCTAssertTrue(doctorPanelView.contains("title: \"나머지 진단 항목 \\(checkSummary.remainingIssues.count)개\""))
         XCTAssertFalse(doctorPanelView.contains("DisclosureGroup(isExpanded: $isRemainingIssuesExpanded)"))
-        XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(\"\\(title) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityLabel(title)"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityValue(isExpanded ? \"펼쳐짐\" : \"접힘\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
-        XCTAssertTrue(diagnosticChecksDisclosure.contains(".frame(maxWidth: .infinity, minHeight: compact ? 36 : 44, alignment: .leading)"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".contentShape(RoundedRectangle(cornerRadius: 7))"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains("Color.klmsMacSubtleCardBackground.opacity(0.34)"))
         XCTAssertFalse(diagnosticChecksDisclosure.contains(".stroke(Color.klmsMacBorder.opacity(0.54)"))
@@ -7645,6 +7661,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS server relay paste"
         )
+        let applyConnection = try sourceBody(
+            after: "func applyServerRelayConnection(serverURL rawURL: String, serverToken rawToken: String) async -> Bool",
+            in: ios,
+            description: "iOS atomic server relay connection apply"
+        )
         let refreshMethod = try sourceBody(
             after: "private func refreshAfterServerRelayConnectionChange()",
             in: ios,
@@ -7657,14 +7678,19 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let loadingCard = try sourceStructBody(named: "CompanionDashboardDataLoadingCard", in: ios)
 
-        XCTAssertTrue(pasteMethod.contains("refreshAfterServerRelayConnectionChange()"))
+        XCTAssertTrue(applyConnection.contains("refreshAfterServerRelayConnectionChange()"))
         XCTAssertTrue(pasteMethod.contains("let nextServerURL = connectionInfo.baseURL.absoluteString"))
         XCTAssertFalse(pasteMethod.contains("clearLoadedServerSyncData()"))
-        XCTAssertTrue(ios.contains("if oldValue != serverURL"))
-        XCTAssertTrue(ios.contains("if oldValue != serverToken"))
-        XCTAssertGreaterThanOrEqual(ios.components(separatedBy: "resetRemoteSessionForConnectionChange()").count - 1, 2)
-        XCTAssertTrue(pasteMethod.contains("serverURL = nextServerURL"))
-        XCTAssertTrue(pasteMethod.contains("serverToken = nextServerToken"))
+        XCTAssertFalse(ios.contains("if oldValue != serverURL"))
+        XCTAssertFalse(ios.contains("if oldValue != serverToken"))
+        XCTAssertTrue(ios.contains("@Published private(set) var serverURL: String"))
+        XCTAssertTrue(ios.contains("@Published private(set) var serverToken: String"))
+        XCTAssertTrue(pasteMethod.contains("guard await applyServerRelayConnection("))
+        XCTAssertFalse(pasteMethod.contains("serverURL = nextServerURL"))
+        XCTAssertFalse(pasteMethod.contains("serverToken = nextServerToken"))
+        let persistToken = try XCTUnwrap(applyConnection.range(of: "await persistConnectionToken(nextServerToken)"))
+        let commitConnection = try XCTUnwrap(applyConnection.range(of: "commitServerRelayConnection("))
+        XCTAssertLessThan(persistToken.lowerBound, commitConnection.lowerBound)
         XCTAssertFalse(pasteMethod.contains("이제 서버 연결 확인을 눌러 주세요."))
         XCTAssertTrue(refreshMethod.contains("configureServerRelayEventStream()"))
         XCTAssertTrue(refreshMethod.contains("await self?.refreshRecent(includeSyncData: true, showsActivity: true)"))
@@ -7785,8 +7811,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(clearLoadedServerSyncData.contains("cachedSyncDataPersistTask?.cancel()"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettings = []"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettingsSignature = nil"))
-        XCTAssertTrue(clearConnection.contains("serverURL = \"\""))
-        XCTAssertTrue(clearConnection.contains("serverToken = \"\""))
+        XCTAssertTrue(clearConnection.contains("await persistConnectionToken(\"\")"))
+        XCTAssertTrue(clearConnection.contains("commitServerRelayConnection(serverURL: \"\", serverToken: \"\")"))
         XCTAssertTrue(resetRemoteSession.contains("clearLoadedServerSyncData()"))
         XCTAssertTrue(resetRemoteSession.contains("recentCommands = []"))
         XCTAssertTrue(resetRemoteSession.contains("connectionCheckSequence &+= 1"))
@@ -7795,7 +7821,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(resetRemoteSession.contains("sharedSettingMutationVersionsByKey = [:]"))
         XCTAssertTrue(resetRemoteSession.contains("pendingSharedSettingsByKey = [:]"))
         XCTAssertTrue(resetRemoteSession.contains("pendingSharedSettingKeys = []"))
-        XCTAssertTrue(clearConnection.contains("UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)"))
+        XCTAssertFalse(resetRemoteSession.contains("mailDashboardItems = []"))
+        XCTAssertFalse(resetRemoteSession.contains("removeObject(forKey: Self.mailDashboardItemsKey)"))
     }
 
     func testIOSRefreshesServerSummaryWhenAppBecomesActive() throws {
@@ -7894,7 +7921,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(expansion.contains("renderTask?.cancel()"))
     }
 
-    func testIOSServerTokenPersistenceDoesNotBlockTyping() throws {
+    func testIOSServerTokenPersistenceDoesNotBlockTypingAndAppliesAtomically() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -7906,32 +7933,32 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "CompanionModel"
         )
-        let schedulePersist = try sourceBody(
-            after: "private func schedulePersistServerToken(_ token: String)",
-            in: ios,
-            description: "iOS server token persistence debounce"
+        let settingsScreen = try sourceStructBody(named: "CompanionSettingsScreen", in: ios)
+        let applyConnection = try sourceBody(
+            after: "func applyServerRelayConnection(serverURL rawURL: String, serverToken rawToken: String) async -> Bool",
+            in: companionModel,
+            description: "iOS atomic server connection apply"
         )
-        let clearPersisted = try sourceBody(
-            after: "private func clearPersistedServerToken()",
-            in: ios,
-            description: "iOS server token immediate deletion"
+        let persistConnectionToken = try sourceBody(
+            after: "private func persistConnectionToken(_ token: String) async -> Bool",
+            in: companionModel,
+            description: "iOS server token persistence"
         )
         let credentialPersistence = try String(
             contentsOf: packageRoot.appendingPathComponent("Sources/KLMSShared/CredentialPersistence.swift"),
             encoding: .utf8
         )
 
-        XCTAssertTrue(companionModel.contains("schedulePersistServerToken(serverToken)"))
-        XCTAssertTrue(companionModel.contains("if oldValue != serverToken"))
-        XCTAssertTrue(companionModel.contains("resetRemoteSessionForConnectionChange()"))
+        XCTAssertTrue(settingsScreen.contains("@State private var serverTokenDraft = \"\""))
+        XCTAssertTrue(settingsScreen.contains("set: { serverTokenDraft = $0 }"))
+        XCTAssertTrue(settingsScreen.contains("await model.applyServerRelayConnection("))
         XCTAssertFalse(companionModel.contains("didSet { Self.persistServerToken(serverToken) }"))
-        XCTAssertTrue(companionModel.contains("private var serverTokenPersistTask: Task<Void, Never>?"))
-        XCTAssertTrue(schedulePersist.contains("try? await Task.sleep(nanoseconds: 350_000_000)"))
-        XCTAssertTrue(schedulePersist.contains("await persistenceCoordinator.persist(token, generation: persistenceGeneration)"))
-        XCTAssertTrue(clearPersisted.contains("persistenceCoordinator.begin("))
-        XCTAssertTrue(clearPersisted.contains("await persistenceCoordinator.persist(\"\", generation: persistenceGeneration)"))
-        XCTAssertTrue(clearPersisted.contains("Self.persistServerToken(envelope)"))
-        XCTAssertTrue(companionModel.contains("clearPersistedServerToken()"))
+        XCTAssertFalse(companionModel.contains("serverTokenPersistTask"))
+        XCTAssertTrue(persistConnectionToken.contains("await persistenceCoordinator.persist("))
+        XCTAssertTrue(persistConnectionToken.contains("Self.persistServerToken(envelope)"))
+        let persistenceIndex = try XCTUnwrap(applyConnection.range(of: "await persistConnectionToken(nextServerToken)")?.lowerBound)
+        let commitIndex = try XCTUnwrap(applyConnection.range(of: "commitServerRelayConnection(serverURL: nextServerURL, serverToken: nextServerToken)")?.lowerBound)
+        XCTAssertLessThan(persistenceIndex, commitIndex)
         XCTAssertTrue(credentialPersistence.contains("public final class CredentialPersistenceCoordinator: @unchecked Sendable"))
         XCTAssertTrue(credentialPersistence.contains("operationQueue = DispatchQueue("))
         XCTAssertTrue(credentialPersistence.contains("operationQueue.async"))
@@ -8006,7 +8033,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertFalse(initializer.contains("Self.persistServerToken(storedServerToken)"))
         XCTAssertTrue(loadMigratingToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
-        XCTAssertTrue(loadMigratingToken.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
+        XCTAssertTrue(loadMigratingToken.contains("UserDefaults.standard.string("))
+        XCTAssertTrue(loadMigratingToken.contains("forKey: klmsServerRelayTokenDefaultsKey"))
         XCTAssertTrue(loadMigratingToken.contains("persistServerToken(VersionedCredentialEnvelope("))
         XCTAssertGreaterThanOrEqual(
             loadMigratingToken.components(separatedBy: "UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)").count - 1,
@@ -8016,7 +8044,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertTrue(persistToken.contains("if saved"))
         XCTAssertTrue(persistToken.contains("storeServerTokenPersistenceGeneration(envelope.generation)"))
-        XCTAssertFalse(persistToken.contains("LocalRemoteTokenStore.delete"))
+        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.delete(account: \"server-relay-ios\")"))
+        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\") == nil"))
         XCTAssertTrue(persistToken.contains("return saved"))
         XCTAssertTrue(loadMigratingToken.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
         XCTAssertTrue(loadMigratingToken.contains("minimumGeneration: minimumGeneration"))
@@ -8055,6 +8084,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
         XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: defaultsKey)"))
         XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.delete(account: account)"))
+        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.load(account: account) == nil"))
     }
 
     func testLogClearPreservesActiveCancellationAndFileRequests() throws {

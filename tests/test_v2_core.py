@@ -1405,6 +1405,23 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(certificate.module_link_count, 0)
         self.assertEqual(certificate.parsed_activity_count, 0)
 
+    def test_course_page_validation_rejects_semantic_html_from_failed_transport(self) -> None:
+        requested_url = "https://klms.kaist.ac.kr/course/view.php?id=43"
+        page = {
+            "requestedUrl": requested_url,
+            "url": requested_url,
+            "status": 500,
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+            </main>
+            """,
+        }
+
+        error = klms_sync.course_pages_semantic_error([page])
+
+        self.assertIn("HTTP 500", error)
+
     def test_course_semantic_certificate_rejects_ambiguous_empty_shell(self) -> None:
         page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
@@ -1633,6 +1650,8 @@ class V2CoreTests(unittest.TestCase):
             )
             return {
                 "requestedUrl": requested_url,
+                "url": requested_url,
+                "status": 200,
                 "_klms_sync_fetched_at": fetched_at,
                 "html": f'<main data-region="course-content"><ul class="topics">{activities}</ul></main>',
             }
@@ -1762,6 +1781,72 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
 
+    def test_authoritative_modules_rejects_non_successful_http_response(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        html = f"""
+        <main data-region="course-content"><ul class="topics">
+          <li class="activity assign"><div class="activityinstance">
+            <a href="{module_url}">과제</a>
+          </div></li>
+        </ul></main>
+        """
+        pages = [
+            {
+                "requestedUrl": requested_url,
+                "url": requested_url,
+                "status": status,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": html,
+            }
+            for requested_url, status, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    200,
+                    "2026-07-16T00:00:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    500,
+                    "2026-07-16T00:02:00Z",
+                ),
+            )
+        ]
+
+        self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
+
+    def test_authoritative_modules_rejects_redirect_to_different_course(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        html = f"""
+        <main data-region="course-content"><ul class="topics">
+          <li class="activity assign"><div class="activityinstance">
+            <a href="{module_url}">과제</a>
+          </div></li>
+        </ul></main>
+        """
+        pages = [
+            {
+                "requestedUrl": requested_url,
+                "url": final_url,
+                "status": 200,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": html,
+            }
+            for requested_url, final_url, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "2026-07-16T00:00:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    "https://klms.kaist.ac.kr/course/view.php?id=99&section=0",
+                    "2026-07-16T00:02:00Z",
+                ),
+            )
+        ]
+
+        self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
+
     def test_destructive_state_delta_rejects_evidence_from_before_previous_state(self) -> None:
         module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
         previous_state = {
@@ -1783,6 +1868,8 @@ class V2CoreTests(unittest.TestCase):
         course_pages = [
             {
                 "requestedUrl": requested_url,
+                "url": requested_url,
+                "status": 200,
                 "_klms_sync_fetched_at": fetched_at,
                 "html": empty_html,
             }
@@ -1827,17 +1914,19 @@ class V2CoreTests(unittest.TestCase):
         course_pages = [
             {
                 "requestedUrl": requested_url,
+                "url": requested_url,
+                "status": 200,
                 "_klms_sync_fetched_at": fetched_at,
                 "html": empty_html,
             }
             for requested_url, fetched_at in (
                 (
                     "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
-                    "2026-07-16T00:00:00Z",
+                    "2026-07-16T00:02:00Z",
                 ),
                 (
                     "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
-                    "2026-07-16T00:02:00Z",
+                    "2026-07-16T00:04:00Z",
                 ),
             )
         ]
@@ -2002,6 +2091,64 @@ class V2CoreTests(unittest.TestCase):
                 error = klms_sync.destructive_state_delta_error(previous_state, next_state)
 
                 self.assertIn("내용 일부가 갑자기 사라져", error)
+
+    def test_destructive_state_delta_rejects_one_of_two_same_url_records(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": url,
+                        "course_id": "43",
+                        "title": title,
+                        "due": due,
+                    }
+                    for title, due in (
+                        ("중간 과제", "2099-04-01 23:59"),
+                        ("기말 과제", "2099-06-01 23:59"),
+                    )
+                ]
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [previous_state["content"]["assignments"][0]]
+            },
+        }
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("같은 KLMS 항목", error)
+
+    def test_destructive_state_delta_rejects_active_record_representation_loss(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        item = {
+            "url": url,
+            "course_id": "43",
+            "title": "Homework 1",
+            "due": "2099-04-01 23:59",
+        }
+        active_record = {**item, "record_status": "active"}
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [item],
+                "assignment_records": [active_record],
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [item],
+                "assignment_records": [],
+            },
+        }
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("내부 기록 일부", error)
 
     def test_destructive_state_delta_accepts_nonempty_semantic_updates(self) -> None:
         url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
@@ -2192,6 +2339,8 @@ class V2CoreTests(unittest.TestCase):
         course_pages = [
             {
                 "requestedUrl": requested_url,
+                "url": requested_url,
+                "status": 200,
                 "_klms_sync_fetched_at": fetched_at,
                 "title": "강좌: 알고리즘",
                 "html": """
@@ -2245,6 +2394,8 @@ class V2CoreTests(unittest.TestCase):
         course_pages = [
             {
                 "requestedUrl": requested_url,
+                "url": requested_url,
+                "status": 200,
                 "_klms_sync_fetched_at": fetched_at,
                 "html": f"""
                 <main data-region="course-content">

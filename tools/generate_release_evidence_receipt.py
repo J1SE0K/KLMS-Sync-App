@@ -350,12 +350,14 @@ def verify_app(repo: Path, app: Path, candidate: str) -> dict[str, Any]:
     payload = app / "Contents" / "Resources" / "EnginePayload"
     manifest_path = payload / "EnginePayloadManifest.json"
     executable = app / "Contents" / "MacOS" / "KLMSMac"
+    helper_executable = app / "Contents" / "Helpers" / "KLMSNoticeNativeNote.app" / "Contents" / "MacOS" / "KLMSNoticeNativeNote"
     provenance_path = app / "Contents" / "Resources" / "KLMSAppBuildProvenance.json"
     if (
         app.is_symlink()
         or not app.is_dir()
         or not manifest_path.is_file()
         or not executable.is_file()
+        or not helper_executable.is_file()
         or not provenance_path.is_file()
     ):
         fail("invalid-app-bundle")
@@ -372,6 +374,7 @@ def verify_app(repo: Path, app: Path, candidate: str) -> dict[str, Any]:
             "--expected-revision",
             candidate,
             "--require-clean",
+            "--json",
         ],
         check=False,
         capture_output=True,
@@ -410,6 +413,7 @@ def verify_app(repo: Path, app: Path, candidate: str) -> dict[str, Any]:
             "--expected-tree",
             expected_tree,
             "--require-clean",
+            "--json",
         ],
         check=False,
         capture_output=True,
@@ -417,11 +421,61 @@ def verify_app(repo: Path, app: Path, candidate: str) -> dict[str, Any]:
     )
     if provenance_result.returncode != 0:
         fail("app-executable-provenance-mismatch")
+    try:
+        artifact = json.loads(provenance_result.stdout)
+    except (UnicodeError, json.JSONDecodeError):
+        fail("invalid-app-artifact-description")
+    executables = artifact.get("executables") if isinstance(artifact, dict) else None
+    expected_executable_paths = {
+        "Contents/MacOS/KLMSMac",
+        "Contents/Helpers/KLMSNoticeNativeNote.app/Contents/MacOS/KLMSNoticeNativeNote",
+    }
+    if (
+        not isinstance(artifact, dict)
+        or artifact.get("schemaVersion") != 1
+        or artifact.get("sourceRevision") != candidate
+        or artifact.get("sourceTree") != expected_tree
+        or artifact.get("dirty") is not False
+        or not re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("artifactSHA256") or ""))
+        or artifact.get("buildProvenanceSHA256") != sha256(provenance_path)
+        or not isinstance(executables, list)
+        or len(executables) != 2
+        or {entry.get("relativePath") for entry in executables if isinstance(entry, dict)} != expected_executable_paths
+        or not all(
+            isinstance(entry, dict)
+            and re.fullmatch(r"[0-9a-f]{64}", str(entry.get("sha256") or ""))
+            and re.fullmatch(r"[0-9a-f]{40,64}", str(entry.get("cdHash") or ""))
+            and (entry.get("teamIdentifier") is None or isinstance(entry.get("teamIdentifier"), str))
+            and isinstance(entry.get("signature"), str)
+            for entry in executables
+        )
+    ):
+        fail("invalid-app-artifact-description")
+    signing_teams = {entry["teamIdentifier"] for entry in executables}
+    if len(signing_teams) != 1:
+        fail("app-executable-signing-team-mismatch")
+    if None in signing_teams:
+        fail("app-executable-signing-team-unavailable")
+    executable_hashes = {
+        entry["relativePath"]: entry["sha256"] for entry in executables
+    }
+    if (
+        executable_hashes["Contents/MacOS/KLMSMac"] != sha256(executable)
+        or executable_hashes[
+            "Contents/Helpers/KLMSNoticeNativeNote.app/Contents/MacOS/KLMSNoticeNativeNote"
+        ]
+        != sha256(helper_executable)
+    ):
+        fail("app-executable-digest-mismatch")
     return {
         "bundleName": app.name,
         "payloadManifestSHA256": sha256(manifest_path),
         "buildProvenanceSHA256": sha256(provenance_path),
         "executableSHA256": sha256(executable),
+        "helperExecutableSHA256": sha256(helper_executable),
+        "appArtifactSHA256": artifact["artifactSHA256"],
+        "executables": executables,
+        "signingTeamIdentifier": next(iter(signing_teams)),
         "sourceRevision": candidate,
         "sourceTree": expected_tree,
         "dirty": False,

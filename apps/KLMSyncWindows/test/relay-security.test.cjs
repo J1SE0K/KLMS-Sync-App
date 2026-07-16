@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const {
+  configWithoutLegacyPlaintextToken,
   isLoopbackHost,
   isPrivateHost,
   normalizeExternalURL,
@@ -9,6 +10,27 @@ const {
   normalizeRelayURL,
   validateRelayURL
 } = require("../src/relay-security.cjs");
+
+test("legacy plaintext relay tokens are removed instead of being reused", () => {
+  const plaintext = configWithoutLegacyPlaintextToken({
+    relayURL: "https://relay.example.com",
+    token: "legacy-secret",
+    tokenEncrypted: false,
+    configRevision: 7
+  });
+  assert.equal(plaintext.changed, true);
+  assert.deepEqual(plaintext.config, {
+    relayURL: "https://relay.example.com",
+    configRevision: 7
+  });
+
+  const encrypted = configWithoutLegacyPlaintextToken({
+    token: "encrypted-value",
+    tokenEncrypted: true
+  });
+  assert.equal(encrypted.changed, false);
+  assert.equal(encrypted.config.token, "encrypted-value");
+});
 
 test("relay endpoints cannot escape the authenticated v1 namespace", () => {
   assert.equal(normalizeEndpoint("/healthz"), "/healthz");

@@ -319,6 +319,7 @@ private struct KLMSAuthDigitsOverlayView: View {
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Color.klmsMacWarningForeground)
                 .frame(width: 28, height: 28)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("KAIST 인증 번호")
                     .font(.caption.weight(.semibold))
@@ -328,6 +329,8 @@ private struct KLMSAuthDigitsOverlayView: View {
                     .monospacedDigit()
                     .foregroundStyle(Color.klmsMacPrimaryText)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("KAIST 인증 번호 \(digits)")
             Spacer(minLength: 8)
             Button {
                 NSPasteboard.general.clearContents()
@@ -338,6 +341,8 @@ private struct KLMSAuthDigitsOverlayView: View {
                     .frame(width: 34, height: 34)
             }
             .buttonStyle(.plain)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
             .foregroundStyle(Color.klmsMacWarningForeground)
             .help("인증 번호 복사")
             .accessibilityLabel("KAIST 인증 번호 복사")
@@ -350,8 +355,7 @@ private struct KLMSAuthDigitsOverlayView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.klmsMacWarningBorder.opacity(0.8), lineWidth: 1)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("KAIST 인증 번호 \(digits)")
+        .accessibilityElement(children: .contain)
     }
 }
 

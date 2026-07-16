@@ -174,9 +174,9 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
 
     func testServerTokenPersistenceSerializesStartedKeychainWrites() throws {
         let source = try iosSource()
-        let schedule = try sourceSlice(
+        let persistence = try sourceSlice(
             source,
-            from: "private func schedulePersistServerToken",
+            from: "private func persistConnectionToken",
             to: "nonisolated private static func persistServerToken"
         )
 
@@ -187,17 +187,33 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
 
         XCTAssertTrue(persistenceSource.contains("public final class CredentialPersistenceCoordinator: @unchecked Sendable"))
         XCTAssertTrue(source.contains("private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator"))
-        XCTAssertTrue(schedule.contains("await persistenceCoordinator.persist(token, generation: persistenceGeneration)"))
+        XCTAssertTrue(persistence.contains("let result = await persistenceCoordinator.persist("))
         XCTAssertTrue(persistenceSource.contains("operationQueue = DispatchQueue("))
         XCTAssertTrue(persistenceSource.contains("operationQueue.async"))
         XCTAssertFalse(source.contains("operationQueue.sync"))
         XCTAssertFalse(persistenceSource.contains("operationQueue.sync"))
         XCTAssertTrue(source.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
         XCTAssertTrue(source.contains("case let .failed(lastPersisted):"))
-        XCTAssertTrue(source.contains("serverToken = lastPersistedServerToken"))
         XCTAssertTrue(source.contains("lastPersisted.generation >= lastPersistedServerTokenGeneration"))
-        XCTAssertFalse(schedule.contains("storeServerTokenPersistenceGeneration(persistenceGeneration)"))
-        XCTAssertFalse(schedule.contains("Task.detached"))
+        XCTAssertFalse(persistence.contains("serverToken ="))
+        XCTAssertTrue(source.contains("@Published private(set) var serverToken: String"))
+        XCTAssertTrue(source.contains("!(await persistConnectionToken(nextServerToken))"))
+        XCTAssertFalse(persistence.contains("storeServerTokenPersistenceGeneration(persistenceGeneration)"))
+        XCTAssertFalse(persistence.contains("Task.detached"))
+
+        let migration = try sourceSlice(
+            source,
+            from: "nonisolated private static func loadServerRelayCredentialMigratingUserDefaults",
+            to: "nonisolated private static func loadServerTokenPersistenceGeneration"
+        )
+        let legacyRead = try XCTUnwrap(migration.range(of: "let legacyDefaultsToken ="))
+        let legacyRemoval = try XCTUnwrap(migration.range(of: "UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
+        let keychainRead = try XCTUnwrap(migration.range(of: "LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
+        XCTAssertLessThan(legacyRead.lowerBound, legacyRemoval.lowerBound)
+        XCTAssertLessThan(legacyRemoval.lowerBound, keychainRead.lowerBound)
+        XCTAssertTrue(migration.contains("token: migrated"))
+        XCTAssertTrue(migration.contains(": \"\","))
+        XCTAssertTrue(migration.contains("migrationFailed: !migrated"))
     }
 
     func testServerAssignedIDsReplaceOptimisticOverlayKeys() throws {
@@ -286,6 +302,14 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertTrue(reconciliation.contains("if overlay.missingLookupCount == 0"))
         XCTAssertTrue(source.contains("markItemActionSubmissionOutcomeUnknown(&overlay"))
         XCTAssertTrue(source.contains("isDefinitiveItemActionSubmissionFailure(error)"))
+        XCTAssertFalse(source.contains("resolutionAttemptCount < 3"))
+        XCTAssertTrue(source.contains("overlay.resolutionAttemptCount = min(overlay.resolutionAttemptCount + 1, 6)"))
+        XCTAssertTrue(source.contains("let delaySeconds = min(30,"))
+        XCTAssertTrue(source.contains("private func invalidateItemActionEndpointOwners()"))
+        XCTAssertGreaterThanOrEqual(
+            source.components(separatedBy: "invalidateItemActionEndpointOwners()").count - 1,
+            8
+        )
         XCTAssertTrue(reconciliation.contains("rollbackItemActionMutation(overlay)"))
         XCTAssertTrue(itemActionSubmission.contains("guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else"))
         XCTAssertTrue(itemActionSubmission.contains("if savedAction.status.isFailedLike"))
