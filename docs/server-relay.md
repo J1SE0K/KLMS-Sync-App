@@ -170,8 +170,10 @@ Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 
 
 모든 `/v1/*` 요청은 `Authorization: Bearer <token>` 헤더가 필요하다. 클라이언트 토큰은 요청 생성/조회만 가능하고, worker 토큰은 Mac 앱 전용으로 상태 게시와 대기 요청 처리를 수행한다.
 
+JSON 요청 본문은 스트림을 읽는 동안 1 MiB로 제한한다. 잘못된 JSON은 400, 제한을 넘긴 본문은 413으로 응답한다. 인증된 client/worker 요청과 인증 실패 요청은 서로 다른 rate-limit bucket을 사용하므로, 잘못된 토큰 트래픽이 정상 앱 요청의 quota를 소진하지 않는다. 공개 run log는 서버 저장 경계에서 fail-closed 방식으로 정리하며 credential, URL, 이메일, Unix/macOS/Windows 절대 경로가 남은 줄은 게시하지 않는다.
+
 - `GET /healthz`: process liveness 확인. 인증 없음.
-- `GET /readyz`: DB schema와 WebSocket 준비 확인. 준비되지 않으면 503. 인증 없음.
+- `GET /readyz`: DB schema와 WebSocket 준비 확인. 준비되지 않으면 503. worker 토큰 필요.
 - `GET /v1/events?role=client|worker&sinceRevision=N`: 인증된 WebSocket. 연결 직후 `hello`, 변경 시 `changed`, heartbeat에 `pong`을 보내며 각 frame은 현재 `revision`과 변경 `scopes`를 포함한다.
 - `GET /v1/status`: 클라이언트/worker. 현재 sanitized 상태와 최근 요청.
 - `POST /v1/status`: worker 전용. Mac 앱이 sanitized 상태를 게시.

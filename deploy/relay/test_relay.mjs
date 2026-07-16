@@ -98,6 +98,25 @@ try {
     body: { kind: "notACommand", id: crypto.randomUUID(), status: "running" },
   });
   assert.equal(invalid.status, 400);
+  const malformedJSON = await fetch(`${baseURL}/v1/commands`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${clientToken}`,
+      "Content-Type": "application/json",
+    },
+    body: "{",
+  });
+  assert.equal(malformedJSON.status, 400);
+  assert.equal((await malformedJSON.json()).error, "request body must be valid JSON");
+  const oversizedJSON = await fetch(`${baseURL}/v1/commands`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${clientToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ padding: "x".repeat((1024 * 1024) + 1) }),
+  });
+  assert.equal(oversizedJSON.status, 413);
   const invalidOption = await request("/v1/commands", {
     method: "POST",
     body: { kind: "fullSync", options: { updateNoticeNotes: "false" } },
@@ -185,7 +204,7 @@ try {
           exitCode: 7,
           wasCancelled: false,
           needsAttention: false,
-          outputTail: "safe failure summary",
+          outputTail: "Authorization: Bearer synthetic-bearer-secret\nworker_token=synthetic-token-secret\n/private/tmp/relay secret/file\n/Volumes/External/User Data/file.pdf\n/home/student/private.txt\nC:\\Users\\student\\AppData\\Local\\secret.txt\nhttps://relay.example/v1/status?token=query-secret\nsafe failure summary",
         }],
       },
     });
@@ -197,6 +216,12 @@ try {
     assert.equal(syncResponse.runLogs[0].commandTitle, "전체 동기화");
     assert.equal(syncResponse.runLogs[0].status, "실패 7");
     assert.equal(syncResponse.runLogs[0].needsAttention, true);
+    assert.match(syncResponse.runLogs[0].outputTail, /\[credential\]/);
+    assert.match(syncResponse.runLogs[0].outputTail, /\[local-path\]/);
+    assert.match(syncResponse.runLogs[0].outputTail, /\[URL\]/);
+    assert.doesNotMatch(syncResponse.runLogs[0].outputTail, /synthetic-bearer-secret|synthetic-token-secret|query-secret/);
+    assert.doesNotMatch(syncResponse.runLogs[0].outputTail, /\/private\/tmp|\/Volumes|\/home|C:\\Users/i);
+    assert.match(syncResponse.runLogs[0].outputTail, /safe failure summary/);
     realtime.close();
   }
 
@@ -948,7 +973,11 @@ try {
       "X-KLMS-Filename": encodeURIComponent("restart.txt"),
     },
   });
-  assert.equal(recoveredUpload.status, 200, await recoveredUpload.text());
+  assert.equal(
+    recoveredUpload.status,
+    200,
+    `${await recoveredUpload.text()}\n${restartedStderr}`
+  );
 
   {
     const publicPort = await availablePort();
@@ -1059,7 +1088,7 @@ try {
         KLMS_RELAY_FILE_DIR: path.join(root, "rate-limit-files"),
         KLMS_RELAY_CLIENT_TOKEN: clientToken,
         KLMS_RELAY_WORKER_TOKEN: workerToken,
-        KLMS_RELAY_REQUESTS_PER_MINUTE: "2",
+        KLMS_RELAY_REQUESTS_PER_MINUTE: "3",
         NODE_ENV: "test",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -1070,6 +1099,47 @@ try {
     try {
       await waitForHTTPServer(rateLimitChild, rateLimitBaseURL, () => rateLimitStderr);
       const headers = { Authorization: `Bearer ${clientToken}` };
+      const invalidHeaders = { Authorization: "Bearer invalid-token-with-enough-entropy" };
+      assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 401);
+      assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 401);
+      assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 401);
+      assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 429);
+
+      const fileRequestResponse = await fetch(`${rateLimitBaseURL}/v1/file-access`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          itemID: "rate-limit-file",
+          itemKind: "file",
+          itemTitle: "rate-limit.txt",
+        }),
+      });
+      assert.equal(fileRequestResponse.status, 201);
+      const fileRequest = await fileRequestResponse.json();
+      const uploadResponse = await fetch(`${rateLimitBaseURL}/v1/file-access/${fileRequest.id}/upload`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${workerToken}`,
+          "Content-Type": "text/plain",
+          "Content-Length": "10",
+          "X-KLMS-Filename": "rate-limit.txt",
+        },
+        body: "rate-limit",
+      });
+      assert.equal(uploadResponse.status, 200);
+      const uploaded = await uploadResponse.json();
+      const fakeTicketURL = new URL(uploaded.downloadURL);
+      fakeTicketURL.searchParams.set("ticket", "a".repeat(64));
+      assert.equal((await fetch(fakeTicketURL)).status, 403);
+      assert.equal((await fetch(fakeTicketURL)).status, 403);
+      assert.equal((await fetch(fakeTicketURL)).status, 403);
+      assert.equal((await fetch(fakeTicketURL)).status, 429);
+      assert.equal(
+        (await fetch(uploaded.downloadURL)).status,
+        200,
+        "well-formed fake tickets must not consume the real link rate-limit bucket",
+      );
+
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers })).status, 200);
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers })).status, 200);
       const limited = await fetch(`${rateLimitBaseURL}/v1/status`, { headers });

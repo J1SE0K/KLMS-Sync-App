@@ -243,6 +243,10 @@ const server = http.createServer(async (request, response) => {
       sendJSON(response, 400, { error: error.message });
       return;
     }
+    if (error instanceof RelayPayloadTooLargeError) {
+      sendJSON(response, 413, { error: error.message });
+      return;
+    }
     console.error(error);
     sendJSON(response, 500, { error: "server error" });
   }
@@ -265,11 +269,12 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/readyz") {
-    if (!consumeRequestRateLimit(request, "worker-readiness")) {
+    const access = rateLimitedAuthorization(request, "worker", "worker-readiness");
+    if (!access.allowed) {
       sendRateLimitResponse(response);
       return;
     }
-    if (!authorized(request, "worker")) {
+    if (!access.authorized) {
       sendJSON(response, 401, { error: "unauthorized" });
       return;
     }
@@ -289,11 +294,12 @@ async function route(request, response) {
       sendJSON(response, 400, { error: "role must be client or worker" });
       return;
     }
-    if (!consumeRequestRateLimit(request, `${role}-realtime`)) {
+    const access = rateLimitedAuthorization(request, role, `${role}-realtime`);
+    if (!access.allowed) {
       sendRateLimitResponse(response);
       return;
     }
-    if (!authorized(request, role)) {
+    if (!access.authorized) {
       sendJSON(response, 401, { error: "unauthorized" });
       return;
     }
@@ -308,11 +314,11 @@ async function route(request, response) {
 
   const fileDownloadMatch = url.pathname.match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
   if (request.method === "GET" && fileDownloadMatch) {
-    if (!consumeRequestRateLimit(request, "public-download")) {
-      sendRateLimitResponse(response);
-      return;
-    }
     if (!validDownloadTicket(url.searchParams.get("ticket"))) {
+      if (!consumeRequestRateLimit("public-download", `unauthorized:${requestRemoteAddress(request)}`)) {
+        sendRateLimitResponse(response);
+        return;
+      }
       sendFileAccessDownloadPage(response, url, {
         status: 403,
         title: "권한이 없는 링크입니다",
@@ -320,7 +326,7 @@ async function route(request, response) {
       });
       return;
     }
-    await downloadFileAccess(response, url, fileDownloadMatch[1]);
+    await downloadFileAccess(request, response, url, fileDownloadMatch[1]);
     return;
   }
 
@@ -329,11 +335,12 @@ async function route(request, response) {
     sendJSON(response, 404, { error: "not found" });
     return;
   }
-  if (!consumeRequestRateLimit(request, requiredRole)) {
+  const access = rateLimitedAuthorization(request, requiredRole, requiredRole);
+  if (!access.allowed) {
     sendRateLimitResponse(response);
     return;
   }
-  if (!authorized(request, requiredRole)) {
+  if (!access.authorized) {
     sendJSON(response, 401, { error: "unauthorized" });
     return;
   }
@@ -1191,6 +1198,7 @@ function normalizeCommand(raw, fallbackStatus) {
 
 class RelayValidationError extends Error {}
 class RelayConflictError extends Error {}
+class RelayPayloadTooLargeError extends Error {}
 
 function requireObject(value, field = "request body") {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -2161,9 +2169,23 @@ function authorized(request, role) {
   return tokenMatches(actual, WORKER_TOKEN);
 }
 
-function consumeRequestRateLimit(request, scope) {
-  const address = String(request.socket?.remoteAddress || "unknown").slice(0, 128);
-  const key = `${scope}:${address}`;
+function requestRemoteAddress(request) {
+  return String(request.socket?.remoteAddress || "unknown").slice(0, 128);
+}
+
+function rateLimitedAuthorization(request, role, scope) {
+  const isAuthorized = authorized(request, role);
+  const identity = isAuthorized
+    ? `authorized:${role}`
+    : `unauthorized:${requestRemoteAddress(request)}`;
+  return {
+    authorized: isAuthorized,
+    allowed: consumeRequestRateLimit(scope, identity),
+  };
+}
+
+function consumeRequestRateLimit(scope, identity) {
+  const key = `${scope}:${identity}`;
   const now = Date.now();
   const current = requestRateWindows.get(key);
   if (!current || current.expiresAt <= now) {
@@ -2195,11 +2217,16 @@ function handleWebSocketUpgrade(request, socket, head) {
       rejectWebSocketUpgrade(socket, 400, "role must be client or worker");
       return;
     }
-    if (!consumeRequestRateLimit(request, `${role}-realtime`)) {
+    const access = rateLimitedAuthorization(
+      request,
+      role === "worker" ? "worker" : "client",
+      `${role}-realtime`
+    );
+    if (!access.allowed) {
       rejectWebSocketUpgrade(socket, 429, "request rate limit exceeded", { "Retry-After": "60" });
       return;
     }
-    if (!authorized(request, role === "worker" ? "worker" : "client")) {
+    if (!access.authorized) {
       rejectWebSocketUpgrade(socket, 401, "unauthorized");
       return;
     }
@@ -2378,19 +2405,27 @@ function tokenMatches(actual, expectedToken) {
 }
 
 async function readJSON(request) {
+  const contentLength = Number.parseInt(String(request.headers["content-length"] || "0"), 10);
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    throw new RelayPayloadTooLargeError(`request body exceeds ${MAX_BODY_BYTES} bytes`);
+  }
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
     size += chunk.length;
     if (size > MAX_BODY_BYTES) {
-      throw new Error("request body too large");
+      throw new RelayPayloadTooLargeError(`request body exceeds ${MAX_BODY_BYTES} bytes`);
     }
     chunks.push(chunk);
   }
   if (chunks.length === 0) {
     return {};
   }
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new RelayValidationError("request body must be valid JSON");
+  }
 }
 
 async function readRawBody(request, maxBytes) {
@@ -2399,7 +2434,7 @@ async function readRawBody(request, maxBytes) {
   for await (const chunk of request) {
     size += chunk.length;
     if (size > maxBytes) {
-      throw new Error("request body too large");
+      throw new RelayPayloadTooLargeError(`request body exceeds ${maxBytes} bytes`);
     }
     chunks.push(chunk);
   }
@@ -3515,11 +3550,24 @@ async function uploadFileAccess(response, request, id) {
   sendJSON(response, 200, fileAccessResponseItem(updated, request));
 }
 
-async function downloadFileAccess(response, url, id) {
+async function downloadFileAccess(request, response, url, id) {
   const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
   const wantsRawPreview = wantsPreview && url.searchParams.has("raw");
   const ticket = url.searchParams.get("ticket") || "";
   const fileRequest = getFileAccessRequest(id);
+  const ticketMatches = Boolean(
+    fileRequest?.status === "completed"
+    && fileRequest.objectKey
+    && fileRequest.downloadTicket
+    && fileRequest.downloadTicket === ticket
+  );
+  const rateLimitIdentity = ticketMatches
+    ? `ticket:${id.toLowerCase()}`
+    : `unauthorized:${requestRemoteAddress(request)}`;
+  if (!consumeRequestRateLimit("public-download", rateLimitIdentity)) {
+    sendRateLimitResponse(response);
+    return;
+  }
   if (!fileRequest || fileRequest.status !== "completed" || !fileRequest.objectKey || !fileRequest.downloadTicket) {
     sendFileAccessDownloadPage(response, url, {
       status: 404,
@@ -5193,8 +5241,12 @@ function sanitizeLogText(value) {
   text = text
     .replace(/KAIST 인증 번호:\s*\d{1,3}/g, "KAIST 인증 번호: --")
     .replace(/digits=\d{1,3}/g, "digits=--")
-    .replace(/https?:\/\/klms\.kaist\.ac\.kr\/[^\s"'<>]+/gi, "[KLMS URL]")
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]");
+    .replace(/\b(?:authorization\s*:\s*)?(?:bearer|basic|digest)\s+[^\s"'<>]+/gi, "[credential]")
+    .replace(/\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s;&]+)/gi, "[credential]")
+    .replace(/https?:\/\/[^\s"'<>]+/gi, "[URL]")
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
+    .replace(/(^|[\s=(])(?:[A-Z]:\\|\\\\)[^\r\n]*/gim, "$1[local-path]")
+    .replace(/(^|[\s=(])(?:~|\/)[^\r\n]*/gm, "$1[local-path]");
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
@@ -5207,7 +5259,10 @@ function sanitizeLogText(value) {
 }
 
 function looksPrivateLogLine(text) {
-  if (/\/Users\//i.test(text) || /\/var\/folders\//i.test(text)) {
+  if (/\b(?:bearer|basic|digest)\s+/i.test(text)
+      || /\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]/i.test(text)
+      || /(^|[\s=(])(?:~\/|\/|[A-Z]:\\|\\\\)/i.test(text)
+      || /BEGIN [A-Z ]*PRIVATE KEY/i.test(text)) {
     return true;
   }
   if (/(주소|address)/i.test(text)) {

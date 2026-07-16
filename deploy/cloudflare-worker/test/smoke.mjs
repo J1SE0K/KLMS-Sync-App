@@ -51,6 +51,13 @@ async function runSmoke() {
   {
     env.RELAY_REQUESTS_PER_MINUTE = "2";
     const headers = { "CF-Connecting-IP": "203.0.113.42" };
+    const invalidHeaders = {
+      ...headers,
+      Authorization: "Bearer invalid-token-with-enough-entropy",
+    };
+    assert.equal((await request("/v1/status", { auth: false, headers: invalidHeaders })).status, 401);
+    assert.equal((await request("/v1/status", { auth: false, headers: invalidHeaders })).status, 401);
+    assert.equal((await request("/v1/status", { auth: false, headers: invalidHeaders })).status, 429);
     assert.equal((await request("/v1/status", { headers })).status, 200);
     assert.equal((await request("/v1/status", { headers })).status, 200);
     const limited = await request("/v1/status", { headers });
@@ -110,6 +117,17 @@ async function runSmoke() {
       body: { id: "not-a-uuid", kind: "unknownCommand", status: "running" },
     });
     assert.equal(invalidCommand.status, 400);
+    const malformedJSON = await request("/v1/commands", {
+      method: "POST",
+      rawBody: "{",
+    });
+    assert.equal(malformedJSON.status, 400);
+    assert.equal((await malformedJSON.json()).error, "request body must be valid JSON");
+    const oversizedJSON = await request("/v1/commands", {
+      method: "POST",
+      rawBody: JSON.stringify({ padding: "x".repeat((1024 * 1024) + 1) }),
+    });
+    assert.equal(oversizedJSON.status, 413);
     const invalidOption = await request("/v1/commands", {
       method: "POST",
       body: { kind: "fullSync", options: { updateNoticeNotes: "false" } },
@@ -404,7 +422,7 @@ async function runSmoke() {
         dryRun: false,
         wasCancelled: false,
         needsAttention: false,
-        outputTail: "KAIST 인증 번호: 57\n/Users/example/Library/Application Support/KLMSNotesSync/course_files/과목 폴더/자료.pdf\n/var/folders/qz/private temp/file\nhttps://klms.kaist.ac.kr/mod/courseboard/article.php?id=123\n정상 완료",
+        outputTail: "KAIST 인증 번호: 57\n/Users/example/Library/Application Support/KLMSNotesSync/course_files/과목 폴더/자료.pdf\n/private/tmp/relay secret/file\n/Volumes/External/User Data/file.pdf\n/home/student/private.txt\nC:\\Users\\student\\AppData\\Local\\secret.txt\nAuthorization: Bearer synthetic-bearer-secret\nworker_token=synthetic-token-secret\nhttps://klms.kaist.ac.kr/mod/courseboard/article.php?id=123&token=query-secret\n정상 완료",
       },
     ],
   }, { method: "POST", role: "worker" });
@@ -440,12 +458,15 @@ async function runSmoke() {
     assert.equal(payload.runLogs[0].status, "성공");
     assert.equal(payload.runLogs[0].needsAttention, false);
     assert.match(payload.runLogs[0].outputTail, /KAIST 인증 번호: --/);
-    assert.match(payload.runLogs[0].outputTail, /\[KLMS URL\]/);
+    assert.match(payload.runLogs[0].outputTail, /\[URL\]/);
+    assert.match(payload.runLogs[0].outputTail, /\[credential\]/);
+    assert.match(payload.runLogs[0].outputTail, /\[local-path\]/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /57/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /\/Users/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /Application Support/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /과목 폴더/);
-    assert.doesNotMatch(payload.runLogs[0].outputTail, /\/var\/folders/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /\/private\/tmp|\/Volumes|\/home|C:\\Users/i);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /synthetic-bearer-secret|synthetic-token-secret|query-secret/);
   }
   {
     const payload = await expectJSON("/v1/status");
@@ -1213,6 +1234,26 @@ async function runSmoke() {
     assert.match(wrongTicketHTML, /권한이 없는 링크입니다/);
     assert.doesNotMatch(wrongTicketHTML, /기말 정리.txt/);
     assert.doesNotMatch(wrongTicketHTML, /data-download-count=/);
+
+    env.RELAY_REQUESTS_PER_MINUTE = "2";
+    const rateLimitAddress = "198.51.100.77";
+    const wellFormedWrongTicketURL = new URL(uploaded.downloadURL);
+    wellFormedWrongTicketURL.searchParams.set("ticket", "a".repeat(64));
+    const wrongTicketRequest = () => worker.fetch(new Request(wellFormedWrongTicketURL, {
+      headers: { "CF-Connecting-IP": rateLimitAddress },
+    }), env);
+    assert.equal((await wrongTicketRequest()).status, 401);
+    assert.equal((await wrongTicketRequest()).status, 401);
+    assert.equal((await wrongTicketRequest()).status, 429);
+    const validTicketResponse = await worker.fetch(new Request(uploaded.downloadURL, {
+      headers: { "CF-Connecting-IP": rateLimitAddress },
+    }), env);
+    assert.equal(
+      validTicketResponse.status,
+      200,
+      "well-formed fake tickets must not consume the real link rate-limit bucket",
+    );
+    delete env.RELAY_REQUESTS_PER_MINUTE;
 
     const pageResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
     assert.equal(pageResponse.status, 200);
