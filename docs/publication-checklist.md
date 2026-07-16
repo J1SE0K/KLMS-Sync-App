@@ -51,6 +51,33 @@ tools/verify_klms_app_readiness.sh
 
 This helper runs Swift tests, the signed Mac app build, Mac accessibility smoke, Mac basic-actions smoke, the Mac tab-response probe, signed iOS build, and iPhone/iPad launch verification. The basic-actions smoke verifies the dashboard action and log-clear controls without activating data-destructive actions, then checks Command-Q and the app reopen path. Set `KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS=1` only in an isolated fixture profile when the clear actions themselves must be pressed. Treat a skipped or pending iPhone/iPad launch gate as incomplete device readiness, not as a clean release.
 
+For a release candidate, run every command in `docs/quality-gate-inventory.json`
+through the exact-SHA wrapper and keep the private logs outside the repository:
+
+```sh
+export KLMS_RELEASE_EVIDENCE_DIR=/private/tmp/klms-release-evidence
+tools/run_release_gate.sh python-core -- \
+  env PYTHONPATH=vendor/python-packages python3 -B -m unittest discover -s tests
+```
+
+After all automated gates pass, generate the private receipt outside the repository:
+
+```sh
+tools/record_release_review.py \
+  --lane goal-and-constraint \
+  --report /private/tmp/goal-and-constraint-review.txt \
+  --evidence-dir /private/tmp/klms-release-reviews \
+  --status pass
+tools/generate_release_evidence_receipt.py \
+  --evidence-dir "$KLMS_RELEASE_EVIDENCE_DIR" \
+  --review-evidence-dir /private/tmp/klms-release-reviews \
+  --app "$HOME/Applications/KLMS Sync.app" \
+  --output /private/tmp/klms-release-receipt.json
+```
+
+The receipt stays capped at 94 until every mandatory physical-device, impaired-WAN,
+assistive-input, and soak item is supplied explicitly as external pass evidence.
+
 ## GitHub
 
 Create an empty public repository, then push only after the scans are clean:

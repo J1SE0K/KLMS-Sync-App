@@ -29,17 +29,18 @@ SwiftUI 메뉴바 앱은 [apps/KLMSync](./apps/KLMSync)에 있다. 앱은 기존
 
 ```sh
 cd apps/KLMSync
-swift test --scratch-path /private/tmp/klmsync-swiftpm-build --jobs 1
-swift run --scratch-path /private/tmp/klmsync-swiftpm-build KLMSMac
+swift test --enable-xctest --disable-swift-testing \
+  --scratch-path /private/tmp/klmsync-swiftpm-build --jobs 1
 ```
 
 로컬 `.app` 번들은 레포 루트에서 아래 명령으로 만든다.
 
 ```sh
 tools/build_klms_mac_app.sh
+open "$HOME/Applications/KLMS Sync.app"
 ```
 
-빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 `apps/KLMSync/EnginePayloadAllowlist.txt`의 실행 파일만 앱 리소스 `EnginePayload`로 포함하고, 파일별 SHA-256과 원본 commit을 manifest로 검증한다. 실행 시 설치본의 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`는 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
+빌드 결과는 기본적으로 `~/Applications/KLMS Sync.app`에 생성된다. 이 번들은 두 payload allowlist에 명시된 추적 파일만 앱 리소스 `EnginePayload`로 포함하고, 파일별 SHA-256·전체 40자리 원본 commit·clean/dirty 상태를 schema 2 manifest로 검증한다. 실행 시 검증된 관리 코드만 같은 볼륨에서 트랜잭션으로 교체하며 실패하면 이전 코드를 복구한다. 설치본의 `config.env`, 기존 `manual_assignment_overrides.json`, 일반 `runtime/`, `course_files/` 사용자 데이터는 덮어쓰지 않는다. `Documents`/iCloud-backed 폴더 안에서는 macOS File Provider 메타데이터 때문에 ad-hoc codesign이 실패할 수 있어 앱 번들은 사용자 Applications 폴더에 둔다. 다른 위치가 필요하면 `DIST_DIR=/path/to/output tools/build_klms_mac_app.sh`처럼 지정한다.
 
 iPhone/iPad companion 타깃은 같은 package의 `KLMSiOS`에 있다. 이 타깃은 universal 앱으로 빌드되며 iPhone은 compact tab layout, iPad는 adaptive split layout을 쓴다. 기본 원격 구조는 Cloudflare Workers + D1 + R2 서버 릴레이다. iPhone/iPad는 서버 DB의 sanitized 상태, 항목 목록, 요청 기록을 읽고 실행/중단/항목 수정/파일 열기 요청을 서버에 남긴다. Mac 앱은 같은 서버를 보고 KLMS scraping, Notes, Calendar, Reminders, 로컬 파일 업로드처럼 macOS가 필요한 작업만 처리한다. 그래서 같은 Wi-Fi가 아니어도 앱을 열 수 있고, Mac이 꺼져 있으면 최근 서버 데이터는 보되 새 동기화와 파일 준비 요청은 Mac이 다시 켜질 때 처리된다.
 

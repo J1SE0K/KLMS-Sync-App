@@ -30,7 +30,7 @@
     },
     {
       "id": "swift-clients",
-      "command": "swift test --package-path apps/KLMSync --scratch-path <isolated-path> --jobs 1"
+      "command": "swift test --enable-xctest --disable-swift-testing --package-path apps/KLMSync --scratch-path <isolated-path> --jobs 1"
     },
     {
       "id": "mac-runtime",
@@ -75,6 +75,15 @@
     "hands-on-runtime",
     "visual-and-accessibility"
   ],
+  "releaseEvidenceReceipt": {
+    "gateRunner": "tools/run_release_gate.sh <gate-id> -- <command>",
+    "reviewRecorder": "tools/record_release_review.py",
+    "generator": "tools/generate_release_evidence_receipt.py",
+    "exactCommitRequired": true,
+    "cleanWorktreeRequired": true,
+    "outputOutsideRepositoryRequired": true,
+    "appPayloadSchemaVersion": 2
+  },
   "mandatoryExternalEvidence": [
     "physical-iphone-and-ipad-matrix",
     "controlled-impaired-wan-and-reconnect",

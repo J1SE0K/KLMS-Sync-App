@@ -69,7 +69,12 @@ jobs:
         with:
           persist-credentials: false
       - name: Run Swift package tests
-        run: swift test --scratch-path "$RUNNER_TEMP/klmsync-swiftpm-build" --jobs 1
+        run: >-
+          swift test
+          --enable-xctest
+          --disable-swift-testing
+          --scratch-path "$RUNNER_TEMP/klmsync-swiftpm-build"
+          --jobs 1
       - name: Build and verify the SHA-bound Mac runtime payload
         env:
           OUTPUT_APP: ${{ runner.temp }}/KLMS Sync.app

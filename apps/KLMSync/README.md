@@ -13,19 +13,19 @@ SwiftUI app layer for the existing `klms-notes-sync` engine.
 From this directory:
 
 ```sh
-swift test
-swift run KLMSMac
+swift test --enable-xctest --disable-swift-testing
 ```
 
-When run from source, `KLMSMac` locates the repository checkout and installs code into `~/Library/Application Support/KLMSNotesSync`. A packaged app includes only the runtime files named in `EnginePayloadAllowlist.txt`; development tools, tests, and design documents stay outside the app bundle.
+The Mac client intentionally runs only from a packaged app whose engine payload has a verified manifest. An unmanifested repository checkout or engine override is rejected instead of being copied into `~/Library/Application Support/KLMSNotesSync`.
 
 To build a local `.app` bundle from the repository root:
 
 ```sh
 tools/build_klms_mac_app.sh
+open "$HOME/Applications/KLMS Sync.app"
 ```
 
-The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the allowlisted engine runtime as `EnginePayload` and writes a SHA-256 inventory bound to the source commit. Private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
+The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects only the files in `EnginePayloadAllowlist.txt` and `EnginePythonPayloadAllowlist.txt`, then writes a schema 2 SHA-256 inventory bound to the full source commit. Private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
 
 ## iPhone/iPad companion
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -28,7 +29,13 @@ def load_allowlist(path: Path) -> set[str]:
         if not entry:
             continue
         relative = PurePosixPath(entry)
-        if relative.is_absolute() or ".." in relative.parts or entry in entries:
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or relative.as_posix() != entry
+            or "\\" in entry
+            or entry in entries
+        ):
             fail(f"invalid-allowlist-line-{line_number}")
         entries.add(entry)
     if not entries:
@@ -41,7 +48,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError):
         fail("invalid-manifest")
-    if not isinstance(payload, dict) or payload.get("schemaVersion") != 1:
+    if not isinstance(payload, dict) or payload.get("schemaVersion") != 2:
         fail("unsupported-manifest")
     return payload
 
@@ -50,16 +57,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Verify a packaged KLMS engine payload.")
     parser.add_argument("payload", type=Path)
     parser.add_argument("--allowlist", required=True, type=Path)
+    parser.add_argument("--python-allowlist", required=True, type=Path)
     parser.add_argument("--expected-revision")
     parser.add_argument("--require-clean", action="store_true")
     args = parser.parse_args()
 
     payload_root = args.payload.resolve()
     allowlist_path = args.allowlist.resolve()
-    if not payload_root.is_dir() or not allowlist_path.is_file():
+    python_allowlist_path = args.python_allowlist.resolve()
+    if not payload_root.is_dir() or not allowlist_path.is_file() or not python_allowlist_path.is_file():
         fail("missing-input")
 
     allowlist = load_allowlist(allowlist_path)
+    python_allowlist = load_allowlist(python_allowlist_path)
     manifest_path = payload_root / "EnginePayloadManifest.json"
     manifest = load_manifest(manifest_path)
     version_path = payload_root / "EnginePayloadVersion.txt"
@@ -72,7 +82,7 @@ def main() -> None:
 
     source_revision = manifest.get("sourceRevision")
     dirty = manifest.get("dirty")
-    if not isinstance(source_revision, str) or not source_revision:
+    if not isinstance(source_revision, str) or not re.fullmatch(r"[0-9a-f]{40}", source_revision):
         fail("missing-source-revision")
     if not isinstance(dirty, bool):
         fail("invalid-dirty-flag")
@@ -87,6 +97,8 @@ def main() -> None:
         fail("clean-version-mismatch")
     if manifest.get("allowlistSHA256") != sha256(allowlist_path):
         fail("allowlist-digest-mismatch")
+    if manifest.get("pythonAllowlistSHA256") != sha256(python_allowlist_path):
+        fail("python-allowlist-digest-mismatch")
 
     actual_files: dict[str, Path] = {}
     for candidate in sorted(payload_root.rglob("*")):
@@ -99,16 +111,15 @@ def main() -> None:
             fail("cache-artifact-present")
         actual_files[relative] = candidate
 
-    missing = sorted(allowlist - actual_files.keys())
+    expected_files = {
+        *allowlist,
+        *(f"python-packages/{relative}" for relative in python_allowlist),
+        "EnginePayloadVersion.txt",
+    }
+    missing = sorted(expected_files - actual_files.keys())
     if missing:
         fail(f"allowlisted-file-missing-{missing[0]}")
-    unexpected = sorted(
-        relative
-        for relative in actual_files
-        if relative not in allowlist
-        and relative != "EnginePayloadVersion.txt"
-        and not relative.startswith("python-packages/")
-    )
+    unexpected = sorted(actual_files.keys() - expected_files)
     if unexpected:
         fail(f"unexpected-file-{unexpected[0]}")
 
@@ -122,6 +133,14 @@ def main() -> None:
         relative = entry["path"]
         if relative in manifest_entries:
             fail("duplicate-file-entry")
+        if (
+            relative not in actual_files
+            or not isinstance(entry.get("bytes"), int)
+            or entry["bytes"] < 0
+            or not isinstance(entry.get("sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", entry["sha256"])
+        ):
+            fail("invalid-file-entry")
         manifest_entries[relative] = entry
     if manifest_entries.keys() != actual_files.keys():
         fail("inventory-path-mismatch")

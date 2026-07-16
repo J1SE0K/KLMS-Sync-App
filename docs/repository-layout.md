@@ -60,4 +60,4 @@ exec /bin/zsh "$SCRIPT_DIR/bin/<script>.sh" "$@"
 
 ## Installed Copy
 
-`tools/build_klms_mac_app.sh`는 기본적으로 `~/Applications/KLMS Sync.app`을 만들고 `apps/KLMSync/EnginePayloadAllowlist.txt`에 적힌 runtime만 앱 리소스에 주입한다. payload manifest는 원본 commit, allowlist digest, 파일별 SHA-256과 크기를 기록하며 빌드 중 다시 검증된다. `DIST_DIR`로 다른 출력 위치를 지정할 수 있지만, `Documents`/iCloud-backed 폴더는 File Provider 메타데이터 때문에 codesign이 실패할 수 있다. 앱 installer도 같은 설치본 위치를 쓰며 `config.env`, `manual_assignment_overrides.json`, `runtime/`, `course_files/`는 덮어쓰지 않는다.
+`tools/build_klms_mac_app.sh`는 기본적으로 `~/Applications/KLMS Sync.app`을 만들고 `apps/KLMSync/EnginePayloadAllowlist.txt`와 `apps/KLMSync/EnginePythonPayloadAllowlist.txt`에 적힌 추적 파일만 앱 리소스에 주입한다. schema 2 payload manifest는 전체 40자리 원본 commit, 두 allowlist digest, 파일별 SHA-256과 크기를 기록하며 빌드와 설치 직전에 다시 검증된다. Git revision이나 worktree 판정이 실패하면 빌드는 중단된다. `DIST_DIR`로 다른 출력 위치를 지정할 수 있지만, `Documents`/iCloud-backed 폴더는 File Provider 메타데이터 때문에 codesign이 실패할 수 있다. 앱 installer는 프로세스 잠금 아래 검증된 관리 코드만 같은 볼륨의 staging에서 교체하고, 예외가 나면 즉시 롤백하며 강제 종료 흔적은 영속 journal로 다음 실행 전에 복구한다. `config.env`, 기존 `manual_assignment_overrides.json`, 일반 `runtime/`, `course_files/` 사용자 데이터는 덮어쓰지 않는다.

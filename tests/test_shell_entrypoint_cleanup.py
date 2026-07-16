@@ -174,7 +174,13 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("sanitize_output()", readiness_script)
         self.assertIn("set -uo pipefail", readiness_script)
         self.assertNotIn("set -euo pipefail", readiness_script)
+        self.assertIn('record_step "git-metadata"', readiness_script)
+        self.assertIn("rev-parse --verify 'HEAD^{commit}'", readiness_script)
+        self.assertIn('GIT_METADATA_STATE="invalid"', readiness_script)
+        self.assertNotIn("print -r -- unknown", readiness_script)
         self.assertIn('record_step "swift-tests"', readiness_script)
+        self.assertIn("--enable-xctest", readiness_script)
+        self.assertIn("--disable-swift-testing", readiness_script)
         self.assertIn('record_step "mac-build"', readiness_script)
         self.assertIn('record_step "mac-relaunch"', readiness_script)
         self.assertIn("relaunch_mac_app()", readiness_script)
@@ -1612,6 +1618,9 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         payload_allowlist = (
             PROJECT_DIR / "apps" / "KLMSync" / "EnginePayloadAllowlist.txt"
         ).read_text(encoding="utf-8").splitlines()
+        python_payload_allowlist = (
+            PROJECT_DIR / "apps" / "KLMSync" / "EnginePythonPayloadAllowlist.txt"
+        ).read_text(encoding="utf-8").splitlines()
         relay_installer = (
             PROJECT_DIR / "tools" / "install_klms_relay_agent.sh"
         ).read_text(encoding="utf-8")
@@ -1627,7 +1636,9 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('if ! restore_previous_app; then', build_script)
         self.assertIn('Previous app preserved at: $BACKUP_APP_BUNDLE', build_script)
         self.assertIn('VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"', build_script)
-        self.assertIn('ditto --norsrc "$VENDORED_PYTHON_PACKAGES" "$PAYLOAD_ROOT/python-packages"', build_script)
+        self.assertIn('PYTHON_PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePythonPayloadAllowlist.txt"', build_script)
+        self.assertIn('done < "$PYTHON_PAYLOAD_ALLOWLIST"', build_script)
+        self.assertNotIn('ditto --norsrc "$VENDORED_PYTHON_PACKAGES"', build_script)
         self.assertNotIn(
             'ditto --norsrc "$ROOT_DIR/runtime/python-packages" "$PAYLOAD_ROOT/python-packages"',
             build_script,
@@ -1635,8 +1646,11 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertNotIn("  manual_assignment_overrides.json\n", build_script)
         self.assertIn('PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePayloadAllowlist.txt"', build_script)
         self.assertIn('done < "$PAYLOAD_ALLOWLIST"', build_script)
-        self.assertIn('"schemaVersion": 1', build_script)
+        self.assertIn('"schemaVersion": 2', build_script)
         self.assertIn('"sourceRevision": source_revision', build_script)
+        self.assertIn('"pythonAllowlistSHA256"', build_script)
+        self.assertIn("rev-parse --verify 'HEAD^{commit}'", build_script)
+        self.assertIn("unable to determine the engine payload worktree state", build_script)
         self.assertIn('verify_klms_engine_payload.py', build_script)
         self.assertNotIn('for directory in src bin examples docs tools', build_script)
         self.assertIn("tools/klms_relay_server.mjs", payload_allowlist)
@@ -1648,6 +1662,11 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertNotIn("src/swift/decode_qr_image.swift", payload_allowlist)
         for relative_path in payload_allowlist:
             self.assertTrue((PROJECT_DIR / relative_path).is_file(), relative_path)
+        for relative_path in python_payload_allowlist:
+            self.assertTrue(
+                (PROJECT_DIR / "vendor" / "python-packages" / relative_path).is_file(),
+                relative_path,
+            )
         for relay_runtime_file in (
             "klms_relay_server.mjs",
             "klms_bounded_rate_window.mjs",
@@ -1672,6 +1691,36 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('rm -rf "$READINESS_TEMP_DIR"', readiness)
         self.assertGreaterEqual(readiness.count('KLMS_MAC_APP_PATH="$MAC_APP_PATH"'), 4)
 
+    def test_readiness_fails_closed_when_git_metadata_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tools = root / "tools"
+            tools.mkdir()
+            readiness = tools / "verify_klms_app_readiness.sh"
+            shutil.copy2(PROJECT_DIR / "tools" / "verify_klms_app_readiness.sh", readiness)
+            readiness.chmod(0o755)
+            environment = {
+                **os.environ,
+                "KLMS_MAC_APP_PATH": str(root / "KLMS Sync.app"),
+                "KLMS_READINESS_SWIFT_TESTS": "0",
+                "KLMS_READINESS_MAC": "0",
+                "KLMS_READINESS_IOS_BUILD": "0",
+                "KLMS_READINESS_IOS_LAUNCH": "0",
+            }
+            result = subprocess.run(
+                [str(readiness)],
+                cwd=root,
+                env=environment,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("candidate=unavailable", result.stderr)
+            self.assertIn("git_metadata=invalid", result.stderr)
+            self.assertIn("failed=git-metadata:1", result.stderr)
+
     def test_quality_gate_inventory_is_complete_and_sha_bound(self) -> None:
         inventory = json.loads(
             (PROJECT_DIR / "docs" / "quality-gate-inventory.json").read_text(
@@ -1689,6 +1738,17 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertTrue(inventory["candidateBinding"]["fullCommitSHARequired"])
         gate_ids = [gate["id"] for gate in inventory["automatedGates"]]
         self.assertEqual(len(gate_ids), len(set(gate_ids)))
+        swift_gate = next(
+            gate for gate in inventory["automatedGates"] if gate["id"] == "swift-clients"
+        )
+        self.assertIn("--enable-xctest", swift_gate["command"])
+        self.assertIn("--disable-swift-testing", swift_gate["command"])
+        receipt = inventory["releaseEvidenceReceipt"]
+        self.assertEqual(receipt["reviewRecorder"], "tools/record_release_review.py")
+        self.assertTrue(receipt["exactCommitRequired"])
+        self.assertTrue(receipt["cleanWorktreeRequired"])
+        self.assertTrue(receipt["outputOutsideRepositoryRequired"])
+        self.assertEqual(receipt["appPayloadSchemaVersion"], 2)
         self.assertEqual(
             set(inventory["independentReviewGates"]),
             {

@@ -9,6 +9,7 @@ APP_NAME="${APP_NAME:-KLMS Sync}"
 BUNDLE_ID="${BUNDLE_ID:-com.local.KLMSync}"
 APP_ICON_SOURCE="$APP_PACKAGE_DIR/Resources/AppIcon.icns"
 PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePayloadAllowlist.txt"
+PYTHON_PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePythonPayloadAllowlist.txt"
 ENABLE_CLOUDKIT_ENTITLEMENT="${ENABLE_CLOUDKIT_ENTITLEMENT:-0}"
 ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-}"
 # Keep the default outside Documents/iCloud-backed workspaces. Those locations can
@@ -170,11 +171,33 @@ while IFS= read -r relative_path || [[ -n "$relative_path" ]]; do
 done < "$PAYLOAD_ALLOWLIST"
 
 VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"
-if [[ ! -d "$VENDORED_PYTHON_PACKAGES/bs4" || ! -d "$VENDORED_PYTHON_PACKAGES/soupsieve" ]]; then
-  print -r -- "missing tracked Python runtime packages: $VENDORED_PYTHON_PACKAGES" >&2
+if [[ ! -f "$PYTHON_PAYLOAD_ALLOWLIST" ]]; then
+  print -r -- "missing Python payload allowlist: $PYTHON_PAYLOAD_ALLOWLIST" >&2
   exit 1
 fi
-ditto --norsrc "$VENDORED_PYTHON_PACKAGES" "$PAYLOAD_ROOT/python-packages"
+mkdir -p "$PAYLOAD_ROOT/python-packages"
+typeset -A python_payload_paths
+while IFS= read -r relative_path || [[ -n "$relative_path" ]]; do
+  [[ -n "$relative_path" ]] || continue
+  case "$relative_path" in
+    /*|../*|*/../*|*/..|*//* )
+      print -r -- "invalid Python payload allowlist path: $relative_path" >&2
+      exit 1
+      ;;
+  esac
+  if [[ -n "${python_payload_paths[$relative_path]-}" ]]; then
+    print -r -- "duplicate Python payload allowlist path: $relative_path" >&2
+    exit 1
+  fi
+  python_payload_paths[$relative_path]=1
+  source_path="$VENDORED_PYTHON_PACKAGES/$relative_path"
+  if [[ ! -f "$source_path" || -L "$source_path" ]]; then
+    print -r -- "missing or non-regular Python payload file: $relative_path" >&2
+    exit 1
+  fi
+  mkdir -p "$PAYLOAD_ROOT/python-packages/${relative_path:h}"
+  cp -X "$source_path" "$PAYLOAD_ROOT/python-packages/$relative_path"
+done < "$PYTHON_PAYLOAD_ALLOWLIST"
 
 find "$PAYLOAD_ROOT" -name '__pycache__' -type d -prune -exec rm -rf {} +
 find "$PAYLOAD_ROOT" -name '*.pyc' -type f -delete
@@ -184,31 +207,34 @@ find "$PAYLOAD_ROOT" -type f \
   \( -name '*.sh' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' \) \
   -exec chmod +x {} +
 
-if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git_head="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
-  if [[ -n "$git_head" ]]; then
-    if [[ -n "$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null || true)" ]]; then
-      dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
-      payload_dirty="true"
-    else
-      dirty_suffix=""
-      payload_dirty="false"
-    fi
-    payload_version="$git_head$dirty_suffix"
-    source_revision="$git_head"
-  else
-    payload_version="local-$(date +%Y%m%d%H%M%S)"
-    source_revision="$payload_version"
-    payload_dirty="true"
-  fi
-else
-  payload_version="local-$(date +%Y%m%d%H%M%S)"
-  source_revision="$payload_version"
-  payload_dirty="true"
+if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  print -r -- "engine payload build requires a readable Git worktree" >&2
+  exit 1
 fi
+if ! git_head="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)"; then
+  print -r -- "unable to resolve the engine payload Git revision" >&2
+  exit 1
+fi
+if [[ ! "$git_head" =~ '^[0-9a-f]{40}$' ]]; then
+  print -r -- "engine payload Git revision must be a full 40-character SHA" >&2
+  exit 1
+fi
+if ! git_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null)"; then
+  print -r -- "unable to determine the engine payload worktree state" >&2
+  exit 1
+fi
+if [[ -n "$git_status" ]]; then
+  dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
+  payload_dirty="true"
+else
+  dirty_suffix=""
+  payload_dirty="false"
+fi
+payload_version="$git_head$dirty_suffix"
+source_revision="$git_head"
 print -r -- "$payload_version" > "$PAYLOAD_ROOT/EnginePayloadVersion.txt"
 
-python3 - "$PAYLOAD_ROOT" "$PAYLOAD_ALLOWLIST" "$payload_version" "$source_revision" "$payload_dirty" <<'PY'
+python3 - "$PAYLOAD_ROOT" "$PAYLOAD_ALLOWLIST" "$PYTHON_PAYLOAD_ALLOWLIST" "$payload_version" "$source_revision" "$payload_dirty" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -216,9 +242,10 @@ import sys
 
 payload_root = pathlib.Path(sys.argv[1]).resolve()
 allowlist_path = pathlib.Path(sys.argv[2]).resolve()
-payload_version = sys.argv[3]
-source_revision = sys.argv[4]
-dirty = sys.argv[5] == "true"
+python_allowlist_path = pathlib.Path(sys.argv[3]).resolve()
+payload_version = sys.argv[4]
+source_revision = sys.argv[5]
+dirty = sys.argv[6] == "true"
 manifest_path = payload_root / "EnginePayloadManifest.json"
 
 files = []
@@ -238,11 +265,12 @@ for candidate in sorted(payload_root.rglob("*")):
     })
 
 manifest = {
-    "schemaVersion": 1,
+    "schemaVersion": 2,
     "payloadVersion": payload_version,
     "sourceRevision": source_revision,
     "dirty": dirty,
     "allowlistSHA256": hashlib.sha256(allowlist_path.read_bytes()).hexdigest(),
+    "pythonAllowlistSHA256": hashlib.sha256(python_allowlist_path.read_bytes()).hexdigest(),
     "fileCount": len(files),
     "totalBytes": sum(item["bytes"] for item in files),
     "files": files,
@@ -257,6 +285,7 @@ payload_verify_args=(
   "$ROOT_DIR/tools/verify_klms_engine_payload.py"
   "$PAYLOAD_ROOT"
   --allowlist "$PAYLOAD_ALLOWLIST"
+  --python-allowlist "$PYTHON_PAYLOAD_ALLOWLIST"
   --expected-revision "$source_revision"
 )
 if [[ "${KLMS_PAYLOAD_REQUIRE_CLEAN:-0}" == "1" ]]; then

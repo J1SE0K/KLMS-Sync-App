@@ -20,11 +20,20 @@ fi
 MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-2}"
 ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"
 REQUIRE_CLEAN_WORKTREE="${KLMS_READINESS_REQUIRE_CLEAN:-0}"
-CANDIDATE_REVISION="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || print -r -- unknown)"
-if [[ -n "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null || true)" ]]; then
-  WORKTREE_STATE="dirty"
-else
-  WORKTREE_STATE="clean"
+CANDIDATE_REVISION="unavailable"
+WORKTREE_STATE="unknown"
+GIT_METADATA_STATE="invalid"
+if candidate_revision="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+    && git_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null)" \
+    && [[ ${#candidate_revision} -eq 40 ]] \
+    && [[ "$candidate_revision" != *[^0-9a-f]* ]]; then
+  CANDIDATE_REVISION="$candidate_revision"
+  GIT_METADATA_STATE="valid"
+  if [[ -n "$git_status" ]]; then
+    WORKTREE_STATE="dirty"
+  else
+    WORKTREE_STATE="clean"
+  fi
 fi
 
 cleanup_readiness() {
@@ -80,6 +89,10 @@ verify_clean_worktree() {
   [[ "$WORKTREE_STATE" == "clean" ]]
 }
 
+verify_git_metadata() {
+  [[ "$GIT_METADATA_STATE" == "valid" ]]
+}
+
 record_step() {
   local name="$1"
   shift
@@ -90,10 +103,6 @@ record_step() {
   fi
   return 0
 }
-
-if [[ "$REQUIRE_CLEAN_WORKTREE" == "1" ]]; then
-  record_step "clean-worktree" verify_clean_worktree
-fi
 
 print_failure_hint() {
   local failed_step="$1"
@@ -120,13 +129,24 @@ relaunch_mac_app() {
 
 print -r -- "KLMS Sync readiness check"
 
+record_step "git-metadata" verify_git_metadata
+if [[ "$REQUIRE_CLEAN_WORKTREE" == "1" ]]; then
+  record_step "clean-worktree" verify_clean_worktree
+fi
+
 if [[ "$RUN_SWIFT_TESTS" == "1" ]]; then
-  record_step "swift-tests" swift test --package-path "$ROOT_DIR/apps/KLMSync" --scratch-path /private/tmp/klmsync-swiftpm-scratch
+  record_step "swift-tests" swift test \
+    --enable-xctest \
+    --disable-swift-testing \
+    --package-path "$ROOT_DIR/apps/KLMSync" \
+    --scratch-path /private/tmp/klmsync-swiftpm-scratch \
+    --jobs 1
 fi
 
 if [[ "$RUN_MAC_CHECKS" == "1" ]]; then
   record_step "mac-build" /usr/bin/env \
     OUTPUT_APP="$MAC_APP_PATH" \
+    KLMS_PAYLOAD_REQUIRE_CLEAN="$REQUIRE_CLEAN_WORKTREE" \
     "$ROOT_DIR/tools/build_klms_mac_app.sh"
   record_step "mac-relaunch" relaunch_mac_app
   record_step "mac-accessibility-smoke" /usr/bin/env \
@@ -194,7 +214,7 @@ for failed_step in "${failed_steps[@]}"; do
 done
 
 if (( ${#failed_steps[@]} == 0 )); then
-  print -r -- "readiness-summary status=ok candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"
+  print -r -- "readiness-summary status=ok candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state} git_metadata=${GIT_METADATA_STATE}"
   exit 0
 fi
 
@@ -202,5 +222,5 @@ for failed_step in "${failed_steps[@]}"; do
   print_failure_hint "$failed_step"
 done
 
-print -ru2 -- "readiness-summary status=fail candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state} failed=${(j:,:)failed_steps}"
+print -ru2 -- "readiness-summary status=fail candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state} git_metadata=${GIT_METADATA_STATE} failed=${(j:,:)failed_steps}"
 exit 1
