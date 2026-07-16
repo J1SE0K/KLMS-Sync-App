@@ -90,7 +90,7 @@ pip-audit --path "$scanner_site_packages" --format=json \
 set +e
 (
   cd "$scan_tree"
-  semgrep scan --metrics=off --disable-version-check --error --timeout 60 --timeout-threshold 0 --json \
+  semgrep scan --metrics=off --disable-version-check --error --jobs 1 --timeout 60 --timeout-threshold 0 --json \
     --config "$rules_root/python/lang/security" \
     --config "$rules_root/javascript/lang/security" \
     --config "$rules_root/bash/lang/security" \
