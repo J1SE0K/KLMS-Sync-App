@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		3A268377EE4DD927AC953A87 /* KLMSiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */; };
 		C2EF411E78CE8BF6A1A0C96A /* AcademicTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */; };
+		26FEAD8F6D791853A980234E /* CredentialPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7B47BD46A1090B99DBC79F /* CredentialPersistence.swift */; };
 		D29FF8D94FC5E72F267755D7 /* DashboardDataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */; };
 		12FB52A0868020B585EEDD6F /* DisplayText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 679F1606F4382D6BA089FD18 /* DisplayText.swift */; };
 		E8E6859883C24F06C53E4C8F /* EngineSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70DBB8B89438B2CCA51735D1 /* EngineSnapshot.swift */; };
@@ -39,6 +40,7 @@
 		B2C157E37042A5486F2FD152 /* KLMSiOSUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KLMSiOSUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSiOSApp.swift"; path = "../../Sources/KLMSiOS/KLMSiOSApp.swift"; sourceTree = "<group>"; };
 		C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AcademicTerm.swift"; path = "../../Sources/KLMSShared/AcademicTerm.swift"; sourceTree = "<group>"; };
+		9B7B47BD46A1090B99DBC79F /* CredentialPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CredentialPersistence.swift"; path = "../../Sources/KLMSShared/CredentialPersistence.swift"; sourceTree = "<group>"; };
 		AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DashboardDataModels.swift"; path = "../../Sources/KLMSShared/DashboardDataModels.swift"; sourceTree = "<group>"; };
 		679F1606F4382D6BA089FD18 /* DisplayText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DisplayText.swift"; path = "../../Sources/KLMSShared/DisplayText.swift"; sourceTree = "<group>"; };
 		70DBB8B89438B2CCA51735D1 /* EngineSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "EngineSnapshot.swift"; path = "../../Sources/KLMSShared/EngineSnapshot.swift"; sourceTree = "<group>"; };
@@ -85,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */,
+				9B7B47BD46A1090B99DBC79F /* CredentialPersistence.swift */,
 				AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */,
 				679F1606F4382D6BA089FD18 /* DisplayText.swift */,
 				70DBB8B89438B2CCA51735D1 /* EngineSnapshot.swift */,
@@ -203,6 +206,7 @@
 			files = (
 				3A268377EE4DD927AC953A87 /* KLMSiOSApp.swift in Sources */,
 				C2EF411E78CE8BF6A1A0C96A /* AcademicTerm.swift in Sources */,
+				26FEAD8F6D791853A980234E /* CredentialPersistence.swift in Sources */,
 				D29FF8D94FC5E72F267755D7 /* DashboardDataModels.swift in Sources */,
 				12FB52A0868020B585EEDD6F /* DisplayText.swift in Sources */,
 				E8E6859883C24F06C53E4C8F /* EngineSnapshot.swift in Sources */,

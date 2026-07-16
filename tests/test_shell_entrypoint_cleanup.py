@@ -1805,7 +1805,9 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         combined = "\n".join([ios_project, windows_package, remote_models, ios_defaults, generator])
 
         self.assertIn("KLMSiOS.defaults.xcconfig", ios_project)
+        self.assertIn("CredentialPersistence.swift in Sources", ios_project)
         self.assertIn("LiveStatePolicies.swift in Sources", ios_project)
+        self.assertIn('"CredentialPersistence.swift"', generator)
         self.assertIn('"LiveStatePolicies.swift"', generator)
         self.assertIn('DEVELOPMENT_TEAM = "$(KLMS_IOS_DEVELOPMENT_TEAM)";', ios_project)
         self.assertIn('PRODUCT_BUNDLE_IDENTIFIER = "$(KLMS_IOS_BUNDLE_IDENTIFIER)";', ios_project)

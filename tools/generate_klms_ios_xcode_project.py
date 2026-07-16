@@ -27,6 +27,7 @@ ASSET_CATALOG = PROJECT_ROOT / "KLMSiOS" / "Assets.xcassets"
 DEFAULT_XCCONFIG = APP_ROOT / "Config" / "KLMSiOS.defaults.xcconfig"
 SHARED_SOURCES = [
     "AcademicTerm.swift",
+    "CredentialPersistence.swift",
     "DashboardDataModels.swift",
     "DisplayText.swift",
     "EngineSnapshot.swift",
