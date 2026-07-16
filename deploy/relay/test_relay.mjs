@@ -59,6 +59,7 @@ const port = 20_000 + Math.floor(Math.random() * 20_000);
 const baseURL = `http://127.0.0.1:${port}`;
 const clientToken = "client-test-token-with-enough-entropy";
 const workerToken = "worker-test-token-with-enough-entropy";
+const proxySecret = "proxy-test-secret-with-enough-entropy";
 const MAX_ITEM_ACTION_TEST_HISTORY = 205;
 const child = spawn(process.execPath, [serverPath], {
   cwd: projectRoot,
@@ -1135,6 +1136,7 @@ try {
         KLMS_RELAY_FILE_DIR: path.join(root, "rate-limit-files"),
         KLMS_RELAY_CLIENT_TOKEN: clientToken,
         KLMS_RELAY_WORKER_TOKEN: workerToken,
+        KLMS_RELAY_TRUSTED_PROXY_SECRET: proxySecret,
         KLMS_RELAY_REQUESTS_PER_MINUTE: "3",
         KLMS_RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE: "3",
         KLMS_RELAY_TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS: "1",
@@ -1153,6 +1155,35 @@ try {
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 401);
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 401);
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers: invalidHeaders })).status, 429);
+
+      for (let index = 0; index < 511; index += 1) {
+        const response = await fetch(`${rateLimitBaseURL}/v1/status`, {
+          headers: {
+            ...invalidHeaders,
+            "X-KLMS-Relay-Client-IP": `2001:db8::${(index + 1).toString(16)}`,
+            "X-KLMS-Relay-Proxy-Secret": proxySecret,
+          },
+        });
+        assert.equal(response.status, 401);
+      }
+      assert.equal(
+        (await fetch(`${rateLimitBaseURL}/v1/status`, {
+          headers: {
+            ...invalidHeaders,
+            "X-KLMS-Relay-Client-IP": "2001:db8::ffff",
+            "X-KLMS-Relay-Proxy-Secret": proxySecret,
+          },
+        })).status,
+        429,
+        "unauthenticated identity cardinality must remain bounded",
+      );
+      assert.equal(
+        (await fetch(`${rateLimitBaseURL}/readyz`, {
+          headers: { Authorization: `Bearer ${workerToken}` },
+        })).status,
+        200,
+        "unauthenticated map exhaustion must not consume reserved authenticated capacity",
+      );
 
       const fileRequestResponse = await fetch(`${rateLimitBaseURL}/v1/file-access`, {
         method: "POST",

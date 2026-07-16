@@ -73,6 +73,7 @@ Mac 앱에는 같은 서버 주소와 `<KLMS_RELAY_WORKER_TOKEN>`을 입력한�
 
 - 외부 공개 주소는 HTTPS만 쓴다.
 - `KLMS_RELAY_PUBLIC_URL`은 앱에 돌려주는 일회성 파일 링크의 기준 주소다. 프록시 헤더를 신뢰하지 않으므로 Caddy/Tunnel의 실제 HTTPS 주소를 정확히 넣는다.
+- relay는 Caddy가 덮어쓴 `X-KLMS-Relay-Client-IP`를 내부 32바이트 proxy secret이 일치할 때만 신뢰한다. 외부 요청이 임의의 전달 헤더를 보내도 rate limit identity를 위조할 수 없다.
 - Mac의 로컬 포트를 인터넷에 직접 열지 않는다.
 - 토큰을 바꾸면 클라이언트 앱에는 새 클라이언트 토큰을, Mac 앱에는 새 worker 토큰을 다시 입력한다.
 - SQLite DB는 Docker volume `relay-data`에 저장된다.
@@ -119,18 +120,21 @@ VPS 없이 Mac이나 작은 서버에서 터널로 HTTPS 주소를 만들 수도
 3. Service는 아래처럼 둔다.
 
 ```text
-http://relay:18484
+http://proxy:8080
 ```
 
 4. Tunnel token을 복사한다.
-5. relay와 tunnel secret을 서로 다른 권한 `0600` 파일로 만든다.
+5. relay 앱 토큰, 내부 proxy secret, tunnel token을 서로 다른 권한 `0600` 파일로 만든다.
 
 ```sh
 cd deploy/relay
 cp relay.cloudflare.env.example .env.cloudflare
+cp proxy.env.example .env.proxy
 cp tunnel.env.example .env.tunnel
-openssl rand -hex 32
-chmod 600 .env.cloudflare .env.tunnel
+openssl rand -hex 32 # client token
+openssl rand -hex 32 # worker token
+openssl rand -hex 32 # internal proxy secret
+chmod 600 .env.cloudflare .env.proxy .env.tunnel
 ```
 
 `.env.cloudflare`에는 relay 공개 주소와 앱 토큰만 둔다.
@@ -139,6 +143,12 @@ chmod 600 .env.cloudflare .env.tunnel
 KLMS_RELAY_PUBLIC_URL=https://sync.example.com
 KLMS_RELAY_CLIENT_TOKEN=<client openssl 출력값>
 KLMS_RELAY_WORKER_TOKEN=<worker openssl 출력값>
+```
+
+`.env.proxy`에는 별도로 생성한 내부 proxy secret만 둔다. relay와 Caddy가 같은 값을 읽으며 앱에는 입력하지 않는다.
+
+```sh
+KLMS_RELAY_TRUSTED_PROXY_SECRET=<proxy openssl 출력값>
 ```
 
 `.env.tunnel`에는 Cloudflare tunnel token만 둔다.

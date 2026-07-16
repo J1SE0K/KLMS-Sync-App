@@ -474,13 +474,27 @@ try {
   });
   assert.equal(idempotencyConflict.status, 409);
   assert.equal((await jsonRequest("/v1/status")).revision, 72);
+
+  await stopDev();
+  dev = spawnDev({ requestsPerMinute: 2 });
+  await waitForServer();
+  assert.equal((await request("/readyz", { role: "worker" })).status, 200);
+  assert.equal((await request("/readyz", { role: "worker" })).status, 200);
+  await stopDev();
+  dev = spawnDev({ requestsPerMinute: 2 });
+  await waitForServer();
+  assert.equal(
+    (await request("/readyz", { role: "worker" })).status,
+    429,
+    "the durable rate window must survive Worker and Durable Object restart",
+  );
   console.log("cloudflare local D1 integration ok");
 } finally {
   await stopDev();
   await fs.rm(persistTo, { recursive: true, force: true });
 }
 
-function spawnDev() {
+function spawnDev({ requestsPerMinute = 6_000 } = {}) {
   devOutput = "";
   const child = spawn(process.execPath, [
     wrangler,
@@ -489,6 +503,7 @@ function spawnDev() {
     "--persist-to", persistTo,
     "--var", `RELAY_CLIENT_TOKEN:${clientToken}`,
     "--var", `RELAY_WORKER_TOKEN:${workerToken}`,
+    "--var", `RELAY_REQUESTS_PER_MINUTE:${requestsPerMinute}`,
     "--var", "FILE_RELAY_DOWNLOADS_PER_LINK:7",
     "--var", "FILE_RELAY_DAILY_DOWNLOADS:12",
   ], {

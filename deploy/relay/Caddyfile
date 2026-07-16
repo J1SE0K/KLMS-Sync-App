@@ -1,25 +1,32 @@
+(relay_proxy) {
+	reverse_proxy relay:18484 {
+		header_up X-KLMS-Relay-Client-IP {remote_host}
+		header_up X-KLMS-Relay-Proxy-Secret {$KLMS_RELAY_TRUSTED_PROXY_SECRET}
+	}
+}
+
 {$KLMS_RELAY_DOMAIN} {
-  encode zstd gzip
+	encode zstd gzip
 
-  header {
-    Strict-Transport-Security "max-age=31536000; includeSubDomains"
-    X-Content-Type-Options "nosniff"
-    Referrer-Policy "no-referrer"
-  }
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+	}
 
-  handle /healthz {
-    reverse_proxy relay:18484
-  }
+	handle /healthz {
+		import relay_proxy
+	}
 
-  handle /readyz {
-    reverse_proxy relay:18484
-  }
+	handle /readyz {
+		import relay_proxy
+	}
 
-  handle_path /relay/* {
-    reverse_proxy relay:18484
-  }
+	handle_path /relay/* {
+		import relay_proxy
+	}
 
-  handle {
-    reverse_proxy relay:18484
-  }
+	handle {
+		import relay_proxy
+	}
 }

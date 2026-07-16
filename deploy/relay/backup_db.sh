@@ -26,6 +26,7 @@ compose() {
   if [ -f .env.tunnel ]; then
     secure_env_file .env.tunnel
     secure_env_file .env.cloudflare
+    secure_env_file .env.proxy
     docker compose --env-file .env.tunnel -f docker-compose.cloudflared.yml "$@"
   else
     secure_env_file .env

@@ -4,6 +4,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import { DatabaseSync, backup as backupDatabase } from "node:sqlite";
+import { isIP } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { consumeBoundedRateWindow } from "./klms_bounded_rate_window.mjs";
@@ -13,6 +14,7 @@ const HOST = process.env.KLMS_RELAY_HOST || "127.0.0.1";
 const PORT = Number.parseInt(process.env.KLMS_RELAY_PORT || "18484", 10);
 const CLIENT_TOKEN = (process.env.KLMS_RELAY_CLIENT_TOKEN || "").trim();
 const WORKER_TOKEN = (process.env.KLMS_RELAY_WORKER_TOKEN || "").trim();
+const TRUSTED_PROXY_SECRET = (process.env.KLMS_RELAY_TRUSTED_PROXY_SECRET || "").trim();
 const DB_PATH = process.env.KLMS_RELAY_DB
   ? expandHome(process.env.KLMS_RELAY_DB)
   : path.join(os.homedir(), ".local", "state", "klms-sync-relay.sqlite");
@@ -29,7 +31,8 @@ const PUBLIC_DOWNLOAD_LINKS_PER_MINUTE = Math.min(
   REQUESTS_PER_MINUTE,
   boundedInt(process.env.KLMS_RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE, 60, 1, 600),
 );
-const MAX_REQUEST_RATE_WINDOWS = 512;
+const MAX_AUTHORIZED_REQUEST_RATE_WINDOWS = 64;
+const MAX_UNAUTHORIZED_REQUEST_RATE_WINDOWS = 512;
 const MAX_PUBLIC_DOWNLOAD_INGRESS_WINDOWS = 512;
 const MAX_PUBLIC_DOWNLOAD_LINK_WINDOWS = 128;
 const MAX_COMMANDS = 100;
@@ -203,6 +206,10 @@ if (CLIENT_TOKEN === WORKER_TOKEN) {
   console.error("KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN must be different.");
   process.exit(64);
 }
+if (TRUSTED_PROXY_SECRET && Buffer.byteLength(TRUSTED_PROXY_SECRET, "utf8") < MIN_RELAY_TOKEN_BYTES) {
+  console.error("KLMS_RELAY_TRUSTED_PROXY_SECRET must be at least 32 bytes when configured.");
+  process.exit(64);
+}
 if (!Number.isInteger(PORT) || PORT <= 0 || PORT > 65535) {
   console.error("KLMS_RELAY_PORT must be a valid TCP port.");
   process.exit(64);
@@ -243,7 +250,8 @@ recoverStaleFileDownloadReservations({ notify: false });
 await recoverInterruptedFileUploads({ recoverDeletionClaims: true });
 let state = loadState();
 const realtimeClients = new Set();
-const requestRateWindows = new Map();
+const authorizedRequestRateWindows = new Map();
+const unauthorizedRequestRateWindows = new Map();
 const publicDownloadIngressRateWindows = new Map();
 const publicDownloadLinkRateWindows = new Map();
 let expiredFileCleanupPromise = null;
@@ -2242,7 +2250,17 @@ function authorized(request, role) {
 }
 
 function requestRemoteAddress(request) {
-  return String(request.socket?.remoteAddress || "unknown").slice(0, 128);
+  const socketAddress = normalizeRateLimitAddress(request.socket?.remoteAddress);
+  if (!TRUSTED_PROXY_SECRET) return socketAddress;
+
+  const suppliedSecret = singleRequestHeader(request, "x-klms-relay-proxy-secret");
+  const forwardedAddress = normalizeRateLimitAddress(
+    singleRequestHeader(request, "x-klms-relay-client-ip"),
+    { allowUnknown: false },
+  );
+  if (!suppliedSecret || !forwardedAddress) return socketAddress;
+  const actual = Buffer.from(suppliedSecret);
+  return tokenMatches(actual, TRUSTED_PROXY_SECRET) ? forwardedAddress : socketAddress;
 }
 
 function rateLimitedAuthorization(request, role, scope) {
@@ -2252,18 +2270,29 @@ function rateLimitedAuthorization(request, role, scope) {
     : `unauthorized:${requestRemoteAddress(request)}`;
   return {
     authorized: isAuthorized,
-    allowed: consumeRequestRateLimit(scope, identity),
+    allowed: consumeRequestRateLimit(scope, identity, isAuthorized),
   };
 }
 
-function consumeRequestRateLimit(scope, identity) {
+function consumeRequestRateLimit(scope, identity, isAuthorized) {
   const key = `${scope}:${identity}`;
   return consumeBoundedRateWindow(
-    requestRateWindows,
+    isAuthorized ? authorizedRequestRateWindows : unauthorizedRequestRateWindows,
     key,
     REQUESTS_PER_MINUTE,
-    MAX_REQUEST_RATE_WINDOWS,
+    isAuthorized ? MAX_AUTHORIZED_REQUEST_RATE_WINDOWS : MAX_UNAUTHORIZED_REQUEST_RATE_WINDOWS,
   );
+}
+
+function singleRequestHeader(request, name) {
+  const value = request.headers[name];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeRateLimitAddress(value, { allowUnknown = true } = {}) {
+  const candidate = String(value || "").trim();
+  if (candidate && isIP(candidate)) return candidate.toLowerCase();
+  return allowUnknown ? "unknown" : "";
 }
 
 function consumePublicDownloadIngressRateLimit(request) {

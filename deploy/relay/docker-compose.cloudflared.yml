@@ -6,6 +6,7 @@ services:
     restart: unless-stopped
     env_file:
       - .env.cloudflare
+      - .env.proxy
     environment:
       KLMS_RELAY_HOST: 0.0.0.0
       KLMS_RELAY_PORT: 18484
@@ -21,12 +22,25 @@ services:
       retries: 3
       start_period: 10s
 
-  cloudflared:
-    image: cloudflare/cloudflared:latest@sha256:ba461b8aa9c042156dbd39c38657fe7431bafa063220eab8d5330a523863da9f
+  proxy:
+    image: caddy:2-alpine@sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2
     restart: unless-stopped
     depends_on:
       relay:
         condition: service_healthy
+    env_file:
+      - .env.proxy
+    expose:
+      - "8080"
+    volumes:
+      - ./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest@sha256:ba461b8aa9c042156dbd39c38657fe7431bafa063220eab8d5330a523863da9f
+    restart: unless-stopped
+    depends_on:
+      proxy:
+        condition: service_started
     command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:?run Compose with --env-file .env.tunnel}
 
 volumes:

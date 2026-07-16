@@ -29,6 +29,7 @@ services:
         condition: service_healthy
     environment:
       KLMS_RELAY_DOMAIN: ${KLMS_RELAY_DOMAIN}
+      KLMS_RELAY_TRUSTED_PROXY_SECRET: ${KLMS_RELAY_TRUSTED_PROXY_SECRET:?run ./deploy.sh once to initialize the trusted proxy secret}
     ports:
       - "80:80"
       - "443:443"

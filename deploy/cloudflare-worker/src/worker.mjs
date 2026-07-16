@@ -1,4 +1,7 @@
 import { redactPublicLogText } from "../../../tools/klms_public_log_redactor.mjs";
+import { consumeBoundedRateWindow } from "../../../tools/klms_bounded_rate_window.mjs";
+
+export { consumeBoundedRateWindow };
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MIN_RELAY_TOKEN_BYTES = 32;
@@ -6,7 +9,8 @@ const MAX_REALTIME_CONNECTIONS = 32;
 const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
 const DEFAULT_REQUESTS_PER_MINUTE = 600;
 const DEFAULT_PUBLIC_DOWNLOADS_PER_MINUTE = 60;
-const MAX_REQUEST_RATE_WINDOWS = 512;
+const MAX_AUTHORIZED_REQUEST_RATE_WINDOWS = 64;
+const MAX_UNAUTHORIZED_REQUEST_RATE_WINDOWS = 512;
 const MAX_PUBLIC_DOWNLOAD_INGRESS_WINDOWS = 512;
 const MAX_PUBLIC_DOWNLOAD_LINK_WINDOWS = 128;
 const MAX_COMMANDS = 100;
@@ -41,6 +45,7 @@ const AUTH_DIGITS_PUBLIC_TTL_MS = 120 * 1000;
 const REALTIME_EVENT_VERSION = 1;
 const INTERNAL_COORDINATOR_HEADER = "x-klms-relay-coordinator";
 const INTERNAL_COORDINATOR_ACTION_PATH = "/__klms_relay_action";
+const INTERNAL_RATE_LIMIT_PATH = "/__klms_relay_rate_limit";
 const MAX_PUBLIC_TEXT_CHARS = 2_000;
 const MAX_IDENTIFIER_CHARS = 512;
 const UUID_PATH_COMPONENT = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
@@ -151,10 +156,14 @@ const defaultStatus = {
   authStatusMessage: null,
 };
 
+const RATE_LIMIT_BUCKETS = Object.freeze({
+  authorizedRequest: Object.freeze({ maxEntries: MAX_AUTHORIZED_REQUEST_RATE_WINDOWS, maxLimit: 6_000 }),
+  unauthorizedRequest: Object.freeze({ maxEntries: MAX_UNAUTHORIZED_REQUEST_RATE_WINDOWS, maxLimit: 6_000 }),
+  publicDownloadIngress: Object.freeze({ maxEntries: MAX_PUBLIC_DOWNLOAD_INGRESS_WINDOWS, maxLimit: 600 }),
+  publicDownloadLink: Object.freeze({ maxEntries: MAX_PUBLIC_DOWNLOAD_LINK_WINDOWS, maxLimit: 600 }),
+});
 let schemaReady = false;
-const requestRateWindows = new Map();
-const publicDownloadIngressRateWindows = new Map();
-const publicDownloadLinkRateWindows = new Map();
+const testLocalRateWindowsByEnvironment = new WeakMap();
 
 export class RelayRealtimeRoom {
   constructor(state, env) {
@@ -290,7 +299,89 @@ export class RelayMutationCoordinator {
   }
 }
 
+export class RelayRateLimiter {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.ready = state.blockConcurrencyWhile(async () => {
+      state.storage.sql.exec(`
+        CREATE TABLE IF NOT EXISTS rate_windows (
+          bucket TEXT NOT NULL,
+          rate_key TEXT NOT NULL,
+          request_count INTEGER NOT NULL,
+          expires_at INTEGER NOT NULL,
+          PRIMARY KEY (bucket, rate_key)
+        );
+        CREATE INDEX IF NOT EXISTS rate_windows_expiry_idx
+          ON rate_windows(bucket, expires_at);
+      `);
+    });
+  }
+
+  async fetch(request) {
+    if (request.headers.get(INTERNAL_COORDINATOR_HEADER) !== "1") {
+      return sendJSON(403, { error: "rate limiter requests are internal only" });
+    }
+    const url = new URL(request.url);
+    if (request.method !== "POST" || url.pathname !== INTERNAL_RATE_LIMIT_PATH) {
+      return sendJSON(404, { error: "not found" });
+    }
+    try {
+      const input = await readJSON(request);
+      const bucket = String(input.bucket || "");
+      const definition = RATE_LIMIT_BUCKETS[bucket];
+      const key = String(input.key || "").trim();
+      const limit = Number(input.limit);
+      if (!definition) throw new RelayValidationError("invalid rate limit bucket");
+      if (!key || utf8ByteLength(key) > 256) throw new RelayValidationError("invalid rate limit key");
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > definition.maxLimit) {
+        throw new RelayValidationError("invalid rate limit");
+      }
+      await this.ready;
+      return sendJSON(200, { allowed: this.consume(bucket, key, limit, definition.maxEntries) });
+    } catch (error) {
+      if (error instanceof RelayPayloadTooLargeError) return sendJSON(413, { error: error.message });
+      if (error instanceof RelayValidationError) return sendJSON(400, { error: error.message });
+      console.error(error);
+      return sendJSON(500, { error: "rate limiter failed" });
+    }
+  }
+
+  consume(bucket, key, limit, maxEntries) {
+    const sql = this.state.storage.sql;
+    const now = Date.now();
+    sql.exec("DELETE FROM rate_windows WHERE bucket = ? AND expires_at <= ?", bucket, now);
+    const current = [...sql.exec(
+      "SELECT request_count, expires_at FROM rate_windows WHERE bucket = ? AND rate_key = ?",
+      bucket,
+      key,
+    )][0];
+    if (current) {
+      if (Number(current.request_count) >= limit) return false;
+      sql.exec(
+        "UPDATE rate_windows SET request_count = request_count + 1 WHERE bucket = ? AND rate_key = ?",
+        bucket,
+        key,
+      );
+      return true;
+    }
+    const count = Number([...sql.exec(
+      "SELECT COUNT(*) AS total FROM rate_windows WHERE bucket = ?",
+      bucket,
+    )][0]?.total || 0);
+    if (count >= maxEntries) return false;
+    sql.exec(
+      "INSERT INTO rate_windows(bucket, rate_key, request_count, expires_at) VALUES (?, ?, 1, ?)",
+      bucket,
+      key,
+      now + 60_000,
+    );
+    return true;
+  }
+}
+
 let testLocalMutationTail = Promise.resolve();
+let testLocalRateLimitTail = Promise.resolve();
 
 export default {
   async fetch(request, env, ctx) {
@@ -365,7 +456,7 @@ async function fileUploadFastPathResponse(request, env, ctx, id) {
 
 async function fileDownloadFastPathResponse(request, env, ctx, id) {
   try {
-    if (!consumePublicDownloadIngressRateLimit(request, env)) return rateLimitResponse();
+    if (!await consumePublicDownloadIngressRateLimit(request, env)) return rateLimitResponse();
     const validTicket = validDownloadTicket(new URL(request.url).searchParams.get("ticket"));
     if (!validTicket) {
       return fileAccessDownloadPage({
@@ -441,6 +532,11 @@ function mutationCoordinator(env) {
   return env.RELAY_MUTATIONS.get(env.RELAY_MUTATIONS.idFromName("global"));
 }
 
+function rateLimitCoordinator(env) {
+  if (!env?.RELAY_RATE_LIMITS) return null;
+  return env.RELAY_RATE_LIMITS.get(env.RELAY_RATE_LIMITS.idFromName("global"));
+}
+
 function testLocalCoordinatorEnabled(env) {
   return env?.RELAY_TEST_LOCAL_COORDINATOR === true
     || String(env?.RELAY_TEST_LOCAL_COORDINATOR || "").trim() === "1";
@@ -449,6 +545,12 @@ function testLocalCoordinatorEnabled(env) {
 function enqueueTestLocalMutation(task) {
   const result = testLocalMutationTail.then(task, task);
   testLocalMutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
+function enqueueTestLocalRateLimit(task) {
+  const result = testLocalRateLimitTail.then(task, task);
+  testLocalRateLimitTail = result.then(() => undefined, () => undefined);
   return result;
 }
 
@@ -547,6 +649,45 @@ async function coordinatedAction(env, action, payload) {
   return { status: 503, body: { error: "relay mutation coordinator is not configured" } };
 }
 
+async function coordinatedRateLimit(env, bucket, key, limit) {
+  const coordinator = rateLimitCoordinator(env);
+  if (coordinator) {
+    const response = await coordinator.fetch(new Request(
+      `https://klms-sync-relay.internal${INTERNAL_RATE_LIMIT_PATH}`,
+      {
+        method: "POST",
+        headers: {
+          [INTERNAL_COORDINATOR_HEADER]: "1",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ bucket, key, limit }),
+      },
+    ));
+    if (!response.ok) {
+      throw new RelayUnavailableError(`relay rate limiter failed with status ${response.status}`);
+    }
+    const payload = await response.json();
+    if (typeof payload?.allowed !== "boolean") {
+      throw new RelayUnavailableError("relay rate limiter returned an invalid response");
+    }
+    return payload.allowed;
+  }
+  if (testLocalCoordinatorEnabled(env)) {
+    return enqueueTestLocalRateLimit(() => {
+      const definition = RATE_LIMIT_BUCKETS[bucket];
+      let rateWindows = testLocalRateWindowsByEnvironment.get(env);
+      if (!rateWindows) {
+        rateWindows = new Map(Object.keys(RATE_LIMIT_BUCKETS).map((name) => [name, new Map()]));
+        testLocalRateWindowsByEnvironment.set(env, rateWindows);
+      }
+      const windows = rateWindows.get(bucket);
+      if (!definition || !windows) throw new RelayValidationError("invalid rate limit bucket");
+      return consumeBoundedRateWindow(windows, key, limit, definition.maxEntries);
+    });
+  }
+  throw new RelayUnavailableError("RELAY_RATE_LIMITS Durable Object binding is required.");
+}
+
 async function route(request, env, ctx = null) {
   const url = new URL(request.url);
   const pathname = normalizedPath(url.pathname, env);
@@ -557,7 +698,9 @@ async function route(request, env, ctx = null) {
       storage: "cloudflare-d1",
       fileStorage: env?.RELAY_FILES ? "cloudflare-r2" : "not-configured",
       fileRelayLimits: publicFileAccessLimits(env),
-      configured: relayTokens(env).configured && Boolean(mutationCoordinator(env) || testLocalCoordinatorEnabled(env)),
+      configured: relayTokens(env).configured
+        && Boolean(mutationCoordinator(env) || testLocalCoordinatorEnabled(env))
+        && Boolean(rateLimitCoordinator(env) || testLocalCoordinatorEnabled(env)),
     });
   }
 
@@ -606,7 +749,7 @@ async function route(request, env, ctx = null) {
 
   const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
   if (request.method === "GET" && downloadMatch) {
-    if (!consumePublicDownloadIngressRateLimit(request, env)) return rateLimitResponse();
+    if (!await consumePublicDownloadIngressRateLimit(request, env)) return rateLimitResponse();
     if (!validDownloadTicket(url.searchParams.get("ticket"))) {
       return fileAccessDownloadPage({
         request,
@@ -1307,17 +1450,22 @@ async function rateLimitedAuthorization(request, env, role, scope) {
     : `unauthorized:${requestRateLimitAddress(request)}`;
   return {
     authorized: isAuthorized,
-    allowed: consumeRequestRateLimit(env, scope, identity),
+    allowed: await consumeRequestRateLimit(env, scope, identity, isAuthorized),
   };
 }
 
-function consumeRequestRateLimit(env, scope, identity) {
+async function consumeRequestRateLimit(env, scope, identity, isAuthorized) {
   const limit = boundedInt(env?.RELAY_REQUESTS_PER_MINUTE, DEFAULT_REQUESTS_PER_MINUTE, 1, 6_000);
   const key = `${scope}:${identity}`;
-  return consumeBoundedRateWindow(requestRateWindows, key, limit, MAX_REQUEST_RATE_WINDOWS);
+  return coordinatedRateLimit(
+    env,
+    isAuthorized ? "authorizedRequest" : "unauthorizedRequest",
+    key,
+    limit,
+  );
 }
 
-function consumePublicDownloadIngressRateLimit(request, env) {
+async function consumePublicDownloadIngressRateLimit(request, env) {
   const generalLimit = boundedInt(env?.RELAY_REQUESTS_PER_MINUTE, DEFAULT_REQUESTS_PER_MINUTE, 1, 6_000);
   const ingressLimit = Math.min(
     generalLimit,
@@ -1328,15 +1476,15 @@ function consumePublicDownloadIngressRateLimit(request, env) {
       600,
     ),
   );
-  return consumeBoundedRateWindow(
-    publicDownloadIngressRateWindows,
+  return coordinatedRateLimit(
+    env,
+    "publicDownloadIngress",
     requestRateLimitAddress(request),
     ingressLimit,
-    MAX_PUBLIC_DOWNLOAD_INGRESS_WINDOWS,
   );
 }
 
-function consumePublicDownloadLinkRateLimit(id, env) {
+async function consumePublicDownloadLinkRateLimit(id, env) {
   const generalLimit = boundedInt(env?.RELAY_REQUESTS_PER_MINUTE, DEFAULT_REQUESTS_PER_MINUTE, 1, 6_000);
   const linkLimit = Math.min(
     generalLimit,
@@ -1347,39 +1495,12 @@ function consumePublicDownloadLinkRateLimit(id, env) {
       600,
     ),
   );
-  return consumeBoundedRateWindow(
-    publicDownloadLinkRateWindows,
+  return coordinatedRateLimit(
+    env,
+    "publicDownloadLink",
     id.toLowerCase(),
     linkLimit,
-    MAX_PUBLIC_DOWNLOAD_LINK_WINDOWS,
   );
-}
-
-export function consumeBoundedRateWindow(
-  windows,
-  key,
-  limit,
-  maxEntries,
-  now = Date.now(),
-  windowMilliseconds = 60_000,
-) {
-  const current = windows.get(key);
-  if (current?.expiresAt > now) {
-    if (current.count >= limit) return false;
-    current.count += 1;
-    return true;
-  }
-  if (current) windows.delete(key);
-
-  if (windows.size >= maxEntries) {
-    for (const [candidateKey, candidate] of windows) {
-      if (candidate.expiresAt <= now) windows.delete(candidateKey);
-    }
-  }
-  if (windows.size >= maxEntries) return false;
-
-  windows.set(key, { count: 1, expiresAt: now + windowMilliseconds });
-  return true;
 }
 
 function rateLimitResponse() {
@@ -1611,11 +1732,15 @@ async function inspectRelaySchema(db) {
 async function relayReadiness(env) {
   let realtime = false;
   let coordinator = false;
+  let rateLimiter = false;
   try {
     realtime = Boolean(realtimeRoom(env));
   } catch {}
   try {
     coordinator = Boolean(mutationCoordinator(env) || testLocalCoordinatorEnabled(env));
+  } catch {}
+  try {
+    rateLimiter = Boolean(rateLimitCoordinator(env) || testLocalCoordinatorEnabled(env));
   } catch {}
   const checks = {
     tokens: relayTokens(env).configured,
@@ -1624,6 +1749,7 @@ async function relayReadiness(env) {
     fileStorage: Boolean(env?.RELAY_FILES),
     realtime,
     coordinator,
+    rateLimiter,
   };
   if (checks.database) checks.schema = (await inspectRelaySchema(env.RELAY_DB)).ok;
   return {
@@ -3105,7 +3231,7 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
       message: "링크의 인증 정보가 맞지 않습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
     });
   }
-  if (!consumePublicDownloadLinkRateLimit(id, env)) return rateLimitResponse();
+  if (!await consumePublicDownloadLinkRateLimit(id, env)) return rateLimitResponse();
   if (fileRequest.expiresAt && Date.parse(fileRequest.expiresAt) <= Date.now()) {
     return fileAccessDownloadPage({
       request,

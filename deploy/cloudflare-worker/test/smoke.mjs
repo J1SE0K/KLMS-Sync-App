@@ -70,6 +70,7 @@ async function runSmoke() {
     };
     const ready = await expectJSON("/readyz", undefined, { role: "worker" });
     assert.equal(ready.ok, true);
+    assert.equal(ready.checks.rateLimiter, true);
     env.RELAY_DB.schemaComplete = false;
     const missingSchema = await expectJSON("/readyz", undefined, { role: "worker", status: 503 });
     assert.equal(missingSchema.checks.schema, false);
@@ -82,6 +83,18 @@ async function runSmoke() {
     const health = await expectJSON("/healthz", undefined, { auth: false });
     assert.equal(health.configured, false);
     assert.equal((await request("/v1/status")).status, 503, "production must fail closed without the mutation coordinator binding");
+    env.RELAY_MUTATIONS = {
+      idFromName: () => "global",
+      get: () => ({}),
+    };
+    assert.equal((await request("/healthz", { auth: false })).status, 200);
+    assert.equal((await request("/healthz", { auth: false }).then((response) => response.json())).configured, false);
+    assert.equal(
+      (await request("/readyz", { role: "worker" })).status,
+      503,
+      "production must fail closed without the durable rate limiter binding",
+    );
+    delete env.RELAY_MUTATIONS;
     env.RELAY_TEST_LOCAL_COORDINATOR = "1";
   }
 
@@ -100,6 +113,32 @@ async function runSmoke() {
     assert.equal((await request("/v1/status", { auth: false, headers: invalidHeaders })).status, 401);
     assert.equal((await request("/v1/status", { auth: false, headers: invalidHeaders })).status, 401);
     assert.equal((await request("/v1/status", { auth: false, headers: invalidHeaders })).status, 429);
+    const capacityEnv = { ...env };
+    let acceptedNewIdentities = 0;
+    let unauthenticatedCapacityRejected = false;
+    for (let index = 0; index < 513; index += 1) {
+      const response = await request("/v1/status", {
+        auth: false,
+        environment: capacityEnv,
+        headers: {
+          Authorization: "Bearer invalid-token-with-enough-entropy",
+          "CF-Connecting-IP": `2001:db8::${(index + 1).toString(16)}`,
+        },
+      });
+      if (response.status === 429) {
+        unauthenticatedCapacityRejected = true;
+        break;
+      }
+      assert.equal(response.status, 401);
+      acceptedNewIdentities += 1;
+    }
+    assert.equal(unauthenticatedCapacityRejected, true);
+    assert.equal(acceptedNewIdentities, 512);
+    assert.equal(
+      (await request("/v1/status", { environment: capacityEnv })).status,
+      200,
+      "unauthenticated map exhaustion must not consume reserved authenticated capacity",
+    );
     assert.equal((await request("/v1/status", { headers })).status, 200);
     assert.equal((await request("/v1/status", { headers })).status, 200);
     const limited = await request("/v1/status", { headers });
@@ -1939,7 +1978,16 @@ async function runScheduledCleanup() {
   await scheduled;
 }
 
-function request(path, { method = "GET", body, rawBody, headers: extraHeaders = {}, auth = true, role = "client", ctx } = {}) {
+function request(path, {
+  method = "GET",
+  body,
+  rawBody,
+  headers: extraHeaders = {},
+  auth = true,
+  role = "client",
+  ctx,
+  environment = env,
+} = {}) {
   const headers = new Headers({ Accept: "application/json" });
   for (const [key, value] of Object.entries(extraHeaders)) {
     headers.set(key, value);
@@ -1954,7 +2002,7 @@ function request(path, { method = "GET", body, rawBody, headers: extraHeaders = 
     method,
     headers,
     body: rawBody != null ? rawBody : body != null && method !== "GET" ? JSON.stringify(body) : undefined,
-  }), env, ctx);
+  }), environment, ctx);
 }
 
 class FakeD1 {

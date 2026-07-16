@@ -1,0 +1,6 @@
+:8080 {
+	reverse_proxy relay:18484 {
+		header_up X-KLMS-Relay-Client-IP {http.request.header.CF-Connecting-IP}
+		header_up X-KLMS-Relay-Proxy-Secret {$KLMS_RELAY_TRUSTED_PROXY_SECRET}
+	}
+}

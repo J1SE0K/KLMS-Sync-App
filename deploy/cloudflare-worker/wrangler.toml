@@ -33,6 +33,10 @@ class_name = "RelayRealtimeRoom"
 name = "RELAY_MUTATIONS"
 class_name = "RelayMutationCoordinator"
 
+[[durable_objects.bindings]]
+name = "RELAY_RATE_LIMITS"
+class_name = "RelayRateLimiter"
+
 [[migrations]]
 tag = "v1_realtime_room"
 new_sqlite_classes = [ "RelayRealtimeRoom" ]
@@ -40,3 +44,7 @@ new_sqlite_classes = [ "RelayRealtimeRoom" ]
 [[migrations]]
 tag = "v2_mutation_coordinator"
 new_sqlite_classes = [ "RelayMutationCoordinator" ]
+
+[[migrations]]
+tag = "v3_rate_limiter"
+new_sqlite_classes = [ "RelayRateLimiter" ]
