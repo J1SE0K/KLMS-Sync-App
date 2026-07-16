@@ -2171,10 +2171,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
 
     def test_security_scanner_dependencies_are_fully_hash_locked(self) -> None:
         security_dir = PROJECT_DIR / "tools" / "security"
-        lock_paths = [
-            security_dir / "python-scanner-requirements.lock",
-            security_dir / "python-scanner-click-override.lock",
-        ]
+        lock_paths = [security_dir / "python-scanner-requirements.lock"]
         requirement_pattern = re.compile(
             r"^[A-Za-z0-9_.-]+==[^\s]+(?: --hash=sha256:[0-9a-f]{64})+$"
         )
@@ -2192,9 +2189,17 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
                 self.assertEqual(len(names), len(set(names)))
 
         installer = (security_dir / "install_security_scanners.sh").read_text(encoding="utf-8")
-        self.assertGreaterEqual(installer.count("--require-hashes"), 2)
-        self.assertGreaterEqual(installer.count("--only-binary=:all:"), 2)
+        versions = (security_dir / "security-tool-versions.env").read_text(encoding="utf-8")
+        scanner_lock = (security_dir / "python-scanner-requirements.lock").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--require-hashes", installer)
+        self.assertIn("--only-binary=:all:", installer)
+        self.assertIn("--no-deps", installer)
         self.assertIn('sys.version_info[:2] == (3, 12)', installer)
+        self.assertIn("MCP_VERSION=1.28.1", versions)
+        self.assertIn("mcp==1.28.1 --hash=sha256:", scanner_lock)
+        self.assertIn("click==8.4.2 --hash=sha256:", scanner_lock)
 
     def test_ios_project_has_app_icon_asset_catalog(self) -> None:
         project = (

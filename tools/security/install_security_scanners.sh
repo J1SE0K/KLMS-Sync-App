@@ -12,7 +12,6 @@ bin_dir="$install_root/bin"
 venv_dir="$install_root/python"
 download_dir="$install_root/downloads"
 scanner_lock="$script_dir/python-scanner-requirements.lock"
-click_override_lock="$script_dir/python-scanner-click-override.lock"
 
 umask 077
 mkdir -p "$bin_dir" "$download_dir"
@@ -33,10 +32,12 @@ for locked_requirement in \
     exit 1
   }
 done
-grep -Fq "click==$CLICK_VERSION --hash=sha256:" "$click_override_lock" || {
-  printf 'missing hashed Click override: %s\n' "$CLICK_VERSION" >&2
-  exit 1
-}
+for locked_override in "click==$CLICK_VERSION" "mcp==$MCP_VERSION"; do
+  grep -Fq "${locked_override} --hash=sha256:" "$scanner_lock" || {
+    printf 'missing hashed scanner security override: %s\n' "$locked_override" >&2
+    exit 1
+  }
+done
 
 platform="$(uname -s)-$(uname -m)"
 case "$platform" in
@@ -133,18 +134,13 @@ fi
 
 "$python_bin" -m venv --clear "$venv_dir"
 "$venv_dir/bin/python" -m pip install --disable-pip-version-check --no-input --quiet \
-  --upgrade --require-hashes --only-binary=:all: -r "$scanner_lock"
+  --upgrade --no-deps --require-hashes --only-binary=:all: -r "$scanner_lock"
 
-# Semgrep has not yet widened its Click constraint beyond the vulnerable 8.1.x
-# line. Its scan command does not use click.edit(), and the fixed Click release
-# is API-compatible with the exact non-interactive command used below. Refuse
-# every dependency mismatch except this deliberate, version-locked override.
-"$venv_dir/bin/python" -m pip install --disable-pip-version-check --no-input --quiet \
-  --upgrade --no-deps --require-hashes --only-binary=:all: -r "$click_override_lock"
-
-pip_check_output="$("$venv_dir/bin/python" -m pip check 2>&1 || true)"
+pip_check_output="$("$venv_dir/bin/python" -m pip check 2>&1 | LC_ALL=C sort || true)"
 expected_click_mismatch="semgrep $SEMGREP_VERSION has requirement click~=8.1.8, but you have click $CLICK_VERSION."
-if [[ "$pip_check_output" != "$expected_click_mismatch" ]]; then
+expected_mcp_mismatch="semgrep $SEMGREP_VERSION has requirement mcp==1.23.3, but you have mcp $MCP_VERSION."
+expected_dependency_mismatches="$(printf '%s\n' "$expected_click_mismatch" "$expected_mcp_mismatch" | LC_ALL=C sort)"
+if [[ "$pip_check_output" != "$expected_dependency_mismatches" ]]; then
   printf 'unexpected Python scanner dependency state:\n%s\n' "$pip_check_output" >&2
   exit 1
 fi
@@ -166,7 +162,7 @@ set +e
 semgrep_smoke_exit=$?
 set -e
 if [[ "$semgrep_smoke_exit" -ne 1 ]] || ! grep -q 'klms-security-smoke' "$smoke_dir/result.json"; then
-  printf 'Semgrep compatibility smoke test failed after fixed Click override\n' >&2
+  printf 'Semgrep compatibility smoke test failed with fixed scanner dependencies\n' >&2
   exit 1
 fi
 

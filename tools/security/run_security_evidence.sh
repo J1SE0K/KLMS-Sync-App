@@ -55,6 +55,7 @@ require_version detect-secrets "$DETECT_SECRETS_VERSION" "$(detect-secrets --ver
 require_version pip-audit "$PIP_AUDIT_VERSION" "$(pip-audit --version)"
 require_version pip "$PIP_VERSION" "$(python -m pip --version)"
 require_version click "$CLICK_VERSION" "$(python -c 'import importlib.metadata; print(importlib.metadata.version("click"))')"
+require_version mcp "$MCP_VERSION" "$(python -c 'import importlib.metadata; print(importlib.metadata.version("mcp"))')"
 require_version shellcheck "$SHELLCHECK_VERSION" "$(shellcheck --version | awk '/^version:/ {print $2}')"
 require_version gitleaks "$GITLEAKS_VERSION" "$(gitleaks version)"
 require_version trivy "$TRIVY_VERSION" "$(trivy --version | sed -n '1p')"
@@ -76,9 +77,11 @@ runtime_python_actual="$(
 )"
 [[ "$runtime_python_actual" == "$runtime_python_expected" ]] || fail runtime-python-manifest
 
-pip_check_output="$(python -m pip check 2>&1 || true)"
+pip_check_output="$(python -m pip check 2>&1 | LC_ALL=C sort || true)"
 expected_click_mismatch="semgrep $SEMGREP_VERSION has requirement click~=8.1.8, but you have click $CLICK_VERSION."
-[[ "$pip_check_output" == "$expected_click_mismatch" ]] || fail scanner-dependency-state
+expected_mcp_mismatch="semgrep $SEMGREP_VERSION has requirement mcp==1.23.3, but you have mcp $MCP_VERSION."
+expected_dependency_mismatches="$(printf '%s\n' "$expected_click_mismatch" "$expected_mcp_mismatch" | LC_ALL=C sort)"
+[[ "$pip_check_output" == "$expected_dependency_mismatches" ]] || fail scanner-dependency-state
 scanner_site_packages="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 pip-audit --path "$scanner_site_packages" --format=json \
   --output="$evidence_dir/scanner-pip-audit.json" \
