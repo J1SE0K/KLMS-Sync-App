@@ -1,8 +1,8 @@
-# KLMS Sync security best-practices report — 2026-07-14
+# KLMS Sync security best-practices report — 2026-07-14, updated 2026-07-16
 
 ## Executive summary
 
-No confirmed open Critical or High finding remains in the reviewed relay, file-transfer, command, local-client reset, backup, restore, or local-cleanup paths. The previously identified path traversal, quota race/I/O abuse, malformed-command poisoning, non-atomic active-command creation, unsafe WAL backup, stale prior-account data, and unknown-namespace cleanup issues have code and regression-test closures.
+No confirmed open Critical or High finding remains in the reviewed relay, file-transfer, command, local-client reset, backup, restore, or local-cleanup paths. The previously identified path traversal, quota race/I/O abuse, malformed-command poisoning, non-atomic active-command creation, unsafe WAL backup, stale prior-account data, unknown-namespace cleanup, authentication-rate-limit poisoning, and partial-parser deletion issues have code and regression-test closures.
 
 The operational cleanup finding is closed: root cleanup is namespace-allowlisted, dry-run and protected-root tests pass, and the completed cleanup preserved the unknown personal result, speech model, and synchronization state byte-for-byte.
 
@@ -93,7 +93,11 @@ None confirmed in the reviewed snapshot.
 ## Verified defense-in-depth controls
 
 - Bearer-token role separation for client and worker endpoints; comparisons are constant-time (`tools/klms_relay_server.mjs:2064-2074`, `:2258-2260`; `deploy/cloudflare-worker/src/worker.mjs:1194-1208`).
-- JSON bodies are capped at 1 MiB before parsing (`deploy/cloudflare-worker/src/worker.mjs:5915-5927`; equivalent limit in the self-host relay).
+- JSON bodies are streamed into a 1 MiB cap; malformed JSON returns 400 and oversized input returns 413 in both relays. The limit is enforced without first materializing an unbounded request body.
+- Valid client/worker credentials use role-scoped request buckets separate from failed-authentication IP buckets. Public file downloads use an IP bucket until the stored ticket matches and only then consume the real link bucket, so syntactically valid fake tickets cannot throttle a valid link.
+- Public run-log publication removes bearer/basic/digest credentials, token/secret/password/cookie/session/API-key assignments, arbitrary HTTP(S) URLs, email addresses, and Unix/macOS/Windows absolute paths. A final forbidden-pattern pass drops any residual sensitive line.
+- iOS Keychain persistence is serialized on a utility queue with generation invalidation, and clearing waits behind earlier writes before deleting. Sensitive iOS pasteboard entries are local-only with system expiry; macOS marks them transient/concealed and clears matching content after 60 seconds or graceful termination.
+- The local terminal-result outbox accepts terminal statuses only, validates relay identity, limits age/future skew/count, salvages valid records independently, and quarantines corrupted documents before rewriting a normalized version.
 - File preview responses use nonce-based CSP, deny framing, set `nosniff`, and use same-origin resource policy; exercised by `deploy/relay/test_relay.mjs:268-281`.
 - Windows stores the relay token with Electron `safeStorage`; plaintext fallback is rejected when encryption is unavailable (`apps/KLMSyncWindows/src/main.cjs:217-234`).
 - Backups use directory mode 0700 and file mode 0600, are verified before publication, and cannot overwrite an existing backup.

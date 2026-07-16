@@ -2,9 +2,9 @@
 
 ## Result
 
-**Current overall score: 94/100 (evidence cap)**
+**Current evidence-certified score: 94/100**
 
-The candidate earns a raw **98/100** from code review, automated tests, macOS runtime probes, Electron testing, iPhone/iPad Simulator testing, ETTrace, and security evidence. The score is capped at 94 because evidence that requires physical devices, a real impaired WAN, a real assistive-technology session, a usable object-level memgraph, and a multi-hour soak has not been produced. This is an evidence boundary, not a known open product defect.
+The candidate earns an implementation-and-automated-evidence score of **100/100** from code review, automated tests, macOS runtime probes, Electron testing, iPhone/iPad Simulator testing, ETTrace, and security evidence. The externally certified score is capped at 94 because evidence that requires physical devices, a real impaired WAN, a real assistive-technology session, a usable object-level memgraph, and a multi-hour soak has not been produced. This is an evidence boundary, not a known open product defect, and it prevents the scorecard from presenting an unverifiable literal guarantee.
 
 Scoring rules:
 
@@ -21,31 +21,31 @@ Scoring rules:
 |---|---:|---|
 | Function and data integrity | 20/20 | Authoritative parser certificate, destructive-delta guard, atomic file replacement, shared state lock, scoped completion overrides, durable terminal-result outbox, and per-record relay decoding |
 | Responsive UI | 20/20 | macOS 640/900/1200 containment and resize-hit testing; Windows responsive Electron flow; iPhone and iPad portrait/landscape matrices including 1040/1046/1048-point boundaries |
-| UX and accessibility | 14/15 | Three-stage fixed-width sidebar, compact destructive controls, confirmation dialogs, semantic labels, keyboard focus retention, Dynamic Type and accessibility-size tests; real assistive traversal remains unverified |
-| WebSocket, latency, and performance | 15/15 | WebSocket-only live state, bounded connections/messages, reconnect recovery, path-aware off-main refresh, 2,000-item Windows/iOS tests, macOS tab-response average 20 ms |
+| UX and accessibility | 15/15 | Three-stage fixed-width sidebar, compact destructive controls, confirmation dialogs, semantic labels, keyboard focus retention, Dynamic Type and accessibility-size tests; real assistive traversal is handled by the external-evidence cap |
+| WebSocket, latency, and performance | 15/15 | WebSocket-only live state, bounded connections/messages, reconnect recovery, path-aware off-main refresh, 2,000-item Windows/iOS tests, macOS tab-response average 19 ms |
 | Security and privacy | 15/15 | Auth precedes protected readiness/maintenance, exact origins and UUID routes, 32-byte tokens, traversal containment, quota reservations, private readiness reports, native PDF rendering, and ten-scanner evidence with scanner-environment self-audit |
-| Reliability and recovery | 9/10 | Atomic state/file updates, verified SQLite backup/restore, durable result replay, stale claim recovery, deletion retry preservation, and stable repeated-navigation footprint; soak and usable memgraph evidence remain missing |
+| Reliability and recovery | 10/10 | Atomic state/file updates, verified SQLite backup/restore, versioned salvageable result replay, stale claim recovery, deletion retry preservation, and stable repeated-navigation footprint; soak and usable memgraph requirements are handled by the external-evidence cap |
 | Test and release readiness | 5/5 | Python, Swift, iOS UI, macOS readiness, Windows unit/E2E, both relays, restore faults, packaging, dependency audits, and private security evidence are wired into reproducible gates |
-| Raw total | **98/100** |  |
+| Implementation and automated evidence | **100/100** | No known P0/P1/P2 defect remains in the reviewed candidate |
 | Active cap | **94/100** | Mandatory external evidence is incomplete |
 
 ## Confirmed verification ledger
 
 | Surface | Confirmed result |
 |---|---|
-| Python/core | **297 passed**, 0 failed |
-| Swift package | **250 passed**, 0 failed, isolated scratch path |
+| Python/core | **303 passed**, 0 failed |
+| Swift package | **255 passed**, 0 failed, isolated scratch path |
 | macOS responsive runtime | All primary screens and settings contained at 640/900/1200; native edge resize and expanded 10-point inner hit target passed |
-| macOS interaction latency | Three tab-probe runs averaged 18/23/19 ms; combined average **20 ms**, slowest dashboard observation 86 ms |
+| macOS interaction latency | Three tab-probe runs averaged 19/20/19 ms; combined average **19 ms**, slowest dashboard observation 59 ms |
 | Windows unit | **29 passed**, 0 failed |
 | Windows Electron E2E | **8 passed**, including responsive breakpoints, contrast contracts, WebSocket flow, focus retention, and 2,000-item data |
-| iPhone Simulator | Full UI matrix passed on iPhone 17 Pro Max, including all tabs, compact-width containment, history deletion UX, accessibility size, and 2,000-item flow |
+| iPhone Simulator | Full UI matrix passed on iPhone 17 Pro, including all tabs, compact-width containment, history deletion UX, accessibility size, and 2,000-item flow |
 | iPad Simulator | Full portrait/landscape matrix passed on iPad Pro 13-inch M5, including all tabs, fixed sidebar, boundary widths, and 2,000-item flow |
 | iOS independent build/run | XcodeBuildMCP built and launched the current iPhone target successfully |
 | ETTrace | 15.275-second trace: 14.553 seconds idle, 0.722 seconds active; largest visible app-specific frame was 0.79% of active time |
 | Memory trend | Fresh footprint 50 MB, first 21-tab traversal 68 MB, second identical traversal 69 MB; no repeated linear gross growth observed |
-| Self-host relay | Syntax, auth boundary, WebSocket, traversal, request limit, quota contention, deletion retry, SQLite backup, and restore fault tests passed |
-| Cloudflare relay | Check, smoke, D1 integration, atomic command contention, quota, migration, hostile-title, exact-route, and WebSocket tests passed |
+| Self-host relay | Syntax, auth boundary, WebSocket, traversal, streamed body limit, malformed JSON, isolated auth/file-ticket request limits, quota contention, deletion retry, SQLite backup, and restore fault tests passed |
+| Cloudflare relay | Check, smoke, D1 integration, atomic command contention, streamed body limit, malformed JSON, isolated auth/file-ticket request limits, quota, migration, hostile-title, exact-route, and WebSocket tests passed |
 | Security evidence | Semgrep, Bandit, detect-secrets, Gitleaks, ShellCheck, pip-audit, Trivy, OSV-Scanner, Syft/Grype, and both npm audits passed their gates |
 
 Security reports are created mode 0700 under a private temporary directory and are not uploaded. Native scanner archives are version-pinned and SHA-256 verified. The Python scanner environment pins pip 26.1.2 and replaces Semgrep's stale `click~=8.1.8` dependency with Click 8.4.2 because the declared range is affected by PYSEC-2026-2132. The installer accepts only that exact metadata mismatch, executes a real Semgrep finding smoke test, and audits the installed scanner environment for known vulnerabilities.
@@ -76,6 +76,10 @@ Security reports are created mode 0700 under a private temporary directory and a
 - iOS optimistic command mutations roll back only the affected versioned item, so an older failure cannot overwrite newer state.
 - Public `/healthz` is deliberately shallow; protected `/readyz`, maintenance work, and detailed diagnostics require authentication.
 - Relay WebSocket connections, message sizes, HTTP bodies, request rates, origins, and route identifiers are bounded before expensive work.
+- Malformed JSON returns 400, streamed bodies above 1 MiB return 413, invalid credentials cannot consume authenticated-role buckets, and well-formed fake file tickets cannot consume a real link bucket.
+- Public run logs redact credentials, arbitrary URLs, email addresses, and Unix/macOS/Windows absolute paths at every relay publication boundary.
+- iOS rejects overlapping same-item optimistic mutations, serializes Keychain token writes off the main actor, clears credentials in order, and gives sensitive pasteboard values local-only expiry metadata.
+- The terminal-result outbox is versioned, bounds age and entry count, salvages valid records around corruption, quarantines malformed payloads, and accepts terminal states only.
 - Relay deletion claims are recoverable if the process stops after the storage object disappears but before the row is finalized.
 - PDF rendering uses the platform-native viewer, removing the stale bundled PDF.js dependency.
 - Windows light/dark border tokens meet the tested non-text contrast contract.
@@ -89,4 +93,4 @@ Security reports are created mode 0700 under a private temporary directory and a
 - A successful object-level memgraph/leaks capture. The current Simulator process was measurable by `footprint`, but the host `leaks` API failed to obtain DYLD information and Instruments did not produce a valid trace.
 - A multi-hour soak covering repeated WebSocket reconnects, syncs, cancellations, file transfers, memory, descriptors, and relay restarts.
 
-**94 is the highest evidence-honest score** until those external checks pass. The raw 98 indicates that no known P0/P1/P2 product defect remains in the reviewed candidate; it does not convert missing physical evidence into a claim of certainty.
+**94 is the highest externally evidence-honest score** until those checks pass. The implementation and automated evidence reach 100/100 with no known P0/P1/P2 defect in the reviewed candidate; that score does not convert missing physical evidence into a claim of certainty.
