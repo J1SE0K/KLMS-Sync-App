@@ -1366,6 +1366,40 @@ class V2CoreTests(unittest.TestCase):
         self.assertFalse(certificate.explicit_empty)
         self.assertIn("명시적인 빈 상태", certificate.reason)
 
+    def test_course_semantic_certificate_ignores_empty_marker_outside_activity_list(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics"><li class="section">1주차</li></ul>
+            </main>
+            <aside>Nothing to display</aside>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+
+    def test_course_semantic_certificate_ignores_hidden_empty_marker(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics">
+                <li class="section">1주차</li>
+                <li class="section" hidden>등록된 활동이 없습니다.</li>
+              </ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+
     def test_course_semantic_certificate_rejects_partially_changed_activity_links(self) -> None:
         page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
@@ -1447,6 +1481,7 @@ class V2CoreTests(unittest.TestCase):
                     {
                         "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
                         "course": "알고리즘",
+                        "course_id": "43",
                     }
                 ]
             },
@@ -1457,6 +1492,221 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertIn("모두 사라져", error)
 
+    def test_destructive_state_delta_rejects_same_url_semantic_regression(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": url,
+                        "type": "assignment",
+                        "category": "assignment",
+                        "course": "알고리즘",
+                        "course_id": "43",
+                        "title": "Homework 1",
+                        "due": "2099-01-02 23:59",
+                        "sync_start": "2099-01-02 23:59",
+                        "sync_due": "2099-01-02 23:59",
+                        "instructions": "1장 연습문제를 제출하세요.",
+                    }
+                ]
+            },
+        }
+        previous_record = previous_state["content"]["assignments"][0]
+        for field in (
+            "type",
+            "category",
+            "course",
+            "course_id",
+            "title",
+            "due",
+            "sync_start",
+            "sync_due",
+            "instructions",
+        ):
+            with self.subTest(field=field):
+                degraded_record = dict(previous_record)
+                degraded_record[field] = ""
+                next_state = {
+                    "status": "ok",
+                    "content": {"assignments": [degraded_record]},
+                }
+
+                error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+                self.assertIn("내용 일부가 갑자기 사라져", error)
+
+    def test_destructive_state_delta_accepts_nonempty_semantic_updates(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": url,
+                        "course": "알고리즘",
+                        "title": "Homework 1",
+                        "due": "2099-01-02 23:59",
+                    }
+                ]
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": url,
+                        "course": "알고리즘",
+                        "title": "Homework 1 (수정)",
+                        "due": "2099-01-03 23:59",
+                    }
+                ]
+            },
+        }
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertEqual(error, "")
+
+    def test_destructive_state_delta_rejects_same_name_different_course_id(self) -> None:
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+                        "course": "알고리즘",
+                        "course_id": "44",
+                    }
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+        course_pages = [
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "title": "강좌: 알고리즘",
+                "html": """
+                <main data-region="course-content">
+                  <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+                </main>
+                """,
+            }
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            next_state,
+            course_pages=course_pages,
+        )
+
+        self.assertIn("갑자기 모두 사라져", error)
+
+    def test_destructive_state_delta_rejects_legacy_name_only_empty_match(self) -> None:
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+                        "course": "알고리즘",
+                    }
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+        course_pages = [
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "title": "강좌: 알고리즘",
+                "html": """
+                <main data-region="course-content">
+                  <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+                </main>
+                """,
+            }
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            next_state,
+            course_pages=course_pages,
+        )
+
+        self.assertIn("갑자기 모두 사라져", error)
+
+    def test_destructive_state_delta_rejects_exam_classification_downgrade(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/quiz/view.php?id=99"
+        shared_fields = {
+            "url": url,
+            "course": "알고리즘",
+            "title": "중간고사",
+            "due": "2099-04-20 11:30",
+            "sync_start": "2099-04-20 10:30",
+            "sync_due": "2099-04-20 11:30",
+            "instructions": "강의실에서 응시",
+        }
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "exam_items": [
+                    {**shared_fields, "type": "exam", "category": "exam"}
+                ]
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {**shared_fields, "type": "assignment", "category": "assignment"}
+                ]
+            },
+        }
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("내용 일부가 갑자기 사라져", error)
+
+    def test_destructive_state_delta_rejects_visible_unparseable_schedule_regression(self) -> None:
+        url = "https://klms.kaist.ac.kr/mod/quiz/view.php?id=99"
+        degraded = klms_sync.merge_assignment(
+            klms_sync.DashboardItem(
+                url=url,
+                title="중간고사",
+                course="알고리즘",
+                schedule="마감 예정 (KLMS 새 형식)",
+                item_type="assignment",
+            ),
+            None,
+        )
+        self.assertTrue(degraded["due"])
+        self.assertFalse(degraded["sync_due"])
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "exam_items": [
+                    {
+                        **degraded,
+                        "type": "exam",
+                        "category": "exam",
+                        "instructions": "강의실에서 응시",
+                        "sync_start": "2099-04-20T10:30:00+09:00",
+                        "sync_due": "2099-04-20T11:30:00+09:00",
+                    }
+                ]
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {"assignments": [degraded]},
+        }
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("내용 일부가 갑자기 사라져", error)
+
     def test_destructive_state_delta_accepts_matching_explicit_empty_course(self) -> None:
         previous_state = {
             "status": "ok",
@@ -1465,6 +1715,7 @@ class V2CoreTests(unittest.TestCase):
                     {
                         "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
                         "course": "알고리즘",
+                        "course_id": "43",
                     }
                 ]
             },

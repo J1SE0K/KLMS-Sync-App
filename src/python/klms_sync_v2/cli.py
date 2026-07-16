@@ -260,6 +260,7 @@ def legacy_assignment_to_v2(record: dict[str, Any]) -> Assignment:
         instructions=one_line(str(record.get("instructions") or "")),
         category="assignment",
         type=one_line(str(record.get("type") or "assign")),
+        course_id=one_line(str(record.get("course_id") or "")),
     )
 
 
@@ -279,6 +280,7 @@ def legacy_event_to_v2(record: dict[str, Any]) -> Event:
         coverage=one_line(str(record.get("coverage") or record.get("coverage_summary") or "")),
         category="exam",
         type=one_line(str(record.get("type") or "exam")),
+        course_id=one_line(str(record.get("course_id") or "")),
     )
 
 

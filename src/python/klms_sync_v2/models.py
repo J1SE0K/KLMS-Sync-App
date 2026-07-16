@@ -58,6 +58,7 @@ class Assignment:
     instructions: str = ""
     category: Category = "assignment"
     type: str = "assign"
+    course_id: str = ""
     auto_completed: bool = False
     record_status: str = ""
     completion_reason: str = ""
@@ -68,6 +69,7 @@ class Assignment:
             "type": self.type,
             "category": self.category,
             "course": self.course,
+            "course_id": self.course_id,
             "title": self.title,
             "due": self.due,
             "submission": self.submission,
@@ -98,6 +100,7 @@ class Event:
     instructions: str = ""
     category: Category = "exam"
     type: str = "exam"
+    course_id: str = ""
     sync_start: str = ""
     location: str = ""
     coverage: str = ""
@@ -110,6 +113,7 @@ class Event:
             "type": self.type,
             "category": self.category,
             "course": self.course,
+            "course_id": self.course_id,
             "title": self.title,
             "due": self.due,
             "submission": "",

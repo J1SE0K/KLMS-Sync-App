@@ -857,6 +857,7 @@ class DashboardItem:
     course: str
     schedule: str
     item_type: str
+    course_id: str = ""
 
 
 @dataclass
@@ -975,6 +976,7 @@ class CoursePageSemanticCertificate:
     activity_node_count: int
     parsed_activity_count: int
     course: str = ""
+    course_id: str = ""
     module_urls: tuple[str, ...] = ()
     explicit_empty: bool = False
     reason: str = ""
@@ -1009,13 +1011,16 @@ def collect_candidate_items(
         and not is_placeholder_course_name(item.course)
         and not should_ignore_course_url(item.url)
     ]
-    seen_urls = {item.url for item in items}
+    items_by_url = {item.url: item for item in items}
 
     for page in course_pages:
         for item in parse_course_page(page):
-            if item.url in seen_urls:
+            existing = items_by_url.get(item.url)
+            if existing is not None:
+                if item.course_id and not existing.course_id:
+                    existing.course_id = item.course_id
                 continue
-            seen_urls.add(item.url)
+            items_by_url[item.url] = item
             items.append(item)
 
     return items
@@ -2732,6 +2737,7 @@ def parse_course_urls_from_dashboard(page: dict[str, Any]) -> list[str]:
 def parse_course_page(page: dict[str, Any]) -> list[DashboardItem]:
     items: list[DashboardItem] = []
     seen_urls: set[str] = set()
+    course_id = url_query_id(page_requested_url(page))
 
     for activity in iter_course_activities(page):
         if activity.url in seen_urls:
@@ -2749,6 +2755,7 @@ def parse_course_page(page: dict[str, Any]) -> list[DashboardItem]:
                 course=activity.course,
                 schedule=schedule,
                 item_type=activity.module or "task",
+                course_id=course_id,
             )
         )
 
@@ -2783,6 +2790,7 @@ def course_page_semantic_certificate(
 
     soup = BeautifulSoup(html, "html.parser")
     course = extract_course_name(page, soup)
+    course_id = url_query_id(requested_url)
     recognized_shell = soup.select_one(
         "[data-region='course-content'], #region-main .course-content, .course-content, "
         "ul.topics, ul.weeks, li.section, li.activity"
@@ -2806,13 +2814,34 @@ def course_page_semantic_certificate(
 
     module_link_count = len(module_urls)
     parsed_activity_count = len(parsed_urls)
-    shell_text = normalize_whitespace(soup.get_text(" ", strip=True)).casefold()
+    empty_state_scopes = soup.select("ul.topics, ul.weeks")
+    scoped_empty_texts: list[str] = []
+    for scope in empty_state_scopes:
+        scoped_soup = BeautifulSoup(str(scope), "html.parser")
+        for element in list(scoped_soup.find_all(True)):
+            classes = {
+                str(value).casefold()
+                for value in element.get("class", [])
+            }
+            style = re.sub(r"\s+", "", str(element.get("style") or "")).casefold()
+            if (
+                element.has_attr("hidden")
+                or str(element.get("aria-hidden") or "").casefold() == "true"
+                or classes.intersection({"hidden", "d-none", "sr-only", "visually-hidden", "accesshide"})
+                or "display:none" in style
+                or "visibility:hidden" in style
+            ):
+                element.decompose()
+        scoped_empty_texts.append(
+            normalize_whitespace(scoped_soup.get_text(" ", strip=True)).casefold()
+        )
     explicit_empty = (
         recognized_shell
         and module_link_count == 0
         and linked_activity_node_count == 0
         and any(
-            marker in shell_text
+            marker in scoped_text
+            for scoped_text in scoped_empty_texts
             for marker in (
                 "등록된 활동이 없습니다",
                 "등록된 활동이 없어요",
@@ -2856,6 +2885,7 @@ def course_page_semantic_certificate(
         activity_node_count=len(activity_nodes),
         parsed_activity_count=parsed_activity_count,
         course=course,
+        course_id=course_id,
         module_urls=tuple(sorted(module_urls)),
         explicit_empty=explicit_empty,
         reason=reason,
@@ -3425,6 +3455,7 @@ def merge_assignment(item: DashboardItem, detail: dict[str, Any] | None) -> dict
         "type": item.item_type,
         "category": "assignment",
         "course": item.course,
+        "course_id": item.course_id,
         "title": title,
         "schedule": item.schedule,
         "due": due,
@@ -3550,6 +3581,7 @@ def merge_sync_items(existing: dict[str, Any], candidate: dict[str, Any]) -> dic
         "type",
         "category",
         "course",
+        "course_id",
         "title",
         "schedule",
         "due",
@@ -5022,6 +5054,7 @@ def serialize_sync_item(item: dict[str, Any]) -> dict[str, Any]:
         "type": item["type"],
         "category": item.get("category", "assignment"),
         "course": item["course"],
+        "course_id": item.get("course_id", ""),
         "title": item["title"],
         "due": item["due"],
         "submission": item.get("submission", ""),
@@ -5067,6 +5100,18 @@ TRACKED_STATE_SECTIONS = (
     "help_desk_items",
 )
 
+TRACKED_STATE_SEMANTIC_FIELDS = (
+    "type",
+    "category",
+    "course",
+    "course_id",
+    "title",
+    "due",
+    "sync_start",
+    "sync_due",
+    "instructions",
+)
+
 
 def tracked_state_module_courses(state: dict[str, Any]) -> dict[str, str]:
     content = state.get("content")
@@ -5093,22 +5138,73 @@ def tracked_state_module_urls(state: dict[str, Any]) -> set[str]:
     return set(tracked_state_module_courses(state))
 
 
-def explicit_empty_course_keys(course_pages: list[dict[str, Any]]) -> set[str]:
-    certificates_by_course: dict[str, list[CoursePageSemanticCertificate]] = {}
+def tracked_state_module_semantic_values(
+    state: dict[str, Any],
+) -> dict[str, dict[str, set[str]]]:
+    content = state.get("content")
+    if not isinstance(content, dict):
+        return {}
+    values_by_url: dict[str, dict[str, set[str]]] = {}
+    for section in TRACKED_STATE_SECTIONS:
+        records = content.get(section)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            url = normalize_url(str(record.get("url") or ""))
+            parsed = urlparse(url)
+            if parsed.hostname != "klms.kaist.ac.kr" or not parsed.path.startswith("/mod/"):
+                continue
+            semantic_values = values_by_url.setdefault(url, {})
+            for field in TRACKED_STATE_SEMANTIC_FIELDS:
+                value = normalize_whitespace(str(record.get(field) or ""))
+                if value:
+                    semantic_values.setdefault(field, set()).add(value.casefold())
+    return values_by_url
+
+
+def has_exam_semantics(values: dict[str, set[str]]) -> bool:
+    return "exam" in (values.get("type", set()) | values.get("category", set()))
+
+
+def explicit_empty_course_ids(course_pages: list[dict[str, Any]]) -> set[str]:
+    certificates_by_course_id: dict[str, list[CoursePageSemanticCertificate]] = {}
     for page in course_pages:
         certificate = course_page_semantic_certificate(page)
-        course_key = normalize_whitespace(certificate.course).casefold()
-        if course_key:
-            certificates_by_course.setdefault(course_key, []).append(certificate)
+        if certificate.course_id:
+            certificates_by_course_id.setdefault(certificate.course_id, []).append(certificate)
     return {
-        course_key
-        for course_key, certificates in certificates_by_course.items()
+        course_id
+        for course_id, certificates in certificates_by_course_id.items()
         if certificates
         and all(
             certificate.authoritative and certificate.explicit_empty
             for certificate in certificates
         )
     }
+
+
+def tracked_state_module_course_ids(state: dict[str, Any]) -> dict[str, str]:
+    content = state.get("content")
+    if not isinstance(content, dict):
+        return {}
+    course_ids: dict[str, str] = {}
+    for section in TRACKED_STATE_SECTIONS:
+        records = content.get(section)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            url = normalize_url(str(record.get("url") or ""))
+            parsed = urlparse(url)
+            if parsed.hostname != "klms.kaist.ac.kr" or not parsed.path.startswith("/mod/"):
+                continue
+            course_id = normalize_whitespace(str(record.get("course_id") or ""))
+            if course_id:
+                course_ids[url] = course_id
+    return course_ids
 
 
 def destructive_state_delta_error(
@@ -5120,16 +5216,39 @@ def destructive_state_delta_error(
     if previous_state.get("status") != "ok" or next_state.get("status") != "ok":
         return ""
     previous_courses = tracked_state_module_courses(previous_state)
+    previous_course_ids = tracked_state_module_course_ids(previous_state)
     previous_urls = set(previous_courses)
     next_urls = tracked_state_module_urls(next_state)
+    previous_semantic_values = tracked_state_module_semantic_values(previous_state)
+    next_semantic_values = tracked_state_module_semantic_values(next_state)
+    regressed_urls = {
+        url
+        for url in previous_urls & next_urls
+        if any(
+            previous_semantic_values.get(url, {}).get(field)
+            and not next_semantic_values.get(url, {}).get(field)
+            for field in TRACKED_STATE_SEMANTIC_FIELDS
+        )
+    }
+    regressed_urls.update(
+        url
+        for url in previous_urls & next_urls
+        if has_exam_semantics(previous_semantic_values.get(url, {}))
+        and not has_exam_semantics(next_semantic_values.get(url, {}))
+    )
+    if regressed_urls:
+        return (
+            "KLMS 일정과 과제의 내용 일부가 갑자기 사라져 파싱 오류 가능성이 있어 기존 동기화 상태를 유지했어. "
+            "KLMS 화면을 확인한 뒤 다시 동기화해 줘."
+        )
     removed_urls = previous_urls - next_urls
     if not removed_urls:
         return ""
-    empty_course_keys = explicit_empty_course_keys(course_pages or [])
+    empty_course_ids = explicit_empty_course_ids(course_pages or [])
     explicitly_removed_urls = {
         url
         for url in removed_urls
-        if normalize_whitespace(previous_courses.get(url, "")).casefold() in empty_course_keys
+        if previous_course_ids.get(url) in empty_course_ids
     }
     if explicitly_removed_urls == removed_urls:
         return ""
