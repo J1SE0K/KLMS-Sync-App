@@ -1311,6 +1311,7 @@ class V2CoreTests(unittest.TestCase):
                         {
                             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=42",
                             "url": "https://klms.kaist.ac.kr/course/view.php?id=42",
+                            "status": 200,
                             "title": "Parser drift fixture",
                             "html": """
                             <main data-region="course-content">
@@ -2443,6 +2444,7 @@ class V2CoreTests(unittest.TestCase):
                         {
                             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
                             "url": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                            "status": 200,
                             "title": "강좌: 알고리즘",
                             "html": """
                             <main data-region="course-content">
