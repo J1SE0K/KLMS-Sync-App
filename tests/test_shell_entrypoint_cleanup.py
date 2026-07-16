@@ -1698,7 +1698,15 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
                 "visual-and-accessibility",
             },
         )
-        self.assertEqual(len(inventory["mandatoryExternalEvidence"]), 5)
+        self.assertEqual(
+            set(inventory["mandatoryExternalEvidence"]),
+            {
+                "physical-iphone-and-ipad-matrix",
+                "controlled-impaired-wan-and-reconnect",
+                "voiceover-switch-control-and-hardware-keyboard",
+                "multi-hour-reconnect-sync-cancel-transfer-soak",
+            },
+        )
 
     def test_github_workflows_pin_actions_and_run_restore_recovery_tests(self) -> None:
         workflows = "\n".join(
