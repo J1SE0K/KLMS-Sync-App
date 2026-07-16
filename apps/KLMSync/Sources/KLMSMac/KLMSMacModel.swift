@@ -404,6 +404,7 @@ final class KLMSMacModel: ObservableObject {
     private let runner = KLMSCommandRunner()
     private let installer = EngineInstaller()
     private let locator = EnginePayloadLocator()
+    private let serverRelayTerminalOutbox: RemoteCommandTerminalOutboxStore
     private var isBootstrapping = false
     private var isRequestingAppPermissions = false
     private var serverRelayEventStreamTask: Task<Void, Never>?
@@ -538,6 +539,9 @@ final class KLMSMacModel: ObservableObject {
     }
 
     init(paths: KLMSPaths = KLMSPaths()) {
+        serverRelayTerminalOutbox = RemoteCommandTerminalOutboxStore(
+            url: paths.serverRelayTerminalCommandOutboxURL
+        )
         UserDefaults.standard.removeObject(forKey: Self.deprecatedRemoteProcessingEnabledKey)
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteEnabledKey)
         serverRelayEnabled = UserDefaults.standard.bool(forKey: Self.serverRelayEnabledKey)
@@ -2459,10 +2463,7 @@ final class KLMSMacModel: ObservableObject {
         using store: ServerRelayCommandStore,
         identity: ServerRelayTerminalOutboxIdentity
     ) async throws {
-        let outbox = RemoteCommandTerminalOutboxStore(
-            url: paths.serverRelayTerminalCommandOutboxURL
-        )
-        let entries = try outbox.pending(
+        let entries = try await serverRelayTerminalOutbox.pending(
             relayURL: identity.relayURL,
             workerTokenFingerprint: identity.workerTokenFingerprint
         )
@@ -2472,8 +2473,8 @@ final class KLMSMacModel: ObservableObject {
             } catch {
                 guard Self.isServerRetiredCommand(error) else { throw error }
             }
-            try outbox.acknowledge(
-                commandID: entry.command.id,
+            try await serverRelayTerminalOutbox.acknowledge(
+                deliveryID: entry.deliveryID,
                 relayURL: identity.relayURL,
                 workerTokenFingerprint: identity.workerTokenFingerprint
             )
@@ -2492,14 +2493,17 @@ final class KLMSMacModel: ObservableObject {
         using store: ServerRelayCommandStore,
         identity: ServerRelayTerminalOutboxIdentity
     ) async throws {
-        let outbox = RemoteCommandTerminalOutboxStore(
-            url: paths.serverRelayTerminalCommandOutboxURL
-        )
-        try outbox.enqueue(
+        let enqueueResult = try await serverRelayTerminalOutbox.enqueue(
             command,
             relayURL: identity.relayURL,
             workerTokenFingerprint: identity.workerTokenFingerprint
         )
+        if !enqueueResult.evictedDeliveryIDs.isEmpty {
+            NSLog(
+                "KLMS relay terminal outbox evicted %ld superseded or capacity-limited deliveries",
+                enqueueResult.evictedDeliveryIDs.count
+            )
+        }
         try await persistServerRelayTerminalState {
             try await self.replayServerRelayTerminalCommandOutbox(
                 using: store,
@@ -4026,10 +4030,11 @@ final class KLMSMacModel: ObservableObject {
         guard !value.isEmpty else {
             return ""
         }
-        if serverRelayLooksPrivate(value) {
-            return ""
-        }
-        return value
+        return RelayPublicLogRedactor.redact(
+            value,
+            maximumLines: 1,
+            maximumUTF8Bytes: 2_000
+        )
     }
 
     private func serverRelayPublicLogText(_ text: String?) -> String {

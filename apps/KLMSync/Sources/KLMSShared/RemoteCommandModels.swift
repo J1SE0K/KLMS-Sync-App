@@ -370,59 +370,26 @@ public protocol RemoteCommandStore: Sendable {
 
 public enum RemoteCommandTerminalOutboxError: Error, Equatable {
     case commandIsNotTerminal
-}
-
-public enum RelayPublicLogRedactor {
-    private static let replacements: [(pattern: String, replacement: String)] = [
-        (#"KAIST 인증 번호:\s*[0-9]{1,3}"#, "KAIST 인증 번호: --"),
-        (#"digits=[0-9]{1,3}"#, "digits=--"),
-        (#"(?i)\b(?:authorization\s*:\s*)?(?:bearer|basic|digest)\s+[^\s\"'<>]+"#, "[credential]"),
-        (#"(?i)\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s;&]+)"#, "[credential]"),
-        (#"https?:\/\/[^\s\"'<>]+"#, "[URL]"),
-        (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, "[email]"),
-        (#"(?im)(^|[\s=(])(?:[A-Z]:\\|\\\\)[^\r\n]*"#, "$1[local-path]"),
-        (#"(?m)(^|[\s=(])(?:~|\/)[^\r\n]*"#, "$1[local-path]"),
-    ]
-    private static let forbiddenPattern = #"(?i)(?:\b(?:bearer|basic|digest)\s+|\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]|(?:^|[\s=(])(?:~\/|\/|[A-Z]:\\|\\\\)|BEGIN [A-Z ]*PRIVATE KEY)"#
-
-    public static func redact(
-        _ value: String,
-        maximumLines: Int = 40,
-        maximumCharacters: Int = 6_000
-    ) -> String {
-        var redacted = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !redacted.isEmpty else { return "" }
-        for replacement in replacements {
-            redacted = redacted.replacingOccurrences(
-                of: replacement.pattern,
-                with: replacement.replacement,
-                options: .regularExpression
-            )
-        }
-        let lines = redacted
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .filter {
-                $0.range(of: forbiddenPattern, options: .regularExpression) == nil
-            }
-        let joined = lines.suffix(max(0, maximumLines)).joined(separator: "\n")
-        guard joined.count > maximumCharacters else { return joined }
-        return "...\n" + String(joined.suffix(max(0, maximumCharacters)))
-    }
+    case entryTooLarge
+    case entryCouldNotBeStored
+    case documentTooLarge
 }
 
 public struct RemoteCommandTerminalOutboxEntry: Codable, Sendable, Equatable {
+    public var deliveryID: UUID
     public var relayURL: String
     public var workerTokenFingerprint: String
     public var command: RemoteRunCommand
     public var enqueuedAt: Date
 
     public init(
+        deliveryID: UUID = UUID(),
         relayURL: String,
         workerTokenFingerprint: String,
         command: RemoteRunCommand,
         enqueuedAt: Date = Date()
     ) {
+        self.deliveryID = deliveryID
         self.relayURL = relayURL
         self.workerTokenFingerprint = workerTokenFingerprint
         self.command = command
@@ -430,49 +397,124 @@ public struct RemoteCommandTerminalOutboxEntry: Codable, Sendable, Equatable {
     }
 }
 
+public struct RemoteCommandTerminalOutboxPolicy: Sendable, Equatable {
+    public var maximumDocumentBytes: Int
+    public var maximumEncodedEntryBytes: Int
+    public var maximumEntriesPerIdentity: Int
+    public var maximumEntries: Int
+    public var entryTTL: TimeInterval
+    public var maximumFutureSkew: TimeInterval
+    public var maximumQuarantineFiles: Int
+    public var maximumQuarantineBytes: Int
+    public var maximumQuarantineTotalBytes: Int
+    public var quarantineTTL: TimeInterval
+
+    public init(
+        maximumDocumentBytes: Int = 4 * 1_024 * 1_024,
+        maximumEncodedEntryBytes: Int = 64 * 1_024,
+        maximumEntriesPerIdentity: Int = 100,
+        maximumEntries: Int = 256,
+        entryTTL: TimeInterval = 30 * 24 * 60 * 60,
+        maximumFutureSkew: TimeInterval = 5 * 60,
+        maximumQuarantineFiles: Int = 3,
+        maximumQuarantineBytes: Int = 4 * 1_024 * 1_024,
+        maximumQuarantineTotalBytes: Int = 12 * 1_024 * 1_024,
+        quarantineTTL: TimeInterval = 7 * 24 * 60 * 60
+    ) {
+        self.maximumDocumentBytes = maximumDocumentBytes
+        self.maximumEncodedEntryBytes = maximumEncodedEntryBytes
+        self.maximumEntriesPerIdentity = maximumEntriesPerIdentity
+        self.maximumEntries = maximumEntries
+        self.entryTTL = entryTTL
+        self.maximumFutureSkew = maximumFutureSkew
+        self.maximumQuarantineFiles = maximumQuarantineFiles
+        self.maximumQuarantineBytes = maximumQuarantineBytes
+        self.maximumQuarantineTotalBytes = maximumQuarantineTotalBytes
+        self.quarantineTTL = quarantineTTL
+    }
+}
+
+public struct RemoteCommandTerminalOutboxEnqueueResult: Sendable, Equatable {
+    public var entry: RemoteCommandTerminalOutboxEntry
+    public var evictedDeliveryIDs: [UUID]
+}
+
 private struct RemoteCommandTerminalOutboxDocument: Codable {
-    var version: Int = 1
+    var version: Int = 2
     var entries: [RemoteCommandTerminalOutboxEntry] = []
 }
 
-public struct RemoteCommandTerminalOutboxStore: Sendable {
-    private static let documentVersion = 1
-    private static let maximumEntries = 256
-    private static let entryTTL: TimeInterval = 30 * 24 * 60 * 60
-    private static let maximumFutureSkew: TimeInterval = 5 * 60
+private struct RemoteCommandTerminalOutboxLegacyEntry: Codable {
+    var relayURL: String
+    var workerTokenFingerprint: String
+    var command: RemoteRunCommand
+    var enqueuedAt: Date
+}
+
+public actor RemoteCommandTerminalOutboxStore {
+    private static let documentVersion = 2
 
     public var url: URL
+    private let policy: RemoteCommandTerminalOutboxPolicy
+    private let now: @Sendable () -> Date
 
     public init(url: URL) {
         self.url = url
+        policy = RemoteCommandTerminalOutboxPolicy()
+        now = Date.init
     }
 
+    public init(
+        url: URL,
+        policy: RemoteCommandTerminalOutboxPolicy,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
+        self.url = url
+        self.policy = policy
+        self.now = now
+    }
+
+    @discardableResult
     public func enqueue(
         _ command: RemoteRunCommand,
         relayURL: String,
         workerTokenFingerprint: String,
-        now: Date = Date()
-    ) throws {
+        enqueuedAt: Date? = nil
+    ) throws -> RemoteCommandTerminalOutboxEnqueueResult {
         guard command.status.isTerminal else {
             throw RemoteCommandTerminalOutboxError.commandIsNotTerminal
         }
         let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
+        let normalizedFingerprint = workerTokenFingerprint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let entry = RemoteCommandTerminalOutboxEntry(
+            relayURL: normalizedRelayURL,
+            workerTokenFingerprint: normalizedFingerprint,
+            command: command,
+            enqueuedAt: enqueuedAt ?? now()
+        )
+        guard try encodedEntrySize(entry) <= policy.maximumEncodedEntryBytes else {
+            throw RemoteCommandTerminalOutboxError.entryTooLarge
+        }
         var document = try load()
+        let originalDeliveryIDs = Set(document.entries.map(\.deliveryID))
         document.entries.removeAll {
             $0.command.id == command.id
                 && $0.relayURL == normalizedRelayURL
-                && $0.workerTokenFingerprint == workerTokenFingerprint
+                && $0.workerTokenFingerprint == normalizedFingerprint
         }
-        document.entries.append(
-            RemoteCommandTerminalOutboxEntry(
-                relayURL: normalizedRelayURL,
-                workerTokenFingerprint: workerTokenFingerprint,
-                command: command,
-                enqueuedAt: now
-            )
-        )
-        document.entries = Self.normalizedEntries(document.entries, now: now)
+        document.entries.append(entry)
+        document.entries = try normalizedEntries(document.entries, at: now())
+        guard document.entries.contains(where: { $0.deliveryID == entry.deliveryID }) else {
+            throw RemoteCommandTerminalOutboxError.entryCouldNotBeStored
+        }
         try save(document)
+        let retainedDeliveryIDs = Set(document.entries.map(\.deliveryID))
+        return RemoteCommandTerminalOutboxEnqueueResult(
+            entry: entry,
+            evictedDeliveryIDs: originalDeliveryIDs
+                .subtracting(retainedDeliveryIDs)
+                .sorted { $0.uuidString < $1.uuidString }
+        )
     }
 
     public func pending(
@@ -487,14 +529,14 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
     }
 
     public func acknowledge(
-        commandID: UUID,
+        deliveryID: UUID,
         relayURL: String,
         workerTokenFingerprint: String
     ) throws {
         let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
         var document = try load()
         document.entries.removeAll {
-            $0.command.id == commandID
+            $0.deliveryID == deliveryID
                 && $0.relayURL == normalizedRelayURL
                 && $0.workerTokenFingerprint == workerTokenFingerprint
         }
@@ -502,15 +544,23 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
     }
 
     private func load() throws -> RemoteCommandTerminalOutboxDocument {
+        try? pruneQuarantine(at: now())
         guard FileManager.default.fileExists(atPath: url.path) else {
             return RemoteCommandTerminalOutboxDocument()
         }
-        let data = try Data(contentsOf: url)
+        let boundedRead = try readBoundedDocument()
+        if boundedRead.wasOversized {
+            try? quarantine(boundedRead.data, at: now())
+            let document = RemoteCommandTerminalOutboxDocument()
+            try save(document)
+            return document
+        }
+        let data = boundedRead.data
         let decoded = try decodeSalvagingEntries(data)
         if decoded.hadCorruption {
-            try quarantine(data)
+            try? quarantine(data, at: now())
         }
-        if decoded.hadCorruption || decoded.document.entries != decoded.originalEntries {
+        if decoded.requiresRewrite || decoded.document.entries != decoded.originalEntries {
             try save(decoded.document)
         }
         return decoded.document
@@ -518,25 +568,26 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
 
     private func decodeSalvagingEntries(
         _ data: Data,
-        now: Date = Date()
+        at currentDate: Date? = nil
     ) throws -> (
         document: RemoteCommandTerminalOutboxDocument,
         originalEntries: [RemoteCommandTerminalOutboxEntry],
-        hadCorruption: Bool
+        hadCorruption: Bool,
+        requiresRewrite: Bool
     ) {
         let root: [String: Any]
         do {
             guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return (RemoteCommandTerminalOutboxDocument(), [], true)
+                return (RemoteCommandTerminalOutboxDocument(), [], true, true)
             }
             root = object
         } catch {
-            return (RemoteCommandTerminalOutboxDocument(), [], true)
+            return (RemoteCommandTerminalOutboxDocument(), [], true, true)
         }
-        let version = (root["version"] as? NSNumber)?.intValue ?? Self.documentVersion
-        guard version == Self.documentVersion,
+        let version = (root["version"] as? NSNumber)?.intValue ?? 1
+        guard (1...Self.documentVersion).contains(version),
               let rawEntries = root["entries"] as? [Any] else {
-            return (RemoteCommandTerminalOutboxDocument(), [], true)
+            return (RemoteCommandTerminalOutboxDocument(), [], true, true)
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -545,8 +596,19 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
         for rawEntry in rawEntries {
             do {
                 let entryData = try JSONSerialization.data(withJSONObject: rawEntry)
-                let entry = try decoder.decode(RemoteCommandTerminalOutboxEntry.self, from: entryData)
-                guard Self.isValid(entry) else {
+                let entry: RemoteCommandTerminalOutboxEntry
+                if version == 1 {
+                    let legacy = try decoder.decode(RemoteCommandTerminalOutboxLegacyEntry.self, from: entryData)
+                    entry = RemoteCommandTerminalOutboxEntry(
+                        relayURL: legacy.relayURL,
+                        workerTokenFingerprint: legacy.workerTokenFingerprint,
+                        command: legacy.command,
+                        enqueuedAt: legacy.enqueuedAt
+                    )
+                } else {
+                    entry = try decoder.decode(RemoteCommandTerminalOutboxEntry.self, from: entryData)
+                }
+                guard try isValid(entry) else {
                     hadCorruption = true
                     continue
                 }
@@ -555,65 +617,174 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
                 hadCorruption = true
             }
         }
-        let normalizedEntries = Self.normalizedEntries(entries, now: now)
+        let normalizedEntries = try normalizedEntries(entries, at: currentDate ?? now())
         return (
             RemoteCommandTerminalOutboxDocument(
                 version: Self.documentVersion,
                 entries: normalizedEntries
             ),
             entries,
-            hadCorruption
+            hadCorruption,
+            hadCorruption || version != Self.documentVersion
         )
     }
 
     private func save(_ document: RemoteCommandTerminalOutboxDocument) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+        try preparePrivateDirectory()
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(document).write(to: url, options: .atomic)
+        let data = try encoder.encode(document)
+        guard data.count <= policy.maximumDocumentBytes else {
+            throw RemoteCommandTerminalOutboxError.documentTooLarge
+        }
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
-    private func quarantine(_ data: Data) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
+    private func quarantine(_ data: Data, at currentDate: Date) throws {
+        try preparePrivateDirectory()
         let baseName = url.deletingPathExtension().lastPathComponent
         let quarantineURL = url.deletingLastPathComponent().appendingPathComponent(
             "\(baseName).corrupt-\(UUID().uuidString.lowercased()).json"
         )
-        try data.write(to: quarantineURL, options: .atomic)
+        try data.prefix(policy.maximumQuarantineBytes).write(to: quarantineURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: quarantineURL.path)
+        try? FileManager.default.setAttributes([.modificationDate: currentDate], ofItemAtPath: quarantineURL.path)
+        try? pruneQuarantine(at: currentDate)
     }
 
-    private static func isValid(_ entry: RemoteCommandTerminalOutboxEntry) -> Bool {
-        let relayURL = normalizedRelayURL(entry.relayURL)
+    private func isValid(_ entry: RemoteCommandTerminalOutboxEntry) throws -> Bool {
+        let relayURL = Self.normalizedRelayURL(entry.relayURL)
         let fingerprint = entry.workerTokenFingerprint.trimmingCharacters(in: .whitespacesAndNewlines)
-        return !relayURL.isEmpty
+        return try !relayURL.isEmpty
             && relayURL.utf8.count <= 2_048
             && !fingerprint.isEmpty
             && fingerprint.utf8.count <= 256
             && entry.command.status.isTerminal
+            && encodedEntrySize(entry) <= policy.maximumEncodedEntryBytes
     }
 
-    private static func normalizedEntries(
+    private func normalizedEntries(
         _ entries: [RemoteCommandTerminalOutboxEntry],
-        now: Date
-    ) -> [RemoteCommandTerminalOutboxEntry] {
-        let oldestAllowed = now.addingTimeInterval(-entryTTL)
-        let newestAllowed = now.addingTimeInterval(maximumFutureSkew)
-        return entries
-            .filter {
-                isValid($0)
-                    && $0.enqueuedAt >= oldestAllowed
-                    && $0.enqueuedAt <= newestAllowed
+        at currentDate: Date
+    ) throws -> [RemoteCommandTerminalOutboxEntry] {
+        let oldestAllowed = currentDate.addingTimeInterval(-policy.entryTTL)
+        let newestAllowed = currentDate.addingTimeInterval(policy.maximumFutureSkew)
+        let canonicalEntries = try entries.compactMap { entry -> RemoteCommandTerminalOutboxEntry? in
+            var canonical = entry
+            canonical.relayURL = Self.normalizedRelayURL(entry.relayURL)
+            canonical.workerTokenFingerprint = entry.workerTokenFingerprint
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard try isValid(canonical),
+                  canonical.enqueuedAt >= oldestAllowed,
+                  canonical.enqueuedAt <= newestAllowed else {
+                return nil
             }
-            .sorted { $0.enqueuedAt < $1.enqueuedAt }
-            .suffix(maximumEntries)
-            .map { $0 }
+            return canonical
+        }
+
+        var newestByCommand: [String: RemoteCommandTerminalOutboxEntry] = [:]
+        for entry in canonicalEntries.sorted(by: Self.entryIsOlder) {
+            newestByCommand[Self.commandKey(entry)] = entry
+        }
+        let grouped = Dictionary(grouping: newestByCommand.values, by: Self.identityKey)
+        var normalized = grouped.values.flatMap { identityEntries in
+            identityEntries
+                .sorted(by: Self.entryIsOlder)
+                .suffix(policy.maximumEntriesPerIdentity)
+        }
+        normalized.sort(by: Self.entryIsOlder)
+        if normalized.count > policy.maximumEntries {
+            normalized.removeFirst(normalized.count - policy.maximumEntries)
+        }
+        while try encodedDocumentSize(entries: normalized) > policy.maximumDocumentBytes,
+              !normalized.isEmpty {
+            normalized.removeFirst()
+        }
+        return normalized
+    }
+
+    private func readBoundedDocument() throws -> (data: Data, wasOversized: Bool) {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: policy.maximumDocumentBytes + 1) ?? Data()
+        if data.count > policy.maximumDocumentBytes {
+            return (Data(data.prefix(policy.maximumQuarantineBytes)), true)
+        }
+        return (data, false)
+    }
+
+    private func preparePrivateDirectory() throws {
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+    }
+
+    private func pruneQuarantine(at currentDate: Date) throws {
+        let directory = url.deletingLastPathComponent()
+        guard FileManager.default.fileExists(atPath: directory.path) else { return }
+        let prefix = url.deletingPathExtension().lastPathComponent + ".corrupt-"
+        var files = try FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ).compactMap { candidate -> (url: URL, modifiedAt: Date, size: Int)? in
+            guard candidate.lastPathComponent.hasPrefix(prefix),
+                  let values = try? candidate.resourceValues(
+                    forKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey]
+                  ),
+                  values.isRegularFile == true else {
+                return nil
+            }
+            return (candidate, values.contentModificationDate ?? .distantPast, values.fileSize ?? 0)
+        }
+        for file in files where currentDate.timeIntervalSince(file.modifiedAt) > policy.quarantineTTL {
+            try? FileManager.default.removeItem(at: file.url)
+        }
+        files.removeAll { !FileManager.default.fileExists(atPath: $0.url.path) }
+        files.sort {
+            if $0.modifiedAt != $1.modifiedAt { return $0.modifiedAt > $1.modifiedAt }
+            return $0.url.lastPathComponent > $1.url.lastPathComponent
+        }
+        var retainedBytes = 0
+        for (index, file) in files.enumerated() {
+            let exceedsCount = index >= policy.maximumQuarantineFiles
+            let exceedsBytes = retainedBytes + file.size > policy.maximumQuarantineTotalBytes
+            if exceedsCount || exceedsBytes {
+                try? FileManager.default.removeItem(at: file.url)
+            } else {
+                retainedBytes += file.size
+            }
+        }
+    }
+
+    private func encodedEntrySize(_ entry: RemoteCommandTerminalOutboxEntry) throws -> Int {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(entry).count
+    }
+
+    private func encodedDocumentSize(entries: [RemoteCommandTerminalOutboxEntry]) throws -> Int {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(RemoteCommandTerminalOutboxDocument(entries: entries)).count
+    }
+
+    private static func entryIsOlder(
+        _ lhs: RemoteCommandTerminalOutboxEntry,
+        _ rhs: RemoteCommandTerminalOutboxEntry
+    ) -> Bool {
+        if lhs.enqueuedAt != rhs.enqueuedAt { return lhs.enqueuedAt < rhs.enqueuedAt }
+        return lhs.deliveryID.uuidString < rhs.deliveryID.uuidString
+    }
+
+    private static func identityKey(_ entry: RemoteCommandTerminalOutboxEntry) -> String {
+        entry.relayURL + "\u{1F}" + entry.workerTokenFingerprint
+    }
+
+    private static func commandKey(_ entry: RemoteCommandTerminalOutboxEntry) -> String {
+        identityKey(entry) + "\u{1F}" + entry.command.id.uuidString.lowercased()
     }
 
     private static func normalizedRelayURL(_ value: String) -> String {
@@ -3260,6 +3431,13 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             queryItems: [URLQueryItem(name: "limit", value: "\(limit)")]
         )
         return response.actions
+    }
+
+    public func fetchItemAction(id: UUID) async throws -> ServerRelayItemAction {
+        try await send(
+            method: "GET",
+            path: "/v1/item-actions/\(id.uuidString)"
+        )
     }
 
     public func updateItemAction(_ action: ServerRelayItemAction) async throws {

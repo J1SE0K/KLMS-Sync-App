@@ -1,6 +1,9 @@
 import Foundation
 import SwiftUI
 
+private let klmsServerRelayTokenDefaultsKey = "KLMSServerRelayToken"
+private let klmsServerRelayTokenGenerationDefaultsKey = "KLMSServerRelayTokenGeneration"
+
 #if canImport(EventKit)
 import EventKit
 #endif
@@ -70,49 +73,6 @@ private extension EnvironmentValues {
     var companionLayoutMode: AdaptiveLayoutMode {
         get { self[CompanionLayoutModeKey.self] }
         set { self[CompanionLayoutModeKey.self] = newValue }
-    }
-}
-
-private final class ServerTokenPersistenceCoordinator: @unchecked Sendable {
-    private let generationLock = NSLock()
-    private let operationQueue = DispatchQueue(
-        label: "com.local.klmssync.server-token-persistence",
-        qos: .utility
-    )
-    private var generation: UInt64 = 0
-
-    func begin() -> UInt64 {
-        generationLock.lock()
-        defer { generationLock.unlock() }
-        generation &+= 1
-        return generation
-    }
-
-    func persist(
-        _ token: String,
-        generation expectedGeneration: UInt64,
-        operation: @escaping @Sendable (String) -> Void
-    ) async {
-        await withCheckedContinuation { continuation in
-            operationQueue.async { [self] in
-                generationLock.lock()
-                let shouldPersist = generation == expectedGeneration
-                generationLock.unlock()
-                if shouldPersist {
-                    operation(token)
-                }
-                continuation.resume()
-            }
-        }
-    }
-
-    func clear(operation: @Sendable (String) -> Void) {
-        generationLock.lock()
-        generation &+= 1
-        generationLock.unlock()
-        operationQueue.sync {
-            operation("")
-        }
     }
 }
 
@@ -304,7 +264,7 @@ final class CompanionModel: ObservableObject {
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
     private var serverTokenPersistTask: Task<Void, Never>?
-    private let serverTokenPersistenceCoordinator = ServerTokenPersistenceCoordinator()
+    private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
@@ -394,7 +354,6 @@ final class CompanionModel: ObservableObject {
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
     private static let deprecatedLocalTokenKey = "KLMSLocalRemoteToken"
     private static let serverURLKey = "KLMSServerRelayURL"
-    private static let serverTokenKey = "KLMSServerRelayToken"
     private static let shouldUpdateNoticeNotesKey = "KLMSShouldUpdateNoticeNotes"
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
@@ -582,9 +541,20 @@ final class CompanionModel: ObservableObject {
         case commands([RemoteRunCommand]?)
         case syncData(Result<ServerRelaySyncData?, Error>)
         case fileRequests([ServerRelayFileAccessRequest]?)
-        case itemActions([ServerRelayItemAction]?)
+        case itemActions(ItemActionRefreshResult)
         case requestLog([ServerRelayRequestLogEntry]?)
         case settingActions([ServerRelaySettingAction]?)
+    }
+
+    private enum ExactItemActionLookup: Sendable {
+        case found(ServerRelayItemAction)
+        case missing
+        case unavailable
+    }
+
+    private struct ItemActionRefreshResult: Sendable {
+        var recent: [ServerRelayItemAction]?
+        var exactByID: [UUID: ExactItemActionLookup]
     }
 
     private struct RelayRefreshEndpointCompletion: Sendable {
@@ -632,6 +602,10 @@ final class CompanionModel: ObservableObject {
     }
 
     init() {
+        serverTokenPersistenceCoordinator = CredentialPersistenceCoordinator(
+            initialGeneration: Self.loadServerTokenPersistenceGeneration(),
+            queueLabel: "com.local.klmssync.server-token-persistence"
+        )
         usesUITestCaptureFixture = Self.shouldUseUITestCaptureFixture
         usesUITestRunningFixture = Self.shouldUseUITestRunningFixture
         usesUITestLargeDatasetFixture = Self.shouldUseUITestLargeDatasetFixture
@@ -2661,18 +2635,19 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             guard isCurrentRelaySession(generation: generation) else { return }
-            if var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
-                overlay.action = savedAction
-                if savedAction.status.isInFlight {
-                    pendingItemActionOverlaysByID[savedAction.id] = overlay
-                } else if savedAction.status.isFailedLike {
-                    rollbackItemActionMutation(overlay)
-                } else {
-                    finishItemActionMutation(overlay)
-                }
+            guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else {
+                return
+            }
+            overlay.action = savedAction
+            if savedAction.status.isInFlight {
+                pendingItemActionOverlaysByID[savedAction.id] = overlay
+            } else if savedAction.status.isFailedLike {
+                rollbackItemActionMutation(overlay)
+            } else {
+                finishItemActionMutation(overlay)
             }
             applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
-            replaceRecentItemAction(savedAction) { $0.id == action.id || $0.itemID == item.id }
+            replaceRecentItemAction(savedAction) { $0.id == action.id }
             if !suppressSuccessFeedback {
                 connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
                 connectionSucceeded = true
@@ -2683,10 +2658,9 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            if let overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
-                rollbackItemActionMutation(overlay)
-            }
-            removeRecentItemActions { ($0.id == action.id || $0.itemID == item.id) && $0.action == actionKind }
+            guard let overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else { return }
+            rollbackItemActionMutation(overlay)
+            removeRecentItemActions { $0.id == action.id }
             syncDataNeedsRefresh = true
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
@@ -2757,35 +2731,35 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
             let savedAction = try await serverRelayStore.createItemAction(action)
             guard isCurrentRelaySession(generation: generation) else { return }
-            if var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
-                overlay.action = savedAction
-                if savedAction.status.isInFlight {
-                    pendingItemActionOverlaysByID[savedAction.id] = overlay
-                    pendingActionID = savedAction.id
-                } else if savedAction.status.isFailedLike {
-                    rollbackItemActionMutation(overlay)
-                    pendingActionID = nil
-                } else {
-                    finishItemActionMutation(overlay)
-                    pendingActionID = nil
-                }
+            guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else {
+                return
+            }
+            overlay.action = savedAction
+            if savedAction.status.isInFlight {
+                pendingItemActionOverlaysByID[savedAction.id] = overlay
+                pendingActionID = savedAction.id
+            } else if savedAction.status.isFailedLike {
+                rollbackItemActionMutation(overlay)
+                pendingActionID = nil
+            } else {
+                finishItemActionMutation(overlay)
+                pendingActionID = nil
             }
             if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
                 markCalendarChangeResolvedLocally(change)
             }
-            replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
+            replaceRecentItemAction(savedAction) { $0.id == action.id }
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
             connectionSucceeded = true
             errorMessage = ""
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            if let pendingActionID,
-               let overlay = pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID) {
-                rollbackItemActionMutation(overlay)
-            } else if let mutationKey, let mutationVersion {
-                _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
+            guard let pendingActionID,
+                  let overlay = pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID) else {
+                return
             }
-            removeRecentItemActions { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
+            rollbackItemActionMutation(overlay)
+            removeRecentItemActions { $0.id == pendingActionID }
             guard !isCancellationError(error) else { return }
             let message = userFacingMessage(for: error)
             errorMessage = message
@@ -3581,6 +3555,7 @@ final class CompanionModel: ObservableObject {
         silentErrors: Bool,
         sessionGeneration: UInt64
     ) async -> [RelayRefreshEndpointApplication] {
+        let pendingItemActionIDs = Array(pendingItemActionOverlaysByID.keys)
         var endpoints = [RelayRefreshEndpointKind.status]
         if scope.fetchesCommands { endpoints.append(.commands) }
         if shouldLoadSyncData { endpoints.append(.syncData) }
@@ -3599,7 +3574,8 @@ final class CompanionModel: ObservableObject {
                         endpoint,
                         store: store,
                         scope: scope,
-                        shouldLoadSyncData: shouldLoadSyncData
+                        shouldLoadSyncData: shouldLoadSyncData,
+                        pendingItemActionIDs: pendingItemActionIDs
                     )
                 )
             }
@@ -3712,12 +3688,15 @@ final class CompanionModel: ObservableObject {
             }
             return application
 
-        case let .itemActions(itemActions):
+        case let .itemActions(itemActionResult):
             var application = RelayRefreshEndpointApplication(
-                refreshSucceeded: !scope.fetchesItemActions || itemActions != nil
+                refreshSucceeded: !scope.fetchesItemActions || itemActionResult.recent != nil
             )
-            guard let itemActions else { return application }
-            let overlaidItemActions = itemActionsOverlayingPendingSubmissions(itemActions)
+            guard let itemActions = itemActionResult.recent else { return application }
+            let overlaidItemActions = itemActionsOverlayingPendingSubmissions(
+                itemActions,
+                exactByID: itemActionResult.exactByID
+            )
             recordResolvedCalendarChanges(overlaidItemActions)
             let visibleItemActions = visibleItemActions(overlaidItemActions)
             if recentItemActions != visibleItemActions {
@@ -3771,7 +3750,8 @@ final class CompanionModel: ObservableObject {
         _ endpoint: RelayRefreshEndpointKind,
         store: ServerRelayCommandStore,
         scope: RelayRefreshScope,
-        shouldLoadSyncData: Bool
+        shouldLoadSyncData: Bool,
+        pendingItemActionIDs: [UUID]
     ) async -> RelayRefreshEndpointResult {
         switch endpoint {
         case .status:
@@ -3794,10 +3774,11 @@ final class CompanionModel: ObservableObject {
                 limit: 20
             ))
         case .itemActions:
-            return .itemActions(await fetchRecentItemActionsIfNeeded(
+            return .itemActions(await fetchItemActionsIfNeeded(
                 scope.fetchesItemActions,
                 store: store,
-                limit: 40
+                limit: 40,
+                pendingItemActionIDs: pendingItemActionIDs
             ))
         case .requestLog:
             return .requestLog(await fetchRecentRequestLogIfNeeded(
@@ -3860,15 +3841,44 @@ final class CompanionModel: ObservableObject {
         return try? await store.fetchRecentFileAccessRequests(limit: limit)
     }
 
-    private static func fetchRecentItemActionsIfNeeded(
+    private static func fetchItemActionsIfNeeded(
         _ shouldFetch: Bool,
         store: ServerRelayCommandStore,
-        limit: Int
-    ) async -> [ServerRelayItemAction]? {
+        limit: Int,
+        pendingItemActionIDs: [UUID]
+    ) async -> ItemActionRefreshResult {
         guard shouldFetch else {
-            return nil
+            return ItemActionRefreshResult(recent: nil, exactByID: [:])
         }
-        return try? await store.fetchRecentItemActions(limit: limit)
+        let recent = try? await store.fetchRecentItemActions(limit: limit)
+        let recentIDs = Set((recent ?? []).map(\.id))
+        let missingIDs = pendingItemActionIDs.filter { !recentIDs.contains($0) }
+        let exactPairs = await withTaskGroup(
+            of: (UUID, ExactItemActionLookup).self,
+            returning: [(UUID, ExactItemActionLookup)].self
+        ) { group in
+            for id in missingIDs {
+                group.addTask {
+                    do {
+                        return (id, .found(try await store.fetchItemAction(id: id)))
+                    } catch let error as ServerRelayClientError {
+                        if case .serverRejected(404, _) = error {
+                            return (id, .missing)
+                        }
+                        return (id, .unavailable)
+                    } catch {
+                        return (id, .unavailable)
+                    }
+                }
+            }
+            var pairs: [(UUID, ExactItemActionLookup)] = []
+            for await pair in group { pairs.append(pair) }
+            return pairs
+        }
+        return ItemActionRefreshResult(
+            recent: recent,
+            exactByID: Dictionary(uniqueKeysWithValues: exactPairs)
+        )
     }
 
     private static func fetchRecentRequestLogIfNeeded(
@@ -4152,27 +4162,50 @@ final class CompanionModel: ObservableObject {
     }
 
     private func itemActionsOverlayingPendingSubmissions(
-        _ incomingActions: [ServerRelayItemAction]
+        _ incomingActions: [ServerRelayItemAction],
+        exactByID: [UUID: ExactItemActionLookup]
     ) -> [ServerRelayItemAction] {
         var nextByID = Dictionary(uniqueKeysWithValues: incomingActions.map { ($0.id, $0) })
         for action in incomingActions {
-            guard var overlay = pendingItemActionOverlaysByID[action.id] else { continue }
-            if action.status == .pending || action.status == .running {
-                overlay.action = action
-                pendingItemActionOverlaysByID[action.id] = overlay
-            } else {
-                pendingItemActionOverlaysByID.removeValue(forKey: action.id)
-                if action.status.isFailedLike {
-                    rollbackItemActionMutation(overlay)
-                } else {
-                    finishItemActionMutation(overlay)
-                }
+            reconcilePendingItemAction(action)
+        }
+        for (id, lookup) in exactByID where nextByID[id] == nil {
+            switch lookup {
+            case let .found(action):
+                nextByID[id] = action
+                reconcilePendingItemAction(action)
+            case .missing:
+                guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: id) else { continue }
+                overlay.action.status = .failed
+                overlay.action.updatedAt = Date()
+                overlay.action.message = "서버에서 요청 기록을 찾지 못했습니다. 현재 화면을 되돌렸으니 다시 시도해 주세요."
+                rollbackItemActionMutation(overlay)
+                nextByID[id] = overlay.action
+                connectionMessage = overlay.action.message
+                connectionSucceeded = false
+            case .unavailable:
+                continue
             }
         }
         for (id, overlay) in pendingItemActionOverlaysByID where nextByID[id] == nil {
             nextByID[id] = overlay.action
         }
         return nextByID.values.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private func reconcilePendingItemAction(_ action: ServerRelayItemAction) {
+        guard var overlay = pendingItemActionOverlaysByID[action.id] else { return }
+        if action.status.isInFlight {
+            overlay.action = action
+            pendingItemActionOverlaysByID[action.id] = overlay
+            return
+        }
+        pendingItemActionOverlaysByID.removeValue(forKey: action.id)
+        if action.status.isFailedLike {
+            rollbackItemActionMutation(overlay)
+        } else {
+            finishItemActionMutation(overlay)
+        }
     }
 
     private func visibleSettingActions(_ actions: [ServerRelaySettingAction]) -> [ServerRelaySettingAction] {
@@ -4696,7 +4729,8 @@ final class CompanionModel: ObservableObject {
                 endpoint,
                 store: store,
                 scope: scope,
-                shouldLoadSyncData: shouldLoadSyncData
+                shouldLoadSyncData: shouldLoadSyncData,
+                pendingItemActionIDs: Array(self.pendingItemActionOverlaysByID.keys)
             )
             guard !Task.isCancelled, ownsPreview() else {
                 self.finishRelayRealtimePreview(
@@ -5821,12 +5855,15 @@ final class CompanionModel: ObservableObject {
     private func schedulePersistServerToken(_ token: String) {
         serverTokenPersistTask?.cancel()
         let persistenceCoordinator = serverTokenPersistenceCoordinator
-        let persistenceGeneration = persistenceCoordinator.begin()
+        let persistenceGeneration = persistenceCoordinator.begin(
+            after: Self.loadServerTokenPersistenceGeneration()
+        )
+        Self.storeServerTokenPersistenceGeneration(persistenceGeneration)
         serverTokenPersistTask = Task { [weak self, token, persistenceCoordinator] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            await persistenceCoordinator.persist(token, generation: persistenceGeneration) { persistedToken in
-                Self.persistServerToken(persistedToken)
+            await persistenceCoordinator.persist(token, generation: persistenceGeneration) { envelope in
+                Self.persistServerToken(envelope)
             }
             await MainActor.run {
                 if self?.serverToken == token {
@@ -5838,37 +5875,92 @@ final class CompanionModel: ObservableObject {
 
     private func clearPersistedServerToken() {
         serverTokenPersistTask?.cancel()
-        serverTokenPersistTask = nil
-        serverTokenPersistenceCoordinator.clear { token in
-            Self.persistServerToken(token)
+        let persistenceCoordinator = serverTokenPersistenceCoordinator
+        let persistenceGeneration = persistenceCoordinator.begin(
+            after: Self.loadServerTokenPersistenceGeneration()
+        )
+        Self.storeServerTokenPersistenceGeneration(persistenceGeneration)
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+        serverTokenPersistTask = Task { [weak self, persistenceCoordinator] in
+            await persistenceCoordinator.persist("", generation: persistenceGeneration) { envelope in
+                Self.persistServerToken(envelope)
+            }
+            await MainActor.run {
+                if self?.serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                    self?.serverTokenPersistTask = nil
+                }
+            }
         }
     }
 
-    nonisolated private static func persistServerToken(_ token: String) {
-        let serverTokenKey = "KLMSServerRelayToken"
-        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope) {
+        let trimmedToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedToken.isEmpty {
             LocalRemoteTokenStore.delete(account: "server-relay-ios")
-            UserDefaults.standard.removeObject(forKey: serverTokenKey)
+            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
             return
         }
-        if LocalRemoteTokenStore.save(trimmedToken, account: "server-relay-ios") {
-            UserDefaults.standard.removeObject(forKey: serverTokenKey)
+        guard let encoded = try? VersionedCredentialEnvelope(
+            generation: envelope.generation,
+            value: trimmedToken
+        ).encoded() else {
+            return
+        }
+        if LocalRemoteTokenStore.save(encoded, account: "server-relay-ios") {
+            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         } else {
-            UserDefaults.standard.removeObject(forKey: serverTokenKey)
+            LocalRemoteTokenStore.delete(account: "server-relay-ios")
         }
     }
 
     nonisolated private static func loadServerRelayTokenMigratingUserDefaults() -> String {
-        let serverTokenKey = "KLMSServerRelayToken"
-        if let keychainToken = LocalRemoteTokenStore.load(account: "server-relay-ios"),
-           !keychainToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            UserDefaults.standard.removeObject(forKey: serverTokenKey)
-            return keychainToken
+        let expectedGeneration = loadServerTokenPersistenceGeneration()
+        if let storedCredential = LocalRemoteTokenStore.load(account: "server-relay-ios"),
+           !storedCredential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let token = VersionedCredentialEnvelope.acceptedValue(
+                from: storedCredential,
+                expectedGeneration: expectedGeneration
+            )?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !token.isEmpty {
+                UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+                return token
+            }
+            if VersionedCredentialEnvelope.decode(storedCredential) == nil,
+               expectedGeneration == 0 {
+                let migrationGeneration: UInt64 = 1
+                storeServerTokenPersistenceGeneration(migrationGeneration)
+                persistServerToken(VersionedCredentialEnvelope(
+                    generation: migrationGeneration,
+                    value: storedCredential
+                ))
+                return storedCredential.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            LocalRemoteTokenStore.delete(account: "server-relay-ios")
+            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+            return ""
         }
-        let legacyToken = UserDefaults.standard.string(forKey: serverTokenKey) ?? ""
-        persistServerToken(legacyToken)
+        let legacyToken = UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey) ?? ""
+        guard expectedGeneration == 0,
+              !legacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+            return ""
+        }
+        let migrationGeneration: UInt64 = 1
+        storeServerTokenPersistenceGeneration(migrationGeneration)
+        persistServerToken(VersionedCredentialEnvelope(
+            generation: migrationGeneration,
+            value: legacyToken
+        ))
         return legacyToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    nonisolated private static func loadServerTokenPersistenceGeneration() -> UInt64 {
+        let stored = UserDefaults.standard.string(forKey: klmsServerRelayTokenGenerationDefaultsKey) ?? "0"
+        return UInt64(stored) ?? 0
+    }
+
+    nonisolated private static func storeServerTokenPersistenceGeneration(_ generation: UInt64) {
+        UserDefaults.standard.set(String(generation), forKey: klmsServerRelayTokenGenerationDefaultsKey)
     }
 
     private static func clearDeprecatedLocalConnectionInfo() {
@@ -9958,24 +10050,26 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
 
-            TextField(fieldPrompt, text: $query)
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 44)
-                .focused($isSearchFocused)
-                .submitLabel(.search)
-                .onSubmit {
-                    isSearchFocused = false
-                }
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("완료") {
-                            isSearchFocused = false
-                        }
-                        .accessibilityIdentifier("companion-search-dismiss-keyboard")
+            HStack(spacing: 8) {
+                TextField(fieldPrompt, text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(minHeight: 44)
+                    .focused($isSearchFocused)
+                    .submitLabel(.search)
+                    .onSubmit {
+                        isSearchFocused = false
                     }
+                    .accessibilityIdentifier("companion-search-field")
+
+                if isSearchFocused {
+                    Button("완료") {
+                        isSearchFocused = false
+                    }
+                    .buttonStyle(.bordered)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityIdentifier("companion-search-dismiss-keyboard")
                 }
-                .accessibilityIdentifier("companion-search-field")
+            }
 
             controls
         }

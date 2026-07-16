@@ -1,0 +1,155 @@
+{
+  "version": 2,
+  "cases": [
+    {
+      "id": "safe-text",
+      "input": "정상 단계 완료",
+      "expected": "정상 단계 완료"
+    },
+    {
+      "id": "nested-json-credential",
+      "input": "{\"meta\":{\"worker_token\":\"synthetic-json-secret\",\"safe\":\"정상\"}}",
+      "expected": "{\"meta\":{\"worker_token\":\"[credential]\",\"safe\":\"정상\"}}"
+    },
+    {
+      "id": "mixed-prefix-json-credential",
+      "input": "payload={\"access_token\":\"alpha\",\"safe\":\"ok\"} status=done",
+      "expected": "payload={\"access_token\":\"[credential]\",\"safe\":\"ok\"} status=done"
+    },
+    {
+      "id": "escaped-json-key-and-value",
+      "input": "{\"access\\u005ftoken\":\"abc\\\"def\",\"safe\":\"yes\"}",
+      "expected": "{\"access\\u005ftoken\":\"[credential]\",\"safe\":\"yes\"}"
+    },
+    {
+      "id": "sensitive-json-container",
+      "input": "{\"private_key\":{\"material\":\"synthetic-key\"},\"safe\":1}",
+      "expected": "{\"private_key\":\"[credential]\",\"safe\":1}"
+    },
+    {
+      "id": "unterminated-sensitive-json-string",
+      "input": "payload={\"password\":\"unterminated-secret",
+      "expected": "payload={\"password\":\"[credential]\""
+    },
+    {
+      "id": "quoted-authorization",
+      "input": "Authorization: Bearer \"abc def\"",
+      "expected": "[credential]"
+    },
+    {
+      "id": "bare-quoted-bearer",
+      "input": "retry Bearer 'abc def' now",
+      "expected": "retry [credential] now"
+    },
+    {
+      "id": "percent-encoded-query-key",
+      "input": "query ?access%255Ftoken=encoded-secret&mode=safe",
+      "expected": "query ?[credential]&mode=safe"
+    },
+    {
+      "id": "bare-credential-assignment",
+      "input": "worker_token=another-secret safe=true",
+      "expected": "[credential] safe=true"
+    },
+    {
+      "id": "single-quoted-credential-assignment",
+      "input": "'session-id'='abc def' status=ok",
+      "expected": "[credential] status=ok"
+    },
+    {
+      "id": "format-character-key-obfuscation",
+      "input": "to\u200bken=synthetic-secret",
+      "expected": "[credential]"
+    },
+    {
+      "id": "quoted-posix-path",
+      "input": "error: '/Users/synthetic/private.txt'",
+      "expected": "error: '[local-path]'"
+    },
+    {
+      "id": "json-windows-forward-path",
+      "input": "{\"path\":\"C:/Users/synthetic/private.txt\"}",
+      "expected": "{\"path\":\"[local-path]\"}"
+    },
+    {
+      "id": "json-windows-backslash-path",
+      "input": "{\"path\":\"C:\\\\Users\\\\synthetic\\\\private.txt\"}",
+      "expected": "{\"path\":\"[local-path]\"}"
+    },
+    {
+      "id": "file-url-path",
+      "input": "{\"path\":\"file:///Users/synthetic/private.txt\"}",
+      "expected": "{\"path\":\"[local-path]\"}"
+    },
+    {
+      "id": "quoted-unc-path",
+      "input": "open failed: \"\\\\server\\share\\private.txt\"",
+      "expected": "open failed: \"[local-path]\""
+    },
+    {
+      "id": "quoted-url",
+      "input": "request failed: \"https://relay.invalid/v1/file?ticket=query-secret\"",
+      "expected": "request failed: \"[URL]\""
+    },
+    {
+      "id": "email-address",
+      "input": "mail=student@example.test",
+      "expected": "mail=[email]"
+    },
+    {
+      "id": "complete-pem-block",
+      "input": "-----BEGIN PRIVATE KEY-----\nc3ludGhldGljLXBlbS1zZWNyZXQ=\n-----END PRIVATE KEY-----\n정상 완료",
+      "expected": "[credential]\n정상 완료"
+    },
+    {
+      "id": "escaped-pem-block",
+      "input": "escaped=-----BEGIN PRIVATE KEY-----\\nQUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo=\\n-----END PRIVATE KEY-----",
+      "expected": "escaped=[credential]"
+    },
+    {
+      "id": "unterminated-pem-block",
+      "input": "safe prefix\n-----BEGIN PRIVATE KEY-----\nnever-closed-secret",
+      "expected": "safe prefix\n[credential]"
+    },
+    {
+      "id": "mismatched-pem-block",
+      "input": "safe prefix\n-----BEGIN PRIVATE KEY-----\nsecret\n-----END PUBLIC KEY-----\nunsafe tail",
+      "expected": "safe prefix\n[credential]"
+    },
+    {
+      "id": "unmatched-pem-end",
+      "input": "unsafe prefix\n-----END PRIVATE KEY-----\ntail",
+      "expected": "[credential]\ntail"
+    },
+    {
+      "id": "encoded-data-tail",
+      "input": "정상\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "expected": "정상\n[encoded-data]"
+    },
+    {
+      "id": "ansi-and-control-characters",
+      "input": "\u001b[31m정상\u001b[0m\u0000 완료",
+      "expected": "정상 완료"
+    },
+    {
+      "id": "auth-digits",
+      "input": "KAIST 인증 번호: 57\ndigits=42",
+      "expected": "KAIST 인증 번호: --\ndigits=--"
+    },
+    {
+      "id": "address-fail-closed",
+      "input": "주소: 대전광역시 대학로 291",
+      "expected": "[redacted-log-line]"
+    },
+    {
+      "id": "newline-normalization",
+      "input": "첫줄\r\n둘째\r셋째",
+      "expected": "첫줄\n둘째\n셋째"
+    },
+    {
+      "id": "existing-markers-are-idempotent",
+      "input": "[credential]\n[local-path]\n[URL]\n[email]\n[encoded-data]\n[redacted-log-line]",
+      "expected": "[credential]\n[local-path]\n[URL]\n[email]\n[encoded-data]\n[redacted-log-line]"
+    }
+  ]
+}

@@ -180,12 +180,19 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
             to: "nonisolated private static func persistServerToken"
         )
 
-        XCTAssertTrue(source.contains("private final class ServerTokenPersistenceCoordinator: @unchecked Sendable"))
-        XCTAssertTrue(source.contains("private let serverTokenPersistenceCoordinator = ServerTokenPersistenceCoordinator()"))
+        let persistenceSource = try String(
+            contentsOf: packageRoot().appendingPathComponent("Sources/KLMSShared/CredentialPersistence.swift"),
+            encoding: .utf8
+        )
+
+        XCTAssertTrue(persistenceSource.contains("public final class CredentialPersistenceCoordinator: @unchecked Sendable"))
+        XCTAssertTrue(source.contains("private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator"))
         XCTAssertTrue(schedule.contains("await persistenceCoordinator.persist(token, generation: persistenceGeneration)"))
-        XCTAssertTrue(source.contains("private let operationQueue = DispatchQueue("))
-        XCTAssertTrue(source.contains("operationQueue.async"))
-        XCTAssertTrue(source.contains("operationQueue.sync"))
+        XCTAssertTrue(persistenceSource.contains("operationQueue = DispatchQueue("))
+        XCTAssertTrue(persistenceSource.contains("operationQueue.async"))
+        XCTAssertFalse(source.contains("operationQueue.sync"))
+        XCTAssertFalse(persistenceSource.contains("operationQueue.sync"))
+        XCTAssertTrue(source.contains("VersionedCredentialEnvelope.acceptedValue("))
         XCTAssertFalse(schedule.contains("Task.detached"))
     }
 
@@ -226,6 +233,42 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         recentIDs.removeAll { $0 == optimisticID || $0 == serverID }
         recentIDs.insert(serverID, at: 0)
         XCTAssertEqual(recentIDs, [serverID], "A WebSocket row arriving before the POST response must not be duplicated.")
+    }
+
+    func testItemActionOverlayUsesExactLookupAndRejectsStalePostResponses() throws {
+        let source = try iosSource()
+        let sharedSource = try String(
+            contentsOf: packageRoot().appendingPathComponent("Sources/KLMSShared/RemoteCommandModels.swift"),
+            encoding: .utf8
+        )
+        let itemActionSubmission = try sourceSlice(
+            source,
+            from: "func createItemAction(_ actionKind:",
+            to: "func createCalendarAction("
+        )
+        let calendarSubmission = try sourceSlice(
+            source,
+            from: "func createCalendarAction(",
+            to: "func createManualCalendarAction("
+        )
+        let reconciliation = try sourceSlice(
+            source,
+            from: "private func itemActionsOverlayingPendingSubmissions",
+            to: "private func visibleSettingActions"
+        )
+
+        XCTAssertTrue(sharedSource.contains("public func fetchItemAction(id: UUID) async throws -> ServerRelayItemAction"))
+        XCTAssertTrue(source.contains("pendingItemActionIDs: Array(self.pendingItemActionOverlaysByID.keys)"))
+        XCTAssertTrue(source.contains("store.fetchItemAction(id: id)"))
+        XCTAssertTrue(reconciliation.contains("exactByID: [UUID: ExactItemActionLookup]"))
+        XCTAssertTrue(reconciliation.contains("case .missing:"))
+        XCTAssertTrue(reconciliation.contains("rollbackItemActionMutation(overlay)"))
+        XCTAssertTrue(itemActionSubmission.contains("guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else"))
+        XCTAssertTrue(calendarSubmission.contains("guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else"))
+        XCTAssertTrue(itemActionSubmission.contains("removeRecentItemActions { $0.id == action.id }"))
+        XCTAssertTrue(calendarSubmission.contains("removeRecentItemActions { $0.id == pendingActionID }"))
+        XCTAssertFalse(itemActionSubmission.contains("$0.id == action.id || $0.itemID == item.id"))
+        XCTAssertFalse(calendarSubmission.contains("$0.id == action.id || candidateIDs.contains($0.itemID)"))
     }
 
     func testCancelWaitsForServerCommandIdentityAndOldSubmissionCannotUnlockNewOne() throws {

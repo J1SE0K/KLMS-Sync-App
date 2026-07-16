@@ -35,8 +35,52 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
         XCTAssertTrue(output.contains("정상 단계 완료"))
     }
 
-    func testTerminalCommandPersistsAcrossStoreInstancesUntilAcknowledged() throws {
-        try withTemporaryStore { url in
+    func testPublicLogRedactorMatchesSharedHostileCorpus() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let fixtureURL = packageRoot
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("tests/fixtures/public_log_redaction_cases.json")
+        let fixture = try JSONDecoder().decode(
+            PublicLogRedactionFixture.self,
+            from: Data(contentsOf: fixtureURL)
+        )
+
+        XCTAssertEqual(fixture.version, 2)
+        for testCase in fixture.cases {
+            let output = RelayPublicLogRedactor.redact(testCase.input)
+            XCTAssertEqual(output, testCase.expected, testCase.id)
+            XCTAssertEqual(RelayPublicLogRedactor.redact(output), output, "\(testCase.id) must be idempotent")
+        }
+    }
+
+    func testPublicLogRedactorUsesLineAndUTF8ByteBounds() {
+        let lines = (0..<45).map { String(format: "line-%02d", $0) }.joined(separator: "\n")
+        let lineBounded = RelayPublicLogRedactor.redact(lines)
+        XCTAssertEqual(lineBounded.components(separatedBy: "\n").count, 40)
+        XCTAssertTrue(lineBounded.hasPrefix("line-05\n"))
+
+        let byteBounded = RelayPublicLogRedactor.redact(
+            String(repeating: "가", count: 10),
+            maximumUTF8Bytes: 10
+        )
+        XCTAssertEqual(byteBounded, "...\n가가")
+        XCTAssertLessThanOrEqual(byteBounded.utf8.count, 10)
+
+        let deeplyNested = String(repeating: "[", count: 2_000)
+            + "{\"token\":\"deep-secret\"}"
+            + String(repeating: "]", count: 2_000)
+        let deepOutput = RelayPublicLogRedactor.redact(deeplyNested)
+        XCTAssertTrue(deepOutput.contains("[credential]"))
+        XCTAssertFalse(deepOutput.contains("deep-secret"))
+        XCTAssertLessThanOrEqual(deepOutput.utf8.count, 6_000)
+    }
+
+    func testTerminalCommandPersistsAcrossStoreInstancesUntilAcknowledged() async throws {
+        try await withTemporaryStore { url in
             let command = RemoteRunCommand(
                 id: UUID(uuidString: "A0000000-0000-0000-0000-000000000001")!,
                 kind: .fullSync,
@@ -47,81 +91,89 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
             )
             let firstStore = RemoteCommandTerminalOutboxStore(url: url)
 
-            try firstStore.enqueue(
+            try await firstStore.enqueue(
                 command,
                 relayURL: "https://relay.example.test/",
                 workerTokenFingerprint: "token-fingerprint"
             )
 
             let reloadedStore = RemoteCommandTerminalOutboxStore(url: url)
-            let pending = try reloadedStore.pending(
+            let pending = try await reloadedStore.pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
             )
             XCTAssertEqual(pending.map(\.command.id), [command.id])
             XCTAssertEqual(pending.map(\.command.status), [.completed])
 
-            try reloadedStore.acknowledge(
-                commandID: command.id,
+            try await reloadedStore.acknowledge(
+                deliveryID: pending[0].deliveryID,
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
             )
-            XCTAssertTrue(try reloadedStore.pending(
+            let remaining = try await reloadedStore.pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
-            ).isEmpty)
+            )
+            XCTAssertTrue(remaining.isEmpty)
         }
     }
 
-    func testOutboxScopesTerminalResultToOriginalRelayCredential() throws {
-        try withTemporaryStore { url in
+    func testOutboxScopesTerminalResultToOriginalRelayCredential() async throws {
+        try await withTemporaryStore { url in
             let command = RemoteRunCommand(kind: .filesSync, status: .failed)
             let store = RemoteCommandTerminalOutboxStore(url: url)
-            try store.enqueue(
+            try await store.enqueue(
                 command,
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "original-token"
             )
 
-            XCTAssertTrue(try store.pending(
+            let replacementTokenEntries = try await store.pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "replacement-token"
-            ).isEmpty)
-            XCTAssertTrue(try store.pending(
+            )
+            XCTAssertTrue(replacementTokenEntries.isEmpty)
+            let otherRelayEntries = try await store.pending(
                 relayURL: "https://other.example.test",
                 workerTokenFingerprint: "original-token"
-            ).isEmpty)
-            XCTAssertEqual(try store.pending(
+            )
+            XCTAssertTrue(otherRelayEntries.isEmpty)
+            let originalEntries = try await store.pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "original-token"
-            ).count, 1)
+            )
+            XCTAssertEqual(originalEntries.count, 1)
         }
     }
 
-    func testOutboxRejectsInFlightCommands() throws {
-        try withTemporaryStore { url in
+    func testOutboxRejectsInFlightCommands() async throws {
+        try await withTemporaryStore { url in
             let store = RemoteCommandTerminalOutboxStore(url: url)
 
-            XCTAssertThrowsError(
-                try store.enqueue(
+            do {
+                _ = try await store.enqueue(
                     RemoteRunCommand(kind: .doctor, status: .running),
                     relayURL: "https://relay.example.test",
                     workerTokenFingerprint: "token-fingerprint"
                 )
-            )
+                XCTFail("An in-flight command must not enter the terminal outbox")
+            } catch {
+                XCTAssertEqual(error as? RemoteCommandTerminalOutboxError, .commandIsNotTerminal)
+            }
         }
     }
 
-    func testMalformedOutboxIsQuarantinedAndRecreated() throws {
-        try withTemporaryStore { url in
+    func testMalformedOutboxIsQuarantinedAndRecreated() async throws {
+        try await withTemporaryStore { url in
             let malformed = Data("{broken".utf8)
             try malformed.write(to: url)
             let store = RemoteCommandTerminalOutboxStore(url: url)
 
-            XCTAssertTrue(try store.pending(
+            let pending = try await store.pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
-            ).isEmpty)
+            )
+            XCTAssertTrue(pending.isEmpty)
 
             let quarantined = try quarantinedFiles(for: url)
             XCTAssertEqual(quarantined.count, 1)
@@ -129,16 +181,16 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
             let rebuilt = try XCTUnwrap(
                 JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
             )
-            XCTAssertEqual((rebuilt["version"] as? NSNumber)?.intValue, 1)
+            XCTAssertEqual((rebuilt["version"] as? NSNumber)?.intValue, 2)
             XCTAssertEqual((rebuilt["entries"] as? [Any])?.count, 0)
         }
     }
 
-    func testOutboxSalvagesValidEntriesAroundMalformedRecord() throws {
-        try withTemporaryStore { url in
+    func testOutboxSalvagesValidEntriesAroundMalformedRecord() async throws {
+        try await withTemporaryStore { url in
             let command = RemoteRunCommand(kind: .noticeSync, status: .completed)
             let store = RemoteCommandTerminalOutboxStore(url: url)
-            try store.enqueue(
+            try await store.enqueue(
                 command,
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
@@ -152,7 +204,7 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
             let mixed = try JSONSerialization.data(withJSONObject: document)
             try mixed.write(to: url)
 
-            let pending = try store.pending(
+            let pending = try await store.pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
             )
@@ -167,8 +219,8 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
         }
     }
 
-    func testOutboxDropsExpiredFutureAndExcessEntries() throws {
-        try withTemporaryStore { url in
+    func testOutboxDropsExpiredFutureAndExcessEntries() async throws {
+        try await withTemporaryStore { url in
             let now = Date()
             var entries = (0..<300).map { index in
                 RemoteCommandTerminalOutboxEntry(
@@ -199,14 +251,268 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
             ])
             try document.write(to: url)
 
-            let pending = try RemoteCommandTerminalOutboxStore(url: url).pending(
+            let pending = try await RemoteCommandTerminalOutboxStore(url: url).pending(
                 relayURL: "https://relay.example.test",
                 workerTokenFingerprint: "token-fingerprint"
             )
 
-            XCTAssertEqual(pending.count, 256)
+            XCTAssertEqual(pending.count, 100)
             XCTAssertTrue(pending.allSatisfy { $0.enqueuedAt <= now.addingTimeInterval(5 * 60) })
             XCTAssertTrue(pending.allSatisfy { $0.enqueuedAt >= now.addingTimeInterval(-(30 * 24 * 60 * 60)) })
+        }
+    }
+
+    func testVersion1MigratesToStableDeliveryID() async throws {
+        try await withTemporaryStore { url in
+            let command = RemoteRunCommand(kind: .coreSync, status: .completed)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let commandObject = try JSONSerialization.jsonObject(with: encoder.encode(command))
+            let enqueuedAt = Date()
+            let legacyDocument = try JSONSerialization.data(withJSONObject: [
+                "version": 1,
+                "entries": [[
+                    "relayURL": "https://relay.example.test/",
+                    "workerTokenFingerprint": "token-fingerprint",
+                    "command": commandObject,
+                    "enqueuedAt": ISO8601DateFormatter().string(from: enqueuedAt),
+                ]],
+            ])
+            try legacyDocument.write(to: url)
+            let store = RemoteCommandTerminalOutboxStore(url: url)
+
+            let first = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            let second = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+
+            XCTAssertEqual(first.count, 1)
+            XCTAssertEqual(second.map(\.deliveryID), first.map(\.deliveryID))
+            let migrated = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+            )
+            XCTAssertEqual((migrated["version"] as? NSNumber)?.intValue, 2)
+            let migratedEntry = try XCTUnwrap((migrated["entries"] as? [[String: Any]])?.first)
+            XCTAssertEqual(migratedEntry["deliveryID"] as? String, first[0].deliveryID.uuidString)
+        }
+    }
+
+    func testStaleAcknowledgementDoesNotDeleteReplacement() async throws {
+        try await withTemporaryStore { url in
+            let now = Date()
+            let store = RemoteCommandTerminalOutboxStore(url: url)
+            let commandID = UUID()
+            let first = try await store.enqueue(
+                RemoteRunCommand(id: commandID, kind: .fullSync, status: .completed),
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint",
+                enqueuedAt: now
+            )
+            let replacement = try await store.enqueue(
+                RemoteRunCommand(id: commandID, kind: .fullSync, status: .failed),
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint",
+                enqueuedAt: now.addingTimeInterval(1)
+            )
+
+            try await store.acknowledge(
+                deliveryID: first.entry.deliveryID,
+                relayURL: first.entry.relayURL,
+                workerTokenFingerprint: first.entry.workerTokenFingerprint
+            )
+            let pending = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+
+            XCTAssertEqual(pending.map(\.deliveryID), [replacement.entry.deliveryID])
+            XCTAssertEqual(pending.map(\.command.status), [.failed])
+        }
+    }
+
+    func testConcurrentEnqueuesDoNotLoseEntries() async throws {
+        try await withTemporaryStore { url in
+            let store = RemoteCommandTerminalOutboxStore(url: url)
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                for _ in 0..<40 {
+                    group.addTask {
+                        try await store.enqueue(
+                            RemoteRunCommand(kind: .report, status: .completed),
+                            relayURL: "https://relay.example.test",
+                            workerTokenFingerprint: "token-fingerprint"
+                        )
+                    }
+                }
+                try await group.waitForAll()
+            }
+            let pending = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            XCTAssertEqual(pending.count, 40)
+            XCTAssertEqual(Set(pending.map(\.command.id)).count, 40)
+        }
+    }
+
+    func testPerIdentityLimitDoesNotEvictAnotherIdentity() async throws {
+        try await withTemporaryStore { url in
+            let now = Date()
+            let policy = RemoteCommandTerminalOutboxPolicy(
+                maximumEntriesPerIdentity: 3,
+                maximumEntries: 4
+            )
+            let store = RemoteCommandTerminalOutboxStore(url: url, policy: policy, now: { now })
+            try await store.enqueue(
+                RemoteRunCommand(kind: .doctor, status: .completed),
+                relayURL: "https://relay-b.example.test",
+                workerTokenFingerprint: "token-b",
+                enqueuedAt: now.addingTimeInterval(-10)
+            )
+            for offset in 0..<4 {
+                try await store.enqueue(
+                    RemoteRunCommand(kind: .report, status: .completed),
+                    relayURL: "https://relay-a.example.test",
+                    workerTokenFingerprint: "token-a",
+                    enqueuedAt: now.addingTimeInterval(TimeInterval(offset))
+                )
+            }
+
+            let identityA = try await store.pending(
+                relayURL: "https://relay-a.example.test",
+                workerTokenFingerprint: "token-a"
+            )
+            let identityB = try await store.pending(
+                relayURL: "https://relay-b.example.test",
+                workerTokenFingerprint: "token-b"
+            )
+            XCTAssertEqual(identityA.count, 3)
+            XCTAssertEqual(identityB.count, 1)
+        }
+    }
+
+    func testGlobalLimitEvictsOldestAcrossIdentities() async throws {
+        try await withTemporaryStore { url in
+            let now = Date()
+            let policy = RemoteCommandTerminalOutboxPolicy(
+                maximumEntriesPerIdentity: 10,
+                maximumEntries: 3
+            )
+            let store = RemoteCommandTerminalOutboxStore(url: url, policy: policy, now: { now })
+            var entriesByOffset: [Int: UUID] = [:]
+            for (relay, fingerprint, offset) in [
+                ("https://relay-a.example.test", "token-a", -4),
+                ("https://relay-b.example.test", "token-b", -3),
+                ("https://relay-b.example.test", "token-b", -2),
+                ("https://relay-a.example.test", "token-a", -1),
+            ] {
+                let result = try await store.enqueue(
+                    RemoteRunCommand(kind: .report, status: .completed),
+                    relayURL: relay,
+                    workerTokenFingerprint: fingerprint,
+                    enqueuedAt: now.addingTimeInterval(TimeInterval(offset))
+                )
+                entriesByOffset[offset] = result.entry.deliveryID
+            }
+            let identityA = try await store.pending(
+                relayURL: "https://relay-a.example.test",
+                workerTokenFingerprint: "token-a"
+            )
+            let identityB = try await store.pending(
+                relayURL: "https://relay-b.example.test",
+                workerTokenFingerprint: "token-b"
+            )
+            let retained = Set((identityA + identityB).map(\.deliveryID))
+            XCTAssertEqual(retained, Set([-3, -2, -1].compactMap { entriesByOffset[$0] }))
+        }
+    }
+
+    func testOversizedDocumentAndRepeatedCorruptionHaveBoundedPrivateQuarantine() async throws {
+        try await withTemporaryStore { url in
+            let now = Date()
+            let policy = RemoteCommandTerminalOutboxPolicy(
+                maximumDocumentBytes: 128,
+                maximumEncodedEntryBytes: 1_024,
+                maximumEntriesPerIdentity: 10,
+                maximumEntries: 10,
+                maximumQuarantineFiles: 2,
+                maximumQuarantineBytes: 32,
+                maximumQuarantineTotalBytes: 64
+            )
+            let store = RemoteCommandTerminalOutboxStore(url: url, policy: policy, now: { now })
+            for iteration in 0..<5 {
+                try Data(repeating: UInt8(iteration), count: 4_096).write(to: url)
+                let pending = try await store.pending(
+                    relayURL: "https://relay.example.test",
+                    workerTokenFingerprint: "token-fingerprint"
+                )
+                XCTAssertTrue(pending.isEmpty)
+            }
+
+            let quarantined = try quarantinedFiles(for: url)
+            XCTAssertEqual(quarantined.count, 2)
+            XCTAssertLessThanOrEqual(
+                quarantined.reduce(0) { total, file in
+                    total + (fileResourceSize(file) ?? Int.max)
+                },
+                64
+            )
+            for file in quarantined {
+                let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+                XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+            }
+            let canonicalAttributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            XCTAssertEqual((canonicalAttributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+        }
+    }
+
+    func testOversizedEntryIsRejectedWithoutDamagingExistingEntry() async throws {
+        try await withTemporaryStore { url in
+            let policy = RemoteCommandTerminalOutboxPolicy(maximumEncodedEntryBytes: 1_024)
+            let store = RemoteCommandTerminalOutboxStore(url: url, policy: policy)
+            let existing = try await store.enqueue(
+                RemoteRunCommand(kind: .verify, status: .completed),
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            var oversizedStatus = SanitizedRemoteStatus()
+            oversizedStatus.phaseDetail = String(repeating: "x", count: 4_096)
+            do {
+                _ = try await store.enqueue(
+                    RemoteRunCommand(kind: .report, status: .failed, summary: oversizedStatus),
+                    relayURL: "https://relay.example.test",
+                    workerTokenFingerprint: "token-fingerprint"
+                )
+                XCTFail("An oversized entry must be rejected")
+            } catch {
+                XCTAssertEqual(error as? RemoteCommandTerminalOutboxError, .entryTooLarge)
+            }
+            let pending = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            XCTAssertEqual(pending.map(\.deliveryID), [existing.entry.deliveryID])
+        }
+    }
+
+    func testUnknownDocumentVersionIsQuarantined() async throws {
+        try await withTemporaryStore { url in
+            let data = try JSONSerialization.data(withJSONObject: ["version": 999, "entries": []])
+            try data.write(to: url)
+            let store = RemoteCommandTerminalOutboxStore(url: url)
+            let pending = try await store.pending(
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            XCTAssertTrue(pending.isEmpty)
+            XCTAssertEqual(try quarantinedFiles(for: url).count, 1)
+            let rebuilt = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
+            )
+            XCTAssertEqual((rebuilt["version"] as? NSNumber)?.intValue, 2)
         }
     }
 
@@ -217,7 +523,11 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
         ).filter { $0.lastPathComponent.contains(".corrupt-") }
     }
 
-    private func withTemporaryStore(_ body: (URL) throws -> Void) throws {
+    private func fileResourceSize(_ url: URL) -> Int? {
+        try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize
+    }
+
+    private func withTemporaryStore(_ body: (URL) async throws -> Void) async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(
@@ -225,6 +535,17 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
             withIntermediateDirectories: true
         )
         defer { try? FileManager.default.removeItem(at: directory) }
-        try body(directory.appendingPathComponent("terminal-command-outbox.json"))
+        try await body(directory.appendingPathComponent("terminal-command-outbox.json"))
     }
+}
+
+private struct PublicLogRedactionFixture: Decodable {
+    var version: Int
+    var cases: [PublicLogRedactionCase]
+}
+
+private struct PublicLogRedactionCase: Decodable {
+    var id: String
+    var input: String
+    var expected: String
 }

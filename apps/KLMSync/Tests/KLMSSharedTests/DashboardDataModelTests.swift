@@ -7261,9 +7261,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: macModel,
             description: "Mac durable terminal command persistence"
         )
-        let enqueueIndex = try XCTUnwrap(terminalOutboxPersistence.range(of: "try outbox.enqueue(")?.lowerBound)
+        let enqueueIndex = try XCTUnwrap(terminalOutboxPersistence.range(of: "try await serverRelayTerminalOutbox.enqueue(")?.lowerBound)
         let replayIndex = try XCTUnwrap(terminalOutboxPersistence.range(of: "try await persistServerRelayTerminalState")?.lowerBound)
         XCTAssertLessThan(enqueueIndex, replayIndex)
+        XCTAssertTrue(macModel.contains("private let serverRelayTerminalOutbox: RemoteCommandTerminalOutboxStore"))
+        XCTAssertFalse(terminalOutboxPersistence.contains("RemoteCommandTerminalOutboxStore("))
         XCTAssertTrue(commandProcessor.contains("try await replayServerRelayTerminalCommandOutbox("))
         XCTAssertTrue(macModel.contains("RelaySnapshotApplyPolicy.decision("))
         XCTAssertTrue(macModel.contains("serverRelaySnapshotMutationEpoch &+= 1"))
@@ -7567,7 +7569,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(createManualCalendarAction.contains("removeRecentItemActions { $0.itemID == requestItemID && $0.status == .pending }"))
         XCTAssertTrue(createCalendarAction.contains("markCalendarChangeResolvedLocally(change)"))
         XCTAssertTrue(createCalendarAction.contains("replaceRecentItemAction(action) { candidateIDs.contains($0.itemID) }"))
-        XCTAssertTrue(createCalendarAction.contains("replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }"))
+        XCTAssertTrue(createCalendarAction.contains("replaceRecentItemAction(savedAction) { $0.id == action.id }"))
+        XCTAssertFalse(createCalendarAction.contains("$0.id == action.id || candidateIDs.contains($0.itemID)"))
         XCTAssertFalse(createCalendarAction.contains("schedulePostActionRefresh(scope: .itemActions)"))
         XCTAssertFalse(createCalendarAction.contains("isSubmitting = true"))
         XCTAssertFalse(createCalendarAction.contains("await refreshRecent("))
@@ -7883,6 +7886,10 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS server token immediate deletion"
         )
+        let credentialPersistence = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSShared/CredentialPersistence.swift"),
+            encoding: .utf8
+        )
 
         XCTAssertTrue(companionModel.contains("schedulePersistServerToken(serverToken)"))
         XCTAssertTrue(companionModel.contains("if oldValue != serverToken"))
@@ -7891,14 +7898,16 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionModel.contains("private var serverTokenPersistTask: Task<Void, Never>?"))
         XCTAssertTrue(schedulePersist.contains("try? await Task.sleep(nanoseconds: 350_000_000)"))
         XCTAssertTrue(schedulePersist.contains("await persistenceCoordinator.persist(token, generation: persistenceGeneration)"))
-        XCTAssertTrue(clearPersisted.contains("serverTokenPersistenceCoordinator.clear"))
-        XCTAssertTrue(clearPersisted.contains("Self.persistServerToken(token)"))
+        XCTAssertTrue(clearPersisted.contains("persistenceCoordinator.begin("))
+        XCTAssertTrue(clearPersisted.contains("await persistenceCoordinator.persist(\"\", generation: persistenceGeneration)"))
+        XCTAssertTrue(clearPersisted.contains("Self.persistServerToken(envelope)"))
         XCTAssertTrue(companionModel.contains("clearPersistedServerToken()"))
-        XCTAssertTrue(ios.contains("private final class ServerTokenPersistenceCoordinator: @unchecked Sendable"))
-        XCTAssertTrue(ios.contains("private let operationQueue = DispatchQueue("))
-        XCTAssertTrue(ios.contains("operationQueue.async"))
-        XCTAssertTrue(ios.contains("operationQueue.sync"))
-        XCTAssertTrue(ios.contains("nonisolated private static func persistServerToken(_ token: String)"))
+        XCTAssertTrue(credentialPersistence.contains("public final class CredentialPersistenceCoordinator: @unchecked Sendable"))
+        XCTAssertTrue(credentialPersistence.contains("operationQueue = DispatchQueue("))
+        XCTAssertTrue(credentialPersistence.contains("operationQueue.async"))
+        XCTAssertFalse(credentialPersistence.contains("operationQueue.sync"))
+        XCTAssertFalse(ios.contains("operationQueue.sync"))
+        XCTAssertTrue(ios.contains("nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope)"))
     }
 
     func testSensitiveClipboardDataExpiresOutsideAppLifetime() throws {
@@ -7952,7 +7961,7 @@ final class DashboardDataModelTests: XCTestCase {
         )
         let initializer = try sourceBody(after: "init()", in: companionModel, description: "CompanionModel init")
         let persistToken = try sourceBody(
-            after: "nonisolated private static func persistServerToken(_ token: String)",
+            after: "nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope)",
             in: companionModel,
             description: "iOS server token persistence"
         )
@@ -7963,17 +7972,17 @@ final class DashboardDataModelTests: XCTestCase {
         )
 
         XCTAssertTrue(initializer.contains("Self.loadServerRelayTokenMigratingUserDefaults()"))
-        XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: Self.serverTokenKey)"))
+        XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertFalse(initializer.contains("Self.persistServerToken(storedServerToken)"))
         XCTAssertTrue(loadMigratingToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
-        XCTAssertTrue(loadMigratingToken.contains("UserDefaults.standard.string(forKey: serverTokenKey)"))
-        XCTAssertTrue(loadMigratingToken.contains("persistServerToken(legacyToken)"))
+        XCTAssertTrue(loadMigratingToken.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
+        XCTAssertTrue(loadMigratingToken.contains("persistServerToken(VersionedCredentialEnvelope("))
         XCTAssertGreaterThanOrEqual(
-            loadMigratingToken.components(separatedBy: "UserDefaults.standard.removeObject(forKey: serverTokenKey)").count - 1,
+            loadMigratingToken.components(separatedBy: "UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)").count - 1,
             1
         )
-        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.save(trimmedToken, account: \"server-relay-ios\")"))
-        XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: serverTokenKey)"))
+        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.save(encoded, account: \"server-relay-ios\")"))
+        XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertFalse(persistToken.contains("UserDefaults.standard.set"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(serverToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(trimmedToken"))

@@ -66,6 +66,7 @@ run_ui_test() {
   local udid="${selection%%|*}"
   local name="${selection#*|}"
   local test_arguments=()
+  local result_bundle="$DERIVED_ROOT/$family/KLMSiOSUITests.xcresult"
   local identifier
   for identifier in "${TEST_IDENTIFIERS[@]}"; do
     test_arguments+=("-only-testing:${identifier}")
@@ -79,6 +80,9 @@ run_ui_test() {
     :
   fi
   xcrun simctl bootstatus "$udid" -b
+  if [[ -e "$result_bundle" ]]; then
+    find "$result_bundle" -depth -delete
+  fi
   xcodebuild test \
     -quiet \
     -project "$PROJECT_PATH" \
@@ -86,9 +90,33 @@ run_ui_test() {
     -configuration Debug \
     -destination "id=$udid" \
     -derivedDataPath "$DERIVED_ROOT/$family" \
+    -resultBundlePath "$result_bundle" \
     "${test_arguments[@]}" \
     CODE_SIGNING_ALLOWED=NO \
     CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_ROOT/$family"
+  xcrun xcresulttool get test-results tests --path "$result_bundle" \
+    | python3 -c '
+import json
+import sys
+
+warnings = []
+
+def visit(value):
+    if isinstance(value, dict):
+        if value.get("nodeType") == "Runtime Warning":
+            warnings.append(str(value.get("name") or "unknown runtime warning"))
+        for child in value.values():
+            visit(child)
+    elif isinstance(value, list):
+        for child in value:
+            visit(child)
+
+visit(json.load(sys.stdin))
+if warnings:
+    for warning in warnings:
+        print(f"iOS UI runtime warning: {warning}", file=sys.stderr)
+    raise SystemExit(1)
+'
 }
 
 "$ROOT_DIR/tools/generate_klms_ios_xcode_project.py" >/dev/null

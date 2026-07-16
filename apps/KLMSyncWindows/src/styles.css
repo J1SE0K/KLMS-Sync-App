@@ -1379,4 +1379,11 @@ body.viewport-resizing .sidebar {
   .toggle-action.on * {
     color: HighlightText;
   }
+
+  .item-row.active .badge {
+    forced-color-adjust: none;
+    border: 1px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
+  }
 }

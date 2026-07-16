@@ -704,9 +704,17 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   const forcedColorState = await page.evaluate(() => {
     const metric = getComputedStyle(document.querySelector("#dashboardCards .metric-card.active"));
     const row = getComputedStyle(document.querySelector("#itemList .item-row.active"));
+    const badge = getComputedStyle(document.querySelector("#itemList .item-row.active .badge"));
     const menuButton = getComputedStyle(document.querySelector("#sidebarToggleButton"));
     const menuIcon = getComputedStyle(document.querySelector("#sidebarToggleButton .icon"));
     const refreshButton = getComputedStyle(document.querySelector("#refreshButton"));
+    const systemColorProbe = document.createElement("span");
+    systemColorProbe.style.cssText = "forced-color-adjust:none;color:CanvasText;background:Canvas";
+    document.body.append(systemColorProbe);
+    const systemColors = getComputedStyle(systemColorProbe);
+    const systemCanvas = systemColors.backgroundColor;
+    const systemCanvasText = systemColors.color;
+    systemColorProbe.remove();
     return {
       metricAdjustment: metric.forcedColorAdjust,
       rowAdjustment: row.forcedColorAdjust,
@@ -714,6 +722,13 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
       metricColor: metric.color,
       rowBackground: row.backgroundColor,
       rowColor: row.color,
+      badgeAdjustment: badge.forcedColorAdjust,
+      badgeBackground: badge.backgroundColor,
+      badgeColor: badge.color,
+      badgeBorderStyle: badge.borderStyle,
+      badgeBorderWidth: badge.borderWidth,
+      systemCanvas,
+      systemCanvasText,
       menuBorderStyle: menuButton.borderStyle,
       menuBorderWidth: menuButton.borderWidth,
       menuIconAdjustment: menuIcon.forcedColorAdjust,
@@ -727,6 +742,11 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   expect(forcedColorState.metricBackground).toBe(forcedColorState.rowBackground);
   expect(forcedColorState.metricColor).toBe(forcedColorState.rowColor);
   expect(forcedColorState.metricBackground).not.toBe(forcedColorState.metricColor);
+  expect(forcedColorState.badgeAdjustment).toBe("none");
+  expect(forcedColorState.badgeBackground).toBe(forcedColorState.systemCanvas);
+  expect(forcedColorState.badgeColor).toBe(forcedColorState.systemCanvasText);
+  expect(forcedColorState.badgeBorderStyle).toBe("solid");
+  expect(forcedColorState.badgeBorderWidth).not.toBe("0px");
   expect(forcedColorState.menuBorderStyle).toBe("solid");
   expect(forcedColorState.menuBorderWidth).not.toBe("0px");
   expect(forcedColorState.menuIconAdjustment).toBe("none");
