@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
-    "expectedFindings": 35,
-    "coordinatesSha256": "fabcbad598e05f73699fdce4c7e9250e75ed9e5acfb3932cdc6eae0f383bac6c",
+    "expectedFindings": 40,
+    "coordinatesSha256": "90ea7a5477c0456c39418a3d4c8a8f34d4b3c772fcc9277d601c4b7c394d06fd",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -50,8 +50,26 @@
       {
         "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
         "path": "tools/generate_release_evidence_receipt.py",
+        "expectedCount": 2,
+        "reason": "The current Python interpreter invokes repository-owned payload and app-provenance verifiers through argv arrays without a shell; their paths, candidate revision, source tree, executable digests, and verifier JSON are all validated before the receipt is accepted."
+      },
+      {
+        "rule": "python.lang.security.audit.insecure-file-permissions",
+        "path": "tools/run_release_gate.py",
+        "expectedCount": 2,
+        "reason": "Mode 0700 intentionally restricts isolated work and private evidence directories to the current user; generated evidence logs are separately restricted to mode 0600."
+      },
+      {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
+        "path": "tools/run_release_gate.py",
         "expectedCount": 1,
-        "reason": "The current Python interpreter invokes a repository-owned payload verifier through an argv array without a shell; every payload path and expected revision is subsequently validated as data by that verifier."
+        "reason": "The argv comes only from the version-controlled exact-SHA gate inventory, is executed without a shell in a repository-bounded directory with a fixed PATH, and is additionally bounded by process-group timeout and output limits."
+      },
+      {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-tainted-env-args",
+        "path": "tools/run_release_gate.py",
+        "expectedCount": 1,
+        "reason": "The environment comes from a version-controlled exact-SHA inventory, inherits only an explicit allowlist, uses a fixed PATH, and cannot be replaced by caller-supplied commands or unknown placeholders."
       },
       {
         "rule": "python.lang.security.audit.insecure-file-permissions",
@@ -97,7 +115,7 @@
       }
     ],
     "expectedFindings": 23,
-    "coordinatesSha256": "23d2d1acd7521ede0cfdaae5fd8d83f3e4b14ee93259bb07c98a77f4a8b74626",
+    "coordinatesSha256": "aaec0eae95ff7fdeb2aafe3a6bd5346f9bf94d76cc0fec152b81a78bed8ad9ee",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
