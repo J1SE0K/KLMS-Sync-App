@@ -1328,8 +1328,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(readinessScript.contains("ios-device-launch:5"))
         XCTAssertTrue(readinessScript.contains("iOS build and signing are ready, but device trust is blocked"))
         XCTAssertTrue(readinessScript.contains("return 0"))
-        XCTAssertTrue(readinessScript.contains("readiness-summary status=ok swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"))
-        XCTAssertTrue(readinessScript.contains("readiness-summary status=fail swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"))
+        XCTAssertTrue(readinessScript.contains("readiness-summary status=ok candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"))
+        XCTAssertTrue(readinessScript.contains("readiness-summary status=fail candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"))
+        XCTAssertLessThan(
+            readinessScript.range(of: "record_step()")!.lowerBound,
+            readinessScript.range(of: "record_step \"clean-worktree\"")!.lowerBound
+        )
         XCTAssertTrue(readinessScript.contains("ios_launch_state=\"skipped\""))
         XCTAssertTrue(readinessScript.contains("swift_state=\"failed\""))
         XCTAssertTrue(readinessScript.contains("mac_state=\"failed\""))

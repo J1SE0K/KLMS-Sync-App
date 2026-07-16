@@ -80,10 +80,6 @@ verify_clean_worktree() {
   [[ "$WORKTREE_STATE" == "clean" ]]
 }
 
-if [[ "$REQUIRE_CLEAN_WORKTREE" == "1" ]]; then
-  record_step "clean-worktree" verify_clean_worktree
-fi
-
 record_step() {
   local name="$1"
   shift
@@ -94,6 +90,10 @@ record_step() {
   fi
   return 0
 }
+
+if [[ "$REQUIRE_CLEAN_WORKTREE" == "1" ]]; then
+  record_step "clean-worktree" verify_clean_worktree
+fi
 
 print_failure_hint() {
   local failed_step="$1"

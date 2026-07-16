@@ -196,8 +196,12 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("ios-device-launch:5", readiness_script)
         self.assertIn("iOS build and signing are ready, but device trust is blocked", readiness_script)
         self.assertIn("return 0", readiness_script)
-        self.assertIn("readiness-summary status=ok swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}", readiness_script)
-        self.assertIn("readiness-summary status=fail swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}", readiness_script)
+        self.assertIn("readiness-summary status=ok candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}", readiness_script)
+        self.assertIn("readiness-summary status=fail candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}", readiness_script)
+        self.assertLess(
+            readiness_script.index("record_step()"),
+            readiness_script.index('record_step "clean-worktree"'),
+        )
         self.assertIn('ios_launch_state="skipped"', readiness_script)
         self.assertIn('swift_state="failed"', readiness_script)
         self.assertIn('mac_state="failed"', readiness_script)
