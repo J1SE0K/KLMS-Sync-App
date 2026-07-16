@@ -3,7 +3,7 @@
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
     "expectedFindings": 33,
-    "coordinatesSha256": "952003b379db66727c01bc23e733551fa04555a749820e9f97973c06efdffaa3",
+    "coordinatesSha256": "07518fa14e2841cb37872eb1cdfc061f978093ff3aced3ce403b2452d6e824ba",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -84,8 +84,8 @@
         "reason": "This policy intentionally contains only scanner-coordinate SHA-256 digests and false-positive rationale."
       }
     ],
-    "expectedFindings": 21,
-    "coordinatesSha256": "a5a2e189e9edc72f0f7324d87a5bd1211a29cc61a45c6faea151ca8c3f6bfd89",
+    "expectedFindings": 22,
+    "coordinatesSha256": "320249e823d8466c88969d04f3d1e8671a3702d69dc4f6aebcd7765476d5c7e3",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
@@ -116,6 +116,12 @@
         "path": "deploy/cloudflare-worker/test/smoke.mjs",
         "expectedCount": 2,
         "reason": "The matches are fixed synthetic client and worker tokens for an in-memory smoke relay."
+      },
+      {
+        "type": "Private Key",
+        "path": "tests/fixtures/public_log_redaction_cases.json",
+        "expectedCount": 1,
+        "reason": "The match is a marker-only synthetic PEM fixture with no key body, used to prove that public logs redact malformed private-key input."
       },
       {
         "type": "Base64 High Entropy String",
