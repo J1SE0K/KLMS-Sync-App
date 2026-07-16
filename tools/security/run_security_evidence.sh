@@ -104,7 +104,9 @@ bandit -r "$scan_tree/src/python" -lll -q -f json -o "$evidence_dir/bandit.json"
   > "$evidence_dir/bandit.stdout" 2>&1 || fail bandit
 
 : > "$evidence_dir/gitleaks.json"
-gitleaks git --redact --no-banner --report-format json --report-path "$evidence_dir/gitleaks.json" "$project_root" \
+gitleaks git --redact --no-banner \
+  --gitleaks-ignore-path "$project_root/.gitleaksignore" \
+  --report-format json --report-path "$evidence_dir/gitleaks.json" "$project_root" \
   > "$evidence_dir/gitleaks.stdout" 2>&1 || fail gitleaks
 
 detect_files=()

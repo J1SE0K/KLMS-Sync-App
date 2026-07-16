@@ -1,0 +1,4 @@
+# Synthetic private-key markers used to prove public-log redaction. These exact
+# historical fingerprints contain no key material; new findings remain fatal.
+b546936c682670f0f9952066a51ed219f8b35acb:tests/fixtures/public_log_redaction_cases.json:private-key:101
+b546936c682670f0f9952066a51ed219f8b35acb:tests/fixtures/public_log_redaction_cases.json:private-key:111
