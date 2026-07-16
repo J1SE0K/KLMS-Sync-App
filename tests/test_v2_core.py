@@ -815,6 +815,7 @@ class V2CoreTests(unittest.TestCase):
         source_assignment = Assignment(
             url="https://klms.kaist.ac.kr/mod/forum/view.php?id=1243903",
             course="공공정책 특강",
+            course_id="43",
             title="[포럼] 2-1 Weekly Reading Response",
             due="~2026.07.07",
             sync_due="2026-07-07T23:59:00+09:00",
@@ -837,6 +838,7 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertEqual(len(state.assignments), 1)
         self.assertEqual(state.assignments[0].course, "공공정책 특강<AI 안전, 정책 및 거버넌스>")
+        self.assertEqual(state.assignments[0].course_id, "43")
         self.assertEqual(state.assignments[0].sync_due, "2026-07-07T00:00:00+09:00")
         self.assertIn("오전 12:00", state.assignments[0].due)
 
@@ -1400,6 +1402,61 @@ class V2CoreTests(unittest.TestCase):
         self.assertFalse(certificate.authoritative)
         self.assertFalse(certificate.explicit_empty)
 
+    def test_course_semantic_certificate_ignores_empty_marker_under_hidden_ancestor(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <div hidden>
+                <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+              </div>
+              <ul class="topics"><li class="section">1주차</li></ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+
+    def test_course_semantic_certificate_handles_nested_hidden_marker_without_crashing(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics">
+                <li hidden><span>등록된 활동이 없습니다.</span></li>
+                <li class="section">1주차</li>
+              </ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+
+    def test_course_semantic_certificate_rejects_button_activity_with_empty_marker(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics">
+                <li class="activity assign"><button type="button">Homework 1</button></li>
+                <li class="section">등록된 활동이 없습니다.</li>
+              </ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+        self.assertEqual(certificate.activity_node_count, 1)
+
     def test_course_semantic_certificate_rejects_partially_changed_activity_links(self) -> None:
         page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
@@ -1728,6 +1785,49 @@ class V2CoreTests(unittest.TestCase):
                 "html": """
                 <main data-region="course-content">
                   <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+                </main>
+                """,
+            }
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            next_state,
+            course_pages=course_pages,
+        )
+
+        self.assertEqual(error, "")
+
+    def test_destructive_state_delta_accepts_removed_activity_from_authoritative_course(self) -> None:
+        retained_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        removed_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=2"
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {"url": retained_url, "course": "알고리즘", "course_id": "43"},
+                    {"url": removed_url, "course": "알고리즘", "course_id": "43"},
+                ]
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {"url": retained_url, "course": "알고리즘", "course_id": "43"}
+                ]
+            },
+        }
+        course_pages = [
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "html": f"""
+                <main data-region="course-content">
+                  <ul class="topics">
+                    <li class="activity assign">
+                      <div class="activityinstance"><a href="{retained_url}">Homework 1</a></div>
+                    </li>
+                  </ul>
                 </main>
                 """,
             }

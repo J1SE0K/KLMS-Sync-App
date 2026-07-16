@@ -2789,55 +2789,81 @@ def course_page_semantic_certificate(
         )
 
     soup = BeautifulSoup(html, "html.parser")
+
+    def is_hidden(node: Any) -> bool:
+        current = node
+        while current is not None:
+            attributes = getattr(current, "attrs", None)
+            if isinstance(attributes, dict):
+                raw_classes = current.get("class", [])
+                if isinstance(raw_classes, str):
+                    raw_classes = raw_classes.split()
+                classes = {str(value).casefold() for value in raw_classes}
+                style = re.sub(r"\s+", "", str(current.get("style") or "")).casefold()
+                if (
+                    current.has_attr("hidden")
+                    or str(current.get("aria-hidden") or "").casefold() == "true"
+                    or classes.intersection(
+                        {"hidden", "d-none", "sr-only", "visually-hidden", "accesshide"}
+                    )
+                    or "display:none" in style
+                    or "visibility:hidden" in style
+                ):
+                    return True
+            current = getattr(current, "parent", None)
+        return False
+
     course = extract_course_name(page, soup)
     course_id = url_query_id(requested_url)
-    recognized_shell = soup.select_one(
+    shell_nodes = soup.select(
         "[data-region='course-content'], #region-main .course-content, .course-content, "
         "ul.topics, ul.weeks, li.section, li.activity"
-    ) is not None
-    activity_nodes = soup.select("li.activity")
+    )
+    recognized_shell = any(not is_hidden(node) for node in shell_nodes)
+    activity_nodes = [
+        activity
+        for activity in soup.select("li.activity")
+        if not is_hidden(activity)
+    ]
     module_urls = {
         normalize_url(str(link.get("href") or ""))
         for link in soup.select("a[href*='/mod/']")
+        if not is_hidden(link)
         if normalize_url(str(link.get("href") or ""))
     }
     parsed_urls = {
         normalize_url(str(link.get("href") or ""))
         for activity in activity_nodes
         for link in activity.select(".activityinstance a[href*='/mod/']")
+        if not is_hidden(link)
         if normalize_url(str(link.get("href") or ""))
     }
     linked_activity_node_count = sum(
-        activity.select_one("a[href]") is not None
+        any(not is_hidden(link) for link in activity.select("a[href]"))
         for activity in activity_nodes
     )
 
     module_link_count = len(module_urls)
     parsed_activity_count = len(parsed_urls)
-    empty_state_scopes = soup.select("ul.topics, ul.weeks")
+    empty_state_scopes = [
+        scope
+        for scope in soup.select("ul.topics, ul.weeks")
+        if not is_hidden(scope)
+    ]
     scoped_empty_texts: list[str] = []
     for scope in empty_state_scopes:
-        scoped_soup = BeautifulSoup(str(scope), "html.parser")
-        for element in list(scoped_soup.find_all(True)):
-            classes = {
-                str(value).casefold()
-                for value in element.get("class", [])
-            }
-            style = re.sub(r"\s+", "", str(element.get("style") or "")).casefold()
-            if (
-                element.has_attr("hidden")
-                or str(element.get("aria-hidden") or "").casefold() == "true"
-                or classes.intersection({"hidden", "d-none", "sr-only", "visually-hidden", "accesshide"})
-                or "display:none" in style
-                or "visibility:hidden" in style
-            ):
-                element.decompose()
+        visible_fragments = [
+            str(text_node)
+            for text_node in scope.find_all(string=True)
+            if not is_hidden(getattr(text_node, "parent", None))
+        ]
         scoped_empty_texts.append(
-            normalize_whitespace(scoped_soup.get_text(" ", strip=True)).casefold()
+            normalize_whitespace(" ".join(visible_fragments)).casefold()
         )
     explicit_empty = (
         recognized_shell
         and module_link_count == 0
+        and len(activity_nodes) == 0
         and linked_activity_node_count == 0
         and any(
             marker in scoped_text
@@ -5185,6 +5211,27 @@ def explicit_empty_course_ids(course_pages: list[dict[str, Any]]) -> set[str]:
     }
 
 
+def authoritative_course_module_urls(
+    course_pages: list[dict[str, Any]],
+) -> dict[str, set[str]]:
+    certificates_by_course_id: dict[str, list[CoursePageSemanticCertificate]] = {}
+    for page in course_pages:
+        certificate = course_page_semantic_certificate(page)
+        if certificate.course_id:
+            certificates_by_course_id.setdefault(certificate.course_id, []).append(certificate)
+
+    authoritative: dict[str, set[str]] = {}
+    for course_id, certificates in certificates_by_course_id.items():
+        module_sets = {certificate.module_urls for certificate in certificates}
+        if (
+            certificates
+            and all(certificate.authoritative for certificate in certificates)
+            and len(module_sets) == 1
+        ):
+            authoritative[course_id] = set(certificates[0].module_urls)
+    return authoritative
+
+
 def tracked_state_module_course_ids(state: dict[str, Any]) -> dict[str, str]:
     content = state.get("content")
     if not isinstance(content, dict):
@@ -5244,11 +5291,12 @@ def destructive_state_delta_error(
     removed_urls = previous_urls - next_urls
     if not removed_urls:
         return ""
-    empty_course_ids = explicit_empty_course_ids(course_pages or [])
+    authoritative_modules = authoritative_course_module_urls(course_pages or [])
     explicitly_removed_urls = {
         url
         for url in removed_urls
-        if previous_course_ids.get(url) in empty_course_ids
+        if previous_course_ids.get(url) in authoritative_modules
+        and url not in authoritative_modules[previous_course_ids[url]]
     }
     if explicitly_removed_urls == removed_urls:
         return ""

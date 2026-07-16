@@ -89,6 +89,7 @@ def merge_assignment(existing: Assignment, candidate: Assignment) -> Assignment:
     for field in (
         "url",
         "course",
+        "course_id",
         "title",
         "due",
         "sync_due",
@@ -184,6 +185,7 @@ def merge_event(existing: Event, candidate: Event) -> Event:
     for field in (
         "url",
         "course",
+        "course_id",
         "title",
         "due",
         "sync_due",
@@ -275,6 +277,7 @@ def normalized_source_info(source_info: dict[str, str] | None) -> dict[str, str]
     source_info = source_info if isinstance(source_info, dict) else {}
     return {
         "course": normalized_course_name(str(source_info.get("course", ""))),
+        "course_id": one_line(str(source_info.get("course_id", ""))),
         "title": one_line(str(source_info.get("title", ""))),
         "instructions": clipped(str(source_info.get("instructions", ""))),
     }
@@ -285,6 +288,7 @@ def merge_source_info(existing: dict[str, str] | None, fallback: dict[str, str] 
     fallback_info = normalized_source_info(fallback)
     return {
         "course": existing_info.get("course") or fallback_info.get("course", ""),
+        "course_id": existing_info.get("course_id") or fallback_info.get("course_id", ""),
         "title": existing_info.get("title") or fallback_info.get("title", ""),
         "instructions": existing_info.get("instructions") or fallback_info.get("instructions", ""),
     }
@@ -352,6 +356,7 @@ def build_sync_state(
         source_by_url[page.url] = normalized_source_info({
             "course": course_name_from_text(course, one_line(raw_text))
             or source_info.get("course", ""),
+            "course_id": source_info.get("course_id", ""),
             "title": strip_access_suffix(title),
             "instructions": clean_detail_instructions(raw_text),
         })
@@ -371,6 +376,7 @@ def build_sync_state(
             source_by_url.get(item.url),
             {
                 "course": item.course,
+                "course_id": item.course_id,
                 "title": item.title,
                 "instructions": clipped(item.instructions),
             },
@@ -381,6 +387,7 @@ def build_sync_state(
             source_by_url.get(item.url),
             {
                 "course": item.course,
+                "course_id": item.course_id,
                 "title": item.title,
                 "instructions": clipped(item.instructions),
             },
@@ -394,11 +401,10 @@ def build_sync_state(
         source_info = source_by_url.get(item.url)
         if not source_info:
             return item
-        if item.course and item.source_title and item.instructions:
-            return item
         return replace(
             item,
             course=item.course or source_info.get("course", ""),
+            course_id=item.course_id or source_info.get("course_id", ""),
             source_title=item.source_title or source_info.get("title", ""),
             instructions=item.instructions or source_info.get("instructions", ""),
         )
@@ -408,11 +414,10 @@ def build_sync_state(
         source_info = source_by_url.get(item.url)
         if not source_info:
             return item
-        if item.course and item.source_title and item.instructions:
-            return item
         return replace(
             item,
             course=item.course or source_info.get("course", ""),
+            course_id=item.course_id or source_info.get("course_id", ""),
             source_title=item.source_title or source_info.get("title", ""),
             instructions=item.instructions or source_info.get("instructions", ""),
         )
