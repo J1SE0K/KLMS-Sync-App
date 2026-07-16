@@ -372,6 +372,45 @@ public enum RemoteCommandTerminalOutboxError: Error, Equatable {
     case commandIsNotTerminal
 }
 
+public enum RelayPublicLogRedactor {
+    private static let replacements: [(pattern: String, replacement: String)] = [
+        (#"KAIST 인증 번호:\s*[0-9]{1,3}"#, "KAIST 인증 번호: --"),
+        (#"digits=[0-9]{1,3}"#, "digits=--"),
+        (#"(?i)\b(?:authorization\s*:\s*)?(?:bearer|basic|digest)\s+[^\s\"'<>]+"#, "[credential]"),
+        (#"(?i)\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]\s*(?:\"[^\"]*\"|'[^']*'|[^\s;&]+)"#, "[credential]"),
+        (#"https?:\/\/[^\s\"'<>]+"#, "[URL]"),
+        (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, "[email]"),
+        (#"(?im)(^|[\s=(])(?:[A-Z]:\\|\\\\)[^\r\n]*"#, "$1[local-path]"),
+        (#"(?m)(^|[\s=(])(?:~|\/)[^\r\n]*"#, "$1[local-path]"),
+    ]
+    private static let forbiddenPattern = #"(?i)(?:\b(?:bearer|basic|digest)\s+|\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]|(?:^|[\s=(])(?:~\/|\/|[A-Z]:\\|\\\\)|BEGIN [A-Z ]*PRIVATE KEY)"#
+
+    public static func redact(
+        _ value: String,
+        maximumLines: Int = 40,
+        maximumCharacters: Int = 6_000
+    ) -> String {
+        var redacted = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !redacted.isEmpty else { return "" }
+        for replacement in replacements {
+            redacted = redacted.replacingOccurrences(
+                of: replacement.pattern,
+                with: replacement.replacement,
+                options: .regularExpression
+            )
+        }
+        let lines = redacted
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+            .filter {
+                $0.range(of: forbiddenPattern, options: .regularExpression) == nil
+            }
+        let joined = lines.suffix(max(0, maximumLines)).joined(separator: "\n")
+        guard joined.count > maximumCharacters else { return joined }
+        return "...\n" + String(joined.suffix(max(0, maximumCharacters)))
+    }
+}
+
 public struct RemoteCommandTerminalOutboxEntry: Codable, Sendable, Equatable {
     public var relayURL: String
     public var workerTokenFingerprint: String
@@ -392,10 +431,16 @@ public struct RemoteCommandTerminalOutboxEntry: Codable, Sendable, Equatable {
 }
 
 private struct RemoteCommandTerminalOutboxDocument: Codable {
+    var version: Int = 1
     var entries: [RemoteCommandTerminalOutboxEntry] = []
 }
 
 public struct RemoteCommandTerminalOutboxStore: Sendable {
+    private static let documentVersion = 1
+    private static let maximumEntries = 256
+    private static let entryTTL: TimeInterval = 30 * 24 * 60 * 60
+    private static let maximumFutureSkew: TimeInterval = 5 * 60
+
     public var url: URL
 
     public init(url: URL) {
@@ -426,7 +471,7 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
                 enqueuedAt: now
             )
         )
-        document.entries.sort { $0.enqueuedAt < $1.enqueuedAt }
+        document.entries = Self.normalizedEntries(document.entries, now: now)
         try save(document)
     }
 
@@ -461,9 +506,64 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
             return RemoteCommandTerminalOutboxDocument()
         }
         let data = try Data(contentsOf: url)
+        let decoded = try decodeSalvagingEntries(data)
+        if decoded.hadCorruption {
+            try quarantine(data)
+        }
+        if decoded.hadCorruption || decoded.document.entries != decoded.originalEntries {
+            try save(decoded.document)
+        }
+        return decoded.document
+    }
+
+    private func decodeSalvagingEntries(
+        _ data: Data,
+        now: Date = Date()
+    ) throws -> (
+        document: RemoteCommandTerminalOutboxDocument,
+        originalEntries: [RemoteCommandTerminalOutboxEntry],
+        hadCorruption: Bool
+    ) {
+        let root: [String: Any]
+        do {
+            guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return (RemoteCommandTerminalOutboxDocument(), [], true)
+            }
+            root = object
+        } catch {
+            return (RemoteCommandTerminalOutboxDocument(), [], true)
+        }
+        let version = (root["version"] as? NSNumber)?.intValue ?? Self.documentVersion
+        guard version == Self.documentVersion,
+              let rawEntries = root["entries"] as? [Any] else {
+            return (RemoteCommandTerminalOutboxDocument(), [], true)
+        }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try decoder.decode(RemoteCommandTerminalOutboxDocument.self, from: data)
+        var entries: [RemoteCommandTerminalOutboxEntry] = []
+        var hadCorruption = false
+        for rawEntry in rawEntries {
+            do {
+                let entryData = try JSONSerialization.data(withJSONObject: rawEntry)
+                let entry = try decoder.decode(RemoteCommandTerminalOutboxEntry.self, from: entryData)
+                guard Self.isValid(entry) else {
+                    hadCorruption = true
+                    continue
+                }
+                entries.append(entry)
+            } catch {
+                hadCorruption = true
+            }
+        }
+        let normalizedEntries = Self.normalizedEntries(entries, now: now)
+        return (
+            RemoteCommandTerminalOutboxDocument(
+                version: Self.documentVersion,
+                entries: normalizedEntries
+            ),
+            entries,
+            hadCorruption
+        )
     }
 
     private func save(_ document: RemoteCommandTerminalOutboxDocument) throws {
@@ -475,6 +575,45 @@ public struct RemoteCommandTerminalOutboxStore: Sendable {
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(document).write(to: url, options: .atomic)
+    }
+
+    private func quarantine(_ data: Data) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let baseName = url.deletingPathExtension().lastPathComponent
+        let quarantineURL = url.deletingLastPathComponent().appendingPathComponent(
+            "\(baseName).corrupt-\(UUID().uuidString.lowercased()).json"
+        )
+        try data.write(to: quarantineURL, options: .atomic)
+    }
+
+    private static func isValid(_ entry: RemoteCommandTerminalOutboxEntry) -> Bool {
+        let relayURL = normalizedRelayURL(entry.relayURL)
+        let fingerprint = entry.workerTokenFingerprint.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !relayURL.isEmpty
+            && relayURL.utf8.count <= 2_048
+            && !fingerprint.isEmpty
+            && fingerprint.utf8.count <= 256
+            && entry.command.status.isTerminal
+    }
+
+    private static func normalizedEntries(
+        _ entries: [RemoteCommandTerminalOutboxEntry],
+        now: Date
+    ) -> [RemoteCommandTerminalOutboxEntry] {
+        let oldestAllowed = now.addingTimeInterval(-entryTTL)
+        let newestAllowed = now.addingTimeInterval(maximumFutureSkew)
+        return entries
+            .filter {
+                isValid($0)
+                    && $0.enqueuedAt >= oldestAllowed
+                    && $0.enqueuedAt <= newestAllowed
+            }
+            .sorted { $0.enqueuedAt < $1.enqueuedAt }
+            .suffix(maximumEntries)
+            .map { $0 }
     }
 
     private static func normalizedRelayURL(_ value: String) -> String {

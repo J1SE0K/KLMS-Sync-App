@@ -180,9 +180,12 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
             to: "nonisolated private static func persistServerToken"
         )
 
-        XCTAssertTrue(source.contains("private actor ServerTokenPersistenceCoordinator"))
+        XCTAssertTrue(source.contains("private final class ServerTokenPersistenceCoordinator: @unchecked Sendable"))
         XCTAssertTrue(source.contains("private let serverTokenPersistenceCoordinator = ServerTokenPersistenceCoordinator()"))
-        XCTAssertTrue(schedule.contains("await persistenceCoordinator.persist(token)"))
+        XCTAssertTrue(schedule.contains("await persistenceCoordinator.persist(token, generation: persistenceGeneration)"))
+        XCTAssertTrue(source.contains("private let operationQueue = DispatchQueue("))
+        XCTAssertTrue(source.contains("operationQueue.async"))
+        XCTAssertTrue(source.contains("operationQueue.sync"))
         XCTAssertFalse(schedule.contains("Task.detached"))
     }
 

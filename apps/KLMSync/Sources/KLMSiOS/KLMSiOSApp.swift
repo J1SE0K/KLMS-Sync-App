@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 #if canImport(EventKit)
@@ -14,6 +15,7 @@ import UserNotifications
 #endif
 #if canImport(UIKit)
 import UIKit
+import UniformTypeIdentifiers
 #endif
 
 #if canImport(UserNotifications)
@@ -71,12 +73,46 @@ private extension EnvironmentValues {
     }
 }
 
-private actor ServerTokenPersistenceCoordinator {
+private final class ServerTokenPersistenceCoordinator: @unchecked Sendable {
+    private let generationLock = NSLock()
+    private let operationQueue = DispatchQueue(
+        label: "com.local.klmssync.server-token-persistence",
+        qos: .utility
+    )
+    private var generation: UInt64 = 0
+
+    func begin() -> UInt64 {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        generation &+= 1
+        return generation
+    }
+
     func persist(
         _ token: String,
-        operation: @Sendable (String) -> Void
-    ) {
-        operation(token)
+        generation expectedGeneration: UInt64,
+        operation: @escaping @Sendable (String) -> Void
+    ) async {
+        await withCheckedContinuation { continuation in
+            operationQueue.async { [self] in
+                generationLock.lock()
+                let shouldPersist = generation == expectedGeneration
+                generationLock.unlock()
+                if shouldPersist {
+                    operation(token)
+                }
+                continuation.resume()
+            }
+        }
+    }
+
+    func clear(operation: @Sendable (String) -> Void) {
+        generationLock.lock()
+        generation &+= 1
+        generationLock.unlock()
+        operationQueue.sync {
+            operation("")
+        }
     }
 }
 
@@ -250,7 +286,11 @@ final class CompanionModel: ObservableObject {
     }
     @Published var serverToken: String {
         didSet {
-            schedulePersistServerToken(serverToken)
+            if serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                clearPersistedServerToken()
+            } else {
+                schedulePersistServerToken(serverToken)
+            }
             if oldValue != serverToken {
                 resetRemoteSessionForConnectionChange()
             }
@@ -858,7 +898,7 @@ final class CompanionModel: ObservableObject {
     func submitMailDashboardItem(_ item: ServerRelaySyncItem) async {
         let normalizedItem = item.normalizedDashboardItem
         let mutationKey = mailDashboardMutationKey(itemID: normalizedItem.id)
-        let mutationVersion = itemActionMutationVersions.begin(for: mutationKey)
+        guard let mutationVersion = beginItemActionMutation(for: mutationKey) else { return }
         let previousItem = mailDashboardItems.first { $0.id == normalizedItem.id }
         addMailDashboardItem(normalizedItem)
         let mutationSnapshot = itemSnapshot(
@@ -903,7 +943,7 @@ final class CompanionModel: ObservableObject {
 
     func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
         let mutationKey = mailDashboardMutationKey(itemID: item.id)
-        let mutationVersion = itemActionMutationVersions.begin(for: mutationKey)
+        guard let mutationVersion = beginItemActionMutation(for: mutationKey) else { return }
         let previousItem = mailDashboardItems.first { $0.id == item.id }
         removeMailDashboardItem(item)
         let mutationSnapshot = itemSnapshot(
@@ -2259,6 +2299,15 @@ final class CompanionModel: ObservableObject {
         "calendar:\(itemID)"
     }
 
+    private func beginItemActionMutation(for key: String) -> UInt64? {
+        guard let version = itemActionMutationVersions.begin(for: key) else {
+            connectionMessage = "같은 항목의 이전 요청을 처리하고 있습니다. 완료 후 다시 시도해 주세요."
+            connectionSucceeded = nil
+            return nil
+        }
+        return version
+    }
+
     private func itemSnapshot(
         id: String,
         previous: ServerRelaySyncItem?,
@@ -2407,7 +2456,7 @@ final class CompanionModel: ObservableObject {
     private func calendarResolutionMutation(
         for change: CalendarChange,
         key: String
-    ) -> (version: UInt64, snapshots: [PendingCalendarResolutionSnapshot]) {
+    ) -> (version: UInt64, snapshots: [PendingCalendarResolutionSnapshot])? {
         let candidateIDs = calendarChangeResolvedIDs(for: change)
         let previous = candidateIDs.map {
             PendingCalendarResolutionSnapshot(
@@ -2416,7 +2465,7 @@ final class CompanionModel: ObservableObject {
                 optimistic: false
             )
         }
-        let version = itemActionMutationVersions.begin(for: key)
+        guard let version = beginItemActionMutation(for: key) else { return nil }
         markCalendarChangeResolvedLocally(change)
         return (
             version,
@@ -2568,7 +2617,13 @@ final class CompanionModel: ObservableObject {
         let updatesServerVisibleState = actionKind.isCompanionImmediateDisplayAction
         let suppressSuccessFeedback = actionKind.suppressesImmediateSuccessFeedback
         let mutationKey = updatesServerVisibleState ? itemActionMutationKey(itemID: item.id) : nil
-        let mutationVersion = mutationKey.map { itemActionMutationVersions.begin(for: $0) }
+        let mutationVersion: UInt64?
+        if let mutationKey {
+            guard let version = beginItemActionMutation(for: mutationKey) else { return }
+            mutationVersion = version
+        } else {
+            mutationVersion = nil
+        }
         let previousSyncItem = syncItems.first { $0.id == item.id }
         let previousMailDashboardItem = mailDashboardItems.first { $0.id == item.id }
         let action = ServerRelayItemAction(
@@ -2666,7 +2721,10 @@ final class CompanionModel: ObservableObject {
                 itemTitle: change.title.nilIfEmpty ?? change.course.nilIfEmpty ?? "캘린더 변경",
                 message: try edit?.encodedMessage() ?? ""
             )
-            mutationVersion = mutationKey.map { itemActionMutationVersions.begin(for: $0) }
+            if let mutationKey {
+                guard let version = beginItemActionMutation(for: mutationKey) else { return }
+                mutationVersion = version
+            }
             let previousResolutionSnapshots = candidateIDs.map {
                 PendingCalendarResolutionSnapshot(
                     id: $0,
@@ -2749,7 +2807,9 @@ final class CompanionModel: ObservableObject {
         let generation = relaySessionGeneration
         let originalStore = serverRelayStore
         let mutationKey = calendarMutationKey(itemID: serverRelayCalendarChange(change).id)
-        let mutation = calendarResolutionMutation(for: change, key: mutationKey)
+        guard let mutation = calendarResolutionMutation(for: change, key: mutationKey) else {
+            return false
+        }
         await Task.yield()
         do {
             try await Task.detached(priority: .userInitiated) {
@@ -2788,7 +2848,9 @@ final class CompanionModel: ObservableObject {
         let generation = relaySessionGeneration
         let originalStore = serverRelayStore
         let mutationKey = calendarMutationKey(itemID: serverRelayCalendarChange(change).id)
-        let mutation = calendarResolutionMutation(for: change, key: mutationKey)
+        guard let mutation = calendarResolutionMutation(for: change, key: mutationKey) else {
+            return false
+        }
         await Task.yield()
         if change.isDeletedAction {
             guard isCurrentRelaySession(generation: generation) else { return true }
@@ -2864,8 +2926,17 @@ final class CompanionModel: ObservableObject {
         let generation = relaySessionGeneration
         let originalStore = serverRelayStore
         let mutationKey = change.map { calendarMutationKey(itemID: serverRelayCalendarChange($0).id) }
-        let mutation = change.flatMap { change in
-            mutationKey.map { calendarResolutionMutation(for: change, key: $0) }
+        let mutation: (version: UInt64, snapshots: [PendingCalendarResolutionSnapshot])?
+        if let change, let mutationKey {
+            guard let registeredMutation = calendarResolutionMutation(
+                for: change,
+                key: mutationKey
+            ) else {
+                return false
+            }
+            mutation = registeredMutation
+        } else {
+            mutation = nil
         }
         if change != nil {
             await Task.yield()
@@ -4318,9 +4389,18 @@ final class CompanionModel: ObservableObject {
 
     private func copyToPasteboard(_ value: String, clearAfterSeconds: UInt64?) {
         #if canImport(UIKit)
-        UIPasteboard.general.string = value
         pasteboardClearTask?.cancel()
-        guard let clearAfterSeconds else { return }
+        guard let clearAfterSeconds else {
+            UIPasteboard.general.string = value
+            return
+        }
+        UIPasteboard.general.setItems(
+            [[UTType.utf8PlainText.identifier: value]],
+            options: [
+                .expirationDate: Date(timeIntervalSinceNow: TimeInterval(clearAfterSeconds)),
+                .localOnly: true,
+            ]
+        )
         pasteboardClearTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: clearAfterSeconds * 1_000_000_000)
             guard !Task.isCancelled else { return }
@@ -5741,10 +5821,11 @@ final class CompanionModel: ObservableObject {
     private func schedulePersistServerToken(_ token: String) {
         serverTokenPersistTask?.cancel()
         let persistenceCoordinator = serverTokenPersistenceCoordinator
+        let persistenceGeneration = persistenceCoordinator.begin()
         serverTokenPersistTask = Task { [weak self, token, persistenceCoordinator] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            await persistenceCoordinator.persist(token) { persistedToken in
+            await persistenceCoordinator.persist(token, generation: persistenceGeneration) { persistedToken in
                 Self.persistServerToken(persistedToken)
             }
             await MainActor.run {
@@ -5752,6 +5833,14 @@ final class CompanionModel: ObservableObject {
                     self?.serverTokenPersistTask = nil
                 }
             }
+        }
+    }
+
+    private func clearPersistedServerToken() {
+        serverTokenPersistTask?.cancel()
+        serverTokenPersistTask = nil
+        serverTokenPersistenceCoordinator.clear { token in
+            Self.persistServerToken(token)
         }
     }
 

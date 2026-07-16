@@ -594,6 +594,7 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        model?.clearSensitivePasteboard()
         guard !terminationCleanupStarted, let model, model.runningCommand != nil else {
             return .terminateNow
         }

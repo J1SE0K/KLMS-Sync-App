@@ -864,7 +864,8 @@ public struct KeyedMutationVersionTracker<Key: Hashable> {
 
     public init() {}
 
-    public mutating func begin(for key: Key) -> UInt64 {
+    public mutating func begin(for key: Key) -> UInt64? {
+        guard versions[key] == nil else { return nil }
         nextVersion &+= 1
         versions[key] = nextVersion
         return nextVersion

@@ -7439,7 +7439,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(createItemAction.contains("recentItemActions.removeAll { $0.id == action.id || $0.itemID == item.id }\n            recentItemActions.insert(savedAction, at: 0)"))
         XCTAssertFalse(createItemAction.contains("await refreshRecent(includeSyncData: true, showsActivity: false, scope: .itemActions)"))
         XCTAssertTrue(createItemAction.contains("let mutationKey = updatesServerVisibleState ? itemActionMutationKey(itemID: item.id) : nil"))
-        XCTAssertTrue(createItemAction.contains("let mutationVersion = mutationKey.map { itemActionMutationVersions.begin(for: $0) }"))
+        XCTAssertTrue(createItemAction.contains("guard let version = beginItemActionMutation(for: mutationKey) else { return }"))
+        XCTAssertTrue(ios.contains("같은 항목의 이전 요청을 처리하고 있습니다."))
         XCTAssertTrue(createItemAction.contains("syncItemSnapshot: updatesServerVisibleState"))
         XCTAssertTrue(createItemAction.contains("mailDashboardItemSnapshot: updatesServerVisibleState"))
         XCTAssertTrue(createItemAction.contains("rollbackItemActionMutation(overlay)"))
@@ -7877,6 +7878,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios,
             description: "iOS server token persistence debounce"
         )
+        let clearPersisted = try sourceBody(
+            after: "private func clearPersistedServerToken()",
+            in: ios,
+            description: "iOS server token immediate deletion"
+        )
 
         XCTAssertTrue(companionModel.contains("schedulePersistServerToken(serverToken)"))
         XCTAssertTrue(companionModel.contains("if oldValue != serverToken"))
@@ -7884,9 +7890,52 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionModel.contains("didSet { Self.persistServerToken(serverToken) }"))
         XCTAssertTrue(companionModel.contains("private var serverTokenPersistTask: Task<Void, Never>?"))
         XCTAssertTrue(schedulePersist.contains("try? await Task.sleep(nanoseconds: 350_000_000)"))
-        XCTAssertTrue(schedulePersist.contains("await persistenceCoordinator.persist(token)"))
-        XCTAssertTrue(ios.contains("private actor ServerTokenPersistenceCoordinator"))
+        XCTAssertTrue(schedulePersist.contains("await persistenceCoordinator.persist(token, generation: persistenceGeneration)"))
+        XCTAssertTrue(clearPersisted.contains("serverTokenPersistenceCoordinator.clear"))
+        XCTAssertTrue(clearPersisted.contains("Self.persistServerToken(token)"))
+        XCTAssertTrue(companionModel.contains("clearPersistedServerToken()"))
+        XCTAssertTrue(ios.contains("private final class ServerTokenPersistenceCoordinator: @unchecked Sendable"))
+        XCTAssertTrue(ios.contains("private let operationQueue = DispatchQueue("))
+        XCTAssertTrue(ios.contains("operationQueue.async"))
+        XCTAssertTrue(ios.contains("operationQueue.sync"))
         XCTAssertTrue(ios.contains("nonisolated private static func persistServerToken(_ token: String)"))
+    }
+
+    func testSensitiveClipboardDataExpiresOutsideAppLifetime() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let ios = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift"),
+            encoding: .utf8
+        )
+        let mac = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift"),
+            encoding: .utf8
+        )
+        let macApp = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacApp.swift"),
+            encoding: .utf8
+        )
+        let iosCopy = try sourceBody(
+            after: "private func copyToPasteboard(_ value: String, clearAfterSeconds: UInt64?)",
+            in: ios,
+            description: "iOS sensitive pasteboard"
+        )
+        let macCopy = try sourceBody(
+            after: "private func copyToPasteboard(_ value: String, sensitive: Bool)",
+            in: mac,
+            description: "macOS sensitive pasteboard"
+        )
+
+        XCTAssertTrue(iosCopy.contains(".expirationDate: Date(timeIntervalSinceNow:"))
+        XCTAssertTrue(iosCopy.contains(".localOnly: true"))
+        XCTAssertTrue(macCopy.contains("Self.transientPasteboardType"))
+        XCTAssertTrue(macCopy.contains("Self.concealedPasteboardType"))
+        XCTAssertTrue(mac.contains("copyToPasteboard(serverRelayClientToken, sensitive: true)"))
+        XCTAssertTrue(mac.contains("copyToPasteboard(serverRelayConnectionInfoText, sensitive: true)"))
+        XCTAssertTrue(macApp.contains("model?.clearSensitivePasteboard()"))
     }
 
     func testIOSServerTokenUserDefaultsPathIsMigrationOnly() throws {

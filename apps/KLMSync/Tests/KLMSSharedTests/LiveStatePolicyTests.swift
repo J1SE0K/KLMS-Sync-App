@@ -636,19 +636,18 @@ final class LiveStatePolicyTests: XCTestCase {
         )
     }
 
-    func testMutationVersionsIsolateItemsAndRejectOlderSameItemRollback() {
+    func testMutationVersionsIsolateItemsAndRejectOverlappingSameItemMutation() throws {
         var tracker = KeyedMutationVersionTracker<String>()
-        let firstItemVersion = tracker.begin(for: "assignment-1")
-        let otherItemVersion = tracker.begin(for: "assignment-2")
+        let firstItemVersion = try XCTUnwrap(tracker.begin(for: "assignment-1"))
+        let otherItemVersion = try XCTUnwrap(tracker.begin(for: "assignment-2"))
 
         XCTAssertTrue(tracker.owns(key: "assignment-1", version: firstItemVersion))
         XCTAssertTrue(tracker.end(key: "assignment-1", version: firstItemVersion))
         XCTAssertTrue(tracker.owns(key: "assignment-2", version: otherItemVersion))
 
-        let olderVersion = tracker.begin(for: "assignment-2")
-        let latestVersion = tracker.begin(for: "assignment-2")
-        XCTAssertFalse(tracker.end(key: "assignment-2", version: olderVersion))
-        XCTAssertTrue(tracker.owns(key: "assignment-2", version: latestVersion))
+        XCTAssertNil(tracker.begin(for: "assignment-2"))
+        XCTAssertTrue(tracker.end(key: "assignment-2", version: otherItemVersion))
+        XCTAssertNotNil(tracker.begin(for: "assignment-2"))
     }
 
     func testOptimisticRollbackRequiresCurrentVersionAndUnchangedOptimisticValue() {

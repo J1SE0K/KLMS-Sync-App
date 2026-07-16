@@ -459,6 +459,7 @@ final class KLMSMacModel: ObservableObject {
     private var runningCommandOperationID: UInt64 = 0
     private var runningCommandStartedAt: Date?
     private var pasteboardClearTask: Task<Void, Never>?
+    private var sensitivePasteboardValue: String?
     private var liveCommandOutputBuffer = ""
     private var liveAuthObservationBuffer = ""
     private var cachedLiveProgressLine: String?
@@ -526,6 +527,8 @@ final class KLMSMacModel: ObservableObject {
     private static let authStatusDisplayTimeoutNanoseconds: UInt64 = 120_000_000_000
     private static let authStatusDisplayTimeoutSeconds: TimeInterval = 120
     private static let trimmedLiveCommandOutputPrefix = "... 이전 로그 일부 생략됨 ...\n"
+    private static let transientPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+    private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     private struct CachedServerRelaySyncData: Codable {
         var serverURL: String
@@ -1130,7 +1133,7 @@ final class KLMSMacModel: ObservableObject {
             errorMessage = serverRelayStatusMessage
             return
         }
-        copyToPasteboard(serverRelayConnectionInfoText)
+        copyToPasteboard(serverRelayConnectionInfoText, sensitive: true)
         serverRelayStatusMessage = "서버 연결 정보를 복사했습니다."
     }
 
@@ -1140,12 +1143,12 @@ final class KLMSMacModel: ObservableObject {
             errorMessage = serverRelayStatusMessage
             return
         }
-        copyToPasteboard(publicURL)
+        copyToPasteboard(publicURL, sensitive: false)
         serverRelayStatusMessage = "서버 URL을 복사했습니다."
     }
 
     func copyServerRelayClientToken() {
-        copyToPasteboard(serverRelayClientToken)
+        copyToPasteboard(serverRelayClientToken, sensitive: true)
         serverRelayStatusMessage = "클라이언트 토큰을 복사했습니다."
     }
 
@@ -1672,10 +1675,15 @@ final class KLMSMacModel: ObservableObject {
         return authStatusMessage ?? lastAuthStatusMessageForRemote
     }
 
-    private func copyToPasteboard(_ value: String) {
+    private func copyToPasteboard(_ value: String, sensitive: Bool) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
         pasteboardClearTask?.cancel()
+        sensitivePasteboardValue = nil
+        guard sensitive else { return }
+        NSPasteboard.general.setData(Data(), forType: Self.transientPasteboardType)
+        NSPasteboard.general.setData(Data(), forType: Self.concealedPasteboardType)
+        sensitivePasteboardValue = value
         pasteboardClearTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 60_000_000_000)
             guard !Task.isCancelled else {
@@ -1684,8 +1692,19 @@ final class KLMSMacModel: ObservableObject {
             if NSPasteboard.general.string(forType: .string) == value {
                 NSPasteboard.general.clearContents()
             }
+            self?.sensitivePasteboardValue = nil
             self?.pasteboardClearTask = nil
         }
+    }
+
+    func clearSensitivePasteboard() {
+        pasteboardClearTask?.cancel()
+        pasteboardClearTask = nil
+        guard let sensitivePasteboardValue else { return }
+        if NSPasteboard.general.string(forType: .string) == sensitivePasteboardValue {
+            NSPasteboard.general.clearContents()
+        }
+        self.sensitivePasteboardValue = nil
     }
 
     private func publicServerRelayURLForSharing() -> String? {
@@ -4015,44 +4034,7 @@ final class KLMSMacModel: ObservableObject {
 
     private func serverRelayPublicLogText(_ text: String?) -> String {
         let value = (text ?? "").klmsDisplayText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty else {
-            return ""
-        }
-        let patterns: [(String, String)] = [
-            (#"KAIST 인증 번호:\s*[0-9]{1,3}"#, "KAIST 인증 번호: --"),
-            (#"digits=[0-9]{1,3}"#, "digits=--"),
-            (#"https?:\/\/klms\.kaist\.ac\.kr\/[^\s"'<>]+"#, "[KLMS URL]"),
-            (#"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#, "[email]")
-        ]
-        var redacted = value
-        for (pattern, replacement) in patterns {
-            redacted = redacted.replacingOccurrences(
-                of: pattern,
-                with: replacement,
-                options: [.regularExpression, .caseInsensitive]
-            )
-        }
-        let safeLines = redacted
-            .split(whereSeparator: \.isNewline)
-            .map(String.init)
-            .filter { !serverRelayLooksPrivateLogLine($0) }
-        let tailLines = safeLines.suffix(40)
-        let joined = tailLines.joined(separator: "\n")
-        guard joined.count > 6_000 else {
-            return joined
-        }
-        return "...\n" + String(joined.suffix(6_000))
-    }
-
-    private func serverRelayLooksPrivateLogLine(_ line: String) -> Bool {
-        let lowercased = line.lowercased()
-        if lowercased.contains("/users/") || lowercased.contains("/var/folders/") {
-            return true
-        }
-        return line.range(
-            of: #"[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?"#,
-            options: .regularExpression
-        ) != nil
+        return RelayPublicLogRedactor.redact(value)
     }
 
     private func serverRelayLooksPrivate(_ text: String) -> Bool {
@@ -4933,7 +4915,7 @@ final class KLMSMacModel: ObservableObject {
         fileSystemEventDebounceTask?.cancel()
         fileSystemEventWatcher?.stop()
         authStatusClearTask?.cancel()
-        pasteboardClearTask?.cancel()
+        clearSensitivePasteboard()
         guard let runningCommandIdentity, runningCommand != nil else { return }
         isCancellingCommand = true
         pendingRunCancellation.request(for: runningCommandIdentity)
