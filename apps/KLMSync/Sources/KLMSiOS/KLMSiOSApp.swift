@@ -5893,24 +5893,28 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope) {
+    @discardableResult
+    nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope) -> Bool {
         let trimmedToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedToken.isEmpty {
             LocalRemoteTokenStore.delete(account: "server-relay-ios")
             UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-            return
+            return true
         }
         guard let encoded = try? VersionedCredentialEnvelope(
             generation: envelope.generation,
             value: trimmedToken
         ).encoded() else {
-            return
-        }
-        if LocalRemoteTokenStore.save(encoded, account: "server-relay-ios") {
+            LocalRemoteTokenStore.delete(account: "server-relay-ios")
             UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-        } else {
+            return false
+        }
+        let saved = LocalRemoteTokenStore.save(encoded, account: "server-relay-ios")
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+        if !saved {
             LocalRemoteTokenStore.delete(account: "server-relay-ios")
         }
+        return saved
     }
 
     nonisolated private static func loadServerRelayTokenMigratingUserDefaults() -> String {
@@ -5929,11 +5933,13 @@ final class CompanionModel: ObservableObject {
                expectedGeneration == 0 {
                 let migrationGeneration: UInt64 = 1
                 storeServerTokenPersistenceGeneration(migrationGeneration)
-                persistServerToken(VersionedCredentialEnvelope(
+                let migrated = persistServerToken(VersionedCredentialEnvelope(
                     generation: migrationGeneration,
                     value: storedCredential
                 ))
-                return storedCredential.trimmingCharacters(in: .whitespacesAndNewlines)
+                return migrated
+                    ? storedCredential.trimmingCharacters(in: .whitespacesAndNewlines)
+                    : ""
             }
             LocalRemoteTokenStore.delete(account: "server-relay-ios")
             UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
@@ -5947,11 +5953,12 @@ final class CompanionModel: ObservableObject {
         }
         let migrationGeneration: UInt64 = 1
         storeServerTokenPersistenceGeneration(migrationGeneration)
-        persistServerToken(VersionedCredentialEnvelope(
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+        let migrated = persistServerToken(VersionedCredentialEnvelope(
             generation: migrationGeneration,
             value: legacyToken
         ))
-        return legacyToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return migrated ? legacyToken.trimmingCharacters(in: .whitespacesAndNewlines) : ""
     }
 
     nonisolated private static func loadServerTokenPersistenceGeneration() -> UInt64 {

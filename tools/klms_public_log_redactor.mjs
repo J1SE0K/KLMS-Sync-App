@@ -18,6 +18,16 @@ const SENSITIVE_KEY_FRAGMENTS = [
   "accesskey",
   "privatekey",
   "ticket",
+  "deviceid",
+  "deviceidentifier",
+  "deviceuuid",
+  "udid",
+  "identifierforvendor",
+  "vendoridentifier",
+  "installationid",
+  "installid",
+  "advertisingid",
+  "idfa",
 ];
 const textEncoder = new TextEncoder();
 
@@ -35,6 +45,7 @@ export function redactPublicLogText(
   text = redactSensitiveJSONMembers(text);
   text = redactAuthorizationCredentials(text);
   text = redactSensitiveAssignments(text);
+  text = redactDeviceIdentifiers(text);
   text = redactURLsAndPaths(text);
   text = text
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
@@ -85,25 +96,31 @@ function redactPEMBlocks(text) {
   let cursor = 0;
   const lower = text.toLowerCase();
   while (cursor < text.length) {
-    const begin = lower.indexOf("-----begin ", cursor);
-    const end = lower.indexOf("-----end ", cursor);
-    if (end >= 0 && (begin < 0 || end < begin)) {
-      const endClose = lower.indexOf("-----", end + "-----end ".length);
-      const tailStart = endClose < 0 ? text.length : endClose + 5;
-      return CREDENTIAL_MARKER + redactPEMBlocks(text.slice(tailStart));
-    }
-    if (begin < 0) {
+    const marker = lower.indexOf("-----", cursor);
+    if (marker < 0) {
       output += text.slice(cursor);
       break;
     }
-    output += text.slice(cursor, begin) + CREDENTIAL_MARKER;
-    const beginClose = lower.indexOf("-----", begin + "-----begin ".length);
-    if (beginClose < 0) return output;
-    const label = text.slice(begin + "-----begin ".length, beginClose).trim();
-    if (!label) return output;
-    const matchingEnd = lower.indexOf(`-----end ${label.toLowerCase()}-----`, beginClose + 5);
-    if (matchingEnd < 0) return output;
-    cursor = matchingEnd + `-----end ${label}-----`.length;
+    if (lower.startsWith("-----end ", marker)) {
+      const endClose = lower.indexOf("-----", marker + "-----end ".length);
+      output += CREDENTIAL_MARKER;
+      cursor = endClose < 0 ? text.length : endClose + 5;
+      continue;
+    }
+    if (lower.startsWith("-----begin ", marker)) {
+      output += text.slice(cursor, marker) + CREDENTIAL_MARKER;
+      const beginClose = lower.indexOf("-----", marker + "-----begin ".length);
+      if (beginClose < 0) return output;
+      const label = text.slice(marker + "-----begin ".length, beginClose).trim();
+      if (!label) return output;
+      const endMarker = `-----end ${label.toLowerCase()}-----`;
+      const matchingEnd = lower.indexOf(endMarker, beginClose + 5);
+      if (matchingEnd < 0) return output;
+      cursor = matchingEnd + endMarker.length;
+      continue;
+    }
+    output += text.slice(cursor, marker + 5);
+    cursor = marker + 5;
   }
   return output;
 }
@@ -123,7 +140,7 @@ function redactSensitiveJSONMembers(text) {
       continue;
     }
     let separator = keyEnd;
-    while (separator < text.length && isInlineWhitespace(text[separator])) separator += 1;
+    while (separator < text.length && isWhitespace(text[separator])) separator += 1;
     if (text[separator] !== ":") {
       index = keyEnd;
       continue;
@@ -134,7 +151,7 @@ function redactSensitiveJSONMembers(text) {
       continue;
     }
     let valueStart = separator + 1;
-    while (valueStart < text.length && isInlineWhitespace(text[valueStart])) valueStart += 1;
+    while (valueStart < text.length && isWhitespace(text[valueStart])) valueStart += 1;
     const valueEnd = structuredValueEnd(text, valueStart);
     output += text.slice(copiedThrough, valueStart) + `"${CREDENTIAL_MARKER}"`;
     copiedThrough = valueEnd;
@@ -213,13 +230,17 @@ function redactSensitiveAssignments(text) {
     const start = index;
     let key = "";
     let keyEnd = index;
-    if (text[index] === "'") {
-      keyEnd = quotedValueEnd(text, index, "'");
-      if (keyEnd <= index + 1 || text[keyEnd - 1] !== "'") {
+    const keyQuote = text[index] === "'" || text[index] === "\"" ? text[index] : "";
+    if (keyQuote) {
+      keyEnd = quotedValueEnd(text, index, keyQuote);
+      if (keyEnd <= index + 1 || text[keyEnd - 1] !== keyQuote) {
         index += 1;
         continue;
       }
-      key = text.slice(index + 1, keyEnd - 1);
+      const rawKey = text.slice(index, keyEnd);
+      key = keyQuote === "\""
+        ? decodedJSONString(rawKey)
+        : text.slice(index + 1, keyEnd - 1);
     } else if (isAssignmentKeyCharacter(text[index])) {
       while (keyEnd < text.length && isAssignmentKeyCharacter(text[keyEnd])) keyEnd += 1;
       key = text.slice(index, keyEnd);
@@ -229,12 +250,17 @@ function redactSensitiveAssignments(text) {
     }
     let separator = keyEnd;
     while (separator < text.length && isInlineWhitespace(text[separator])) separator += 1;
-    if (!isSensitiveKey(key) || ![":", "="].includes(text[separator])) {
+    const separatorCharacter = text[separator];
+    if (
+      !isSensitiveKey(key)
+      || ![":", "="].includes(separatorCharacter)
+      || (keyQuote === "\"" && separatorCharacter !== "=")
+    ) {
       index = Math.max(index + 1, keyEnd);
       continue;
     }
     let valueStart = separator + 1;
-    while (valueStart < text.length && isInlineWhitespace(text[valueStart])) valueStart += 1;
+    while (valueStart < text.length && isWhitespace(text[valueStart])) valueStart += 1;
     const valueEnd = assignmentValueEnd(text, valueStart);
     if (text.slice(start, valueEnd) === CREDENTIAL_MARKER) {
       index = valueEnd;
@@ -252,9 +278,36 @@ function assignmentValueEnd(text, start) {
   if (text.startsWith(CREDENTIAL_MARKER, start)) return start + CREDENTIAL_MARKER.length;
   const first = text[start];
   if (first === "\"" || first === "'") return quotedValueEnd(text, start, first);
+  if (first === "{" || first === "[") return structuredValueEnd(text, start);
   let index = start;
-  while (index < text.length && !/[\s,;&}\]"'<>]/.test(text[index])) index += 1;
+  while (index < text.length) {
+    const character = text[index];
+    if (character === "\n" || /[,;&}\]"'<>]/.test(character)) break;
+    if (isInlineWhitespace(character)) {
+      let next = index;
+      while (next < text.length && isInlineWhitespace(text[next])) next += 1;
+      if (startsAssignmentAt(text, next)) break;
+      index = next;
+      continue;
+    }
+    index += 1;
+  }
   return index;
+}
+
+function startsAssignmentAt(text, start) {
+  if (start >= text.length) return false;
+  let keyEnd = start;
+  const quote = text[start] === "'" || text[start] === "\"" ? text[start] : "";
+  if (quote) {
+    keyEnd = quotedValueEnd(text, start, quote);
+    if (keyEnd <= start + 1 || text[keyEnd - 1] !== quote) return false;
+  } else {
+    while (keyEnd < text.length && isAssignmentKeyCharacter(text[keyEnd])) keyEnd += 1;
+    if (keyEnd === start) return false;
+  }
+  while (keyEnd < text.length && isInlineWhitespace(text[keyEnd])) keyEnd += 1;
+  return text[keyEnd] === ":" || text[keyEnd] === "=";
 }
 
 function isAssignmentKeyCharacter(character) {
@@ -263,6 +316,10 @@ function isAssignmentKeyCharacter(character) {
 
 function isInlineWhitespace(character) {
   return character === " " || character === "\t";
+}
+
+function isWhitespace(character) {
+  return Boolean(character) && /\s/.test(character);
 }
 
 function isSensitiveKey(value) {
@@ -278,6 +335,13 @@ function isSensitiveKey(value) {
   }
   const normalized = decoded.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]+/g, "");
   return SENSITIVE_KEY_FRAGMENTS.some((fragment) => normalized.includes(fragment));
+}
+
+function redactDeviceIdentifiers(text) {
+  return text.replace(
+    /\b(?:udid|device[\s_.-]*(?:id|identifier|uuid)|identifier[\s_.-]*for[\s_.-]*vendor|vendor[\s_.-]*identifier|installation[\s_.-]*id|install[\s_.-]*id|advertising[\s_.-]*id|idfa)\b(?:\s*(?::|=)\s*|\s+)(?:"(?:\\.|[^"\\])+"|'(?:\\.|[^'\\])+'|[A-Za-z0-9][A-Za-z0-9._:-]{7,})/gi,
+    CREDENTIAL_MARKER,
+  );
 }
 
 function redactURLsAndPaths(text) {

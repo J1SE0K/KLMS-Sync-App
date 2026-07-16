@@ -146,8 +146,8 @@ https://klms-sync-relay.<cloudflare-account>.workers.dev
 상태 확인:
 
 ```sh
-curl -fsS -H "Authorization: Bearer $WORKER_TOKEN" \
-  https://klms-sync-relay.<cloudflare-account>.workers.dev/readyz
+printf '%s\n' "Authorization: Bearer $WORKER_TOKEN" \
+  | curl -fsS --header @- https://klms-sync-relay.<cloudflare-account>.workers.dev/readyz
 ```
 
 앱 연결값:
@@ -244,8 +244,10 @@ npx wrangler --config wrangler.local.toml dev
 다른 터미널에서 확인한다.
 
 ```sh
-curl -fsS -H "Authorization: Bearer <RELAY_WORKER_TOKEN>" http://127.0.0.1:8787/readyz
-curl -fsS -H "Authorization: Bearer <RELAY_CLIENT_TOKEN>" http://127.0.0.1:8787/v1/status
+printf '%s\n' "Authorization: Bearer <RELAY_WORKER_TOKEN>" \
+  | curl -fsS --header @- http://127.0.0.1:8787/readyz
+printf '%s\n' "Authorization: Bearer <RELAY_CLIENT_TOKEN>" \
+  | curl -fsS --header @- http://127.0.0.1:8787/v1/status
 ```
 
 ## 앱에서 쓰는 API

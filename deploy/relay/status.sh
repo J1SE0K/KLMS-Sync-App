@@ -20,7 +20,8 @@ docker compose ps
 if [ -f .env ]; then
   . ./.env
   printf '\n%s\n' "Readiness:"
-  curl -fsS -H "Authorization: Bearer $KLMS_RELAY_WORKER_TOKEN" "https://$KLMS_RELAY_DOMAIN/readyz" || true
+  printf '%s\n' "Authorization: Bearer $KLMS_RELAY_WORKER_TOKEN" \
+    | curl -fsS --header @- "https://$KLMS_RELAY_DOMAIN/readyz" || true
   printf '\n'
 fi
 

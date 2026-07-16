@@ -11,14 +11,32 @@ python_bin="${PYTHON_BIN:-python3}"
 bin_dir="$install_root/bin"
 venv_dir="$install_root/python"
 download_dir="$install_root/downloads"
+scanner_lock="$script_dir/python-scanner-requirements.lock"
+click_override_lock="$script_dir/python-scanner-click-override.lock"
 
 umask 077
 mkdir -p "$bin_dir" "$download_dir"
 
-if ! "$python_bin" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'; then
-  printf 'security scanners require Python 3.10 or newer; set PYTHON_BIN explicitly\n' >&2
+if ! "$python_bin" -c 'import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 12) else 1)'; then
+  printf 'security scanners require CPython 3.12; set PYTHON_BIN explicitly\n' >&2
   exit 2
 fi
+
+for locked_requirement in \
+  "semgrep==$SEMGREP_VERSION" \
+  "bandit==$BANDIT_VERSION" \
+  "detect-secrets==$DETECT_SECRETS_VERSION" \
+  "pip-audit==$PIP_AUDIT_VERSION" \
+  "pip==$PIP_VERSION"; do
+  grep -Fq "${locked_requirement} --hash=sha256:" "$scanner_lock" || {
+    printf 'missing hashed scanner requirement: %s\n' "$locked_requirement" >&2
+    exit 1
+  }
+done
+grep -Fq "click==$CLICK_VERSION --hash=sha256:" "$click_override_lock" || {
+  printf 'missing hashed Click override: %s\n' "$CLICK_VERSION" >&2
+  exit 1
+}
 
 platform="$(uname -s)-$(uname -m)"
 case "$platform" in
@@ -115,19 +133,14 @@ fi
 
 "$python_bin" -m venv --clear "$venv_dir"
 "$venv_dir/bin/python" -m pip install --disable-pip-version-check --no-input --quiet \
-  --upgrade "pip==$PIP_VERSION"
-"$venv_dir/bin/python" -m pip install --disable-pip-version-check --no-input --quiet \
-  "semgrep==$SEMGREP_VERSION" \
-  "bandit==$BANDIT_VERSION" \
-  "detect-secrets==$DETECT_SECRETS_VERSION" \
-  "pip-audit==$PIP_AUDIT_VERSION"
+  --upgrade --require-hashes --only-binary=:all: -r "$scanner_lock"
 
 # Semgrep has not yet widened its Click constraint beyond the vulnerable 8.1.x
 # line. Its scan command does not use click.edit(), and the fixed Click release
 # is API-compatible with the exact non-interactive command used below. Refuse
 # every dependency mismatch except this deliberate, version-locked override.
 "$venv_dir/bin/python" -m pip install --disable-pip-version-check --no-input --quiet \
-  --upgrade --no-deps "click==$CLICK_VERSION"
+  --upgrade --no-deps --require-hashes --only-binary=:all: -r "$click_override_lock"
 
 pip_check_output="$("$venv_dir/bin/python" -m pip check 2>&1 || true)"
 expected_click_mismatch="semgrep $SEMGREP_VERSION has requirement click~=8.1.8, but you have click $CLICK_VERSION."

@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -2060,6 +2061,46 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("throw new Error(\"Windows 보안 저장소를 사용할 수 없어 클라이언트 토큰을 저장하지 않았습니다.\")", windows_main)
         self.assertIn("return \"\";", windows_main)
         self.assertNotIn("return token;\n}", windows_main)
+
+    def test_relay_deploy_tokens_never_enter_curl_process_arguments(self) -> None:
+        scripts = [
+            PROJECT_DIR / "deploy" / "relay" / "deploy.sh",
+            PROJECT_DIR / "deploy" / "relay" / "status.sh",
+            PROJECT_DIR / "deploy" / "cloudflare-worker" / "setup_cloudflare_relay.sh",
+        ]
+
+        for script in scripts:
+            with self.subTest(script=script.name):
+                source = script.read_text(encoding="utf-8")
+                self.assertIn("--header @-", source)
+                self.assertNotIn('-H "Authorization: Bearer', source)
+
+    def test_security_scanner_dependencies_are_fully_hash_locked(self) -> None:
+        security_dir = PROJECT_DIR / "tools" / "security"
+        lock_paths = [
+            security_dir / "python-scanner-requirements.lock",
+            security_dir / "python-scanner-click-override.lock",
+        ]
+        requirement_pattern = re.compile(
+            r"^[A-Za-z0-9_.-]+==[^\s]+(?: --hash=sha256:[0-9a-f]{64})+$"
+        )
+
+        for lock_path in lock_paths:
+            with self.subTest(lock=lock_path.name):
+                requirements = [
+                    line
+                    for line in lock_path.read_text(encoding="utf-8").splitlines()
+                    if line and not line.startswith("#")
+                ]
+                self.assertGreater(len(requirements), 0)
+                self.assertTrue(all(requirement_pattern.fullmatch(line) for line in requirements))
+                names = [line.split("==", 1)[0].casefold() for line in requirements]
+                self.assertEqual(len(names), len(set(names)))
+
+        installer = (security_dir / "install_security_scanners.sh").read_text(encoding="utf-8")
+        self.assertGreaterEqual(installer.count("--require-hashes"), 2)
+        self.assertGreaterEqual(installer.count("--only-binary=:all:"), 2)
+        self.assertIn('sys.version_info[:2] == (3, 12)', installer)
 
     def test_ios_project_has_app_icon_asset_catalog(self) -> None:
         project = (

@@ -655,7 +655,7 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertTrue(backend.deletedKeys.contains(legacyKey))
     }
 
-    func testLocalRemoteTokenStoreKeepsLegacyTokenWhenMigrationSaveFails() throws {
+    func testLocalRemoteTokenStoreDeletesLegacyTokenWhenMigrationSaveFails() throws {
         let account = "server-relay-ios"
         let currentService = LocalRemoteTokenStore.serviceForTesting
         let legacyService = try XCTUnwrap(LocalRemoteTokenStore.legacyServicesForTesting.first)
@@ -674,10 +674,10 @@ final class RemoteCommandModelTests: XCTestCase {
 
         let token = LocalRemoteTokenStore.load(account: account, backend: backend)
 
-        XCTAssertEqual(token, "legacy-token")
-        XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
+        XCTAssertNil(token)
+        XCTAssertNil(backend.storage[legacyKey])
         XCTAssertNil(backend.storage[currentKey])
-        XCTAssertFalse(backend.deletedKeys.contains(legacyKey))
+        XCTAssertTrue(backend.deletedKeys.contains(legacyKey))
     }
 
     func testServerRelaySyncDataRoundTripWithoutRawURLs() throws {

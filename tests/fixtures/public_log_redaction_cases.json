@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "cases": [
     {
       "id": "safe-text",
@@ -10,6 +10,11 @@
       "id": "nested-json-credential",
       "input": "{\"meta\":{\"worker_token\":\"synthetic-json-secret\",\"safe\":\"정상\"}}",
       "expected": "{\"meta\":{\"worker_token\":\"[credential]\",\"safe\":\"정상\"}}"
+    },
+    {
+      "id": "pretty-json-multiline-credential",
+      "input": "{\n  \"access_token\":\n    \"pretty-json-secret\",\n  \"safe\": \"ok\"\n}",
+      "expected": "{\n  \"access_token\":\n    \"[credential]\",\n  \"safe\": \"ok\"\n}"
     },
     {
       "id": "mixed-prefix-json-credential",
@@ -55,6 +60,26 @@
       "id": "single-quoted-credential-assignment",
       "input": "'session-id'='abc def' status=ok",
       "expected": "[credential] status=ok"
+    },
+    {
+      "id": "double-quoted-credential-assignment",
+      "input": "\"worker_token\" = \"abc def\" status=ok",
+      "expected": "[credential] status=ok"
+    },
+    {
+      "id": "bare-multiword-credential-assignment",
+      "input": "password=alpha beta gamma status=ok",
+      "expected": "[credential] status=ok"
+    },
+    {
+      "id": "device-identifier-json",
+      "input": "{\"device_identifier\":\"00008110-0012345678901234\",\"safe\":true}",
+      "expected": "{\"device_identifier\":\"[credential]\",\"safe\":true}"
+    },
+    {
+      "id": "labelled-device-identifier",
+      "input": "UDID 00008110-0012345678901234 ready",
+      "expected": "[credential] ready"
     },
     {
       "id": "format-character-key-obfuscation",

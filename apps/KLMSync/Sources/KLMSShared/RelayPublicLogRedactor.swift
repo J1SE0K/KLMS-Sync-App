@@ -19,6 +19,16 @@ public enum RelayPublicLogRedactor {
         "accesskey",
         "privatekey",
         "ticket",
+        "deviceid",
+        "deviceidentifier",
+        "deviceuuid",
+        "udid",
+        "identifierforvendor",
+        "vendoridentifier",
+        "installationid",
+        "installid",
+        "advertisingid",
+        "idfa",
     ]
 
     public static func redact(
@@ -34,6 +44,7 @@ public enum RelayPublicLogRedactor {
         text = redactSensitiveJSONMembers(text)
         text = redactAuthorizationCredentials(text)
         text = redactSensitiveAssignments(text)
+        text = redactDeviceIdentifiers(text)
         text = redactURLsAndPaths(text)
         text = replacingRegex(
             in: text,
@@ -102,45 +113,49 @@ public enum RelayPublicLogRedactor {
         var output = ""
         var cursor = text.startIndex
         while cursor < text.endIndex {
-            let searchRange = cursor..<text.endIndex
-            let begin = text.range(
-                of: "-----BEGIN ",
-                options: .caseInsensitive,
-                range: searchRange
-            )
-            let end = text.range(
-                of: "-----END ",
-                options: .caseInsensitive,
-                range: searchRange
-            )
-            if let end, begin == nil || end.lowerBound < begin!.lowerBound {
-                let close = text.range(of: "-----", range: end.upperBound..<text.endIndex)
-                let tailStart = close?.upperBound ?? text.endIndex
-                return credentialMarker + redactPEMBlocks(String(text[tailStart...]))
-            }
-            guard let begin else {
+            guard let marker = text.range(of: "-----", range: cursor..<text.endIndex) else {
                 output += String(text[cursor...])
                 break
             }
-            output += String(text[cursor..<begin.lowerBound]) + credentialMarker
-            guard let beginClose = text.range(
-                of: "-----",
-                range: begin.upperBound..<text.endIndex
-            ) else {
-                return output
+            let markerToEnd = marker.lowerBound..<text.endIndex
+            if let end = text.range(
+                of: "-----END ",
+                options: [.anchored, .caseInsensitive],
+                range: markerToEnd
+            ) {
+                let close = text.range(of: "-----", range: end.upperBound..<text.endIndex)
+                output += credentialMarker
+                cursor = close?.upperBound ?? text.endIndex
+                continue
             }
-            let label = String(text[begin.upperBound..<beginClose.lowerBound])
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !label.isEmpty else { return output }
-            let endMarker = "-----END \(label)-----"
-            guard let matchingEnd = text.range(
-                of: endMarker,
-                options: .caseInsensitive,
-                range: beginClose.upperBound..<text.endIndex
-            ) else {
-                return output
+            if let begin = text.range(
+                of: "-----BEGIN ",
+                options: [.anchored, .caseInsensitive],
+                range: markerToEnd
+            ) {
+                output += String(text[cursor..<marker.lowerBound]) + credentialMarker
+                guard let beginClose = text.range(
+                    of: "-----",
+                    range: begin.upperBound..<text.endIndex
+                ) else {
+                    return output
+                }
+                let label = String(text[begin.upperBound..<beginClose.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !label.isEmpty else { return output }
+                let endMarker = "-----END \(label)-----"
+                guard let matchingEnd = text.range(
+                    of: endMarker,
+                    options: .caseInsensitive,
+                    range: beginClose.upperBound..<text.endIndex
+                ) else {
+                    return output
+                }
+                cursor = matchingEnd.upperBound
+                continue
             }
-            cursor = matchingEnd.upperBound
+            output += String(text[cursor..<marker.upperBound])
+            cursor = marker.upperBound
         }
         return output
     }
@@ -161,7 +176,7 @@ public enum RelayPublicLogRedactor {
                 continue
             }
             var separator = keyEnd
-            while separator < characters.count, isInlineWhitespace(characters[separator]) {
+            while separator < characters.count, characters[separator].isWhitespace {
                 separator += 1
             }
             guard separator < characters.count, characters[separator] == ":" else {
@@ -174,7 +189,7 @@ public enum RelayPublicLogRedactor {
                 continue
             }
             var valueStart = separator + 1
-            while valueStart < characters.count, isInlineWhitespace(characters[valueStart]) {
+            while valueStart < characters.count, characters[valueStart].isWhitespace {
                 valueStart += 1
             }
             let valueEnd = structuredValueEnd(characters, start: valueStart)
@@ -267,15 +282,21 @@ public enum RelayPublicLogRedactor {
             let start = index
             var key = ""
             var keyEnd = index
-            if characters[index] == "'" {
-                keyEnd = quotedValueEnd(characters, start: index, quote: "'")
+            let keyQuote: Character? = characters[index] == "'" || characters[index] == "\""
+                ? characters[index]
+                : nil
+            if let keyQuote {
+                keyEnd = quotedValueEnd(characters, start: index, quote: keyQuote)
                 guard keyEnd > index + 1,
                       keyEnd <= characters.count,
-                      characters[keyEnd - 1] == "'" else {
+                      characters[keyEnd - 1] == keyQuote else {
                     index += 1
                     continue
                 }
-                key = String(characters[(index + 1)..<(keyEnd - 1)])
+                let rawKey = String(characters[index..<keyEnd])
+                key = keyQuote == "\""
+                    ? decodedJSONString(rawKey) ?? ""
+                    : String(characters[(index + 1)..<(keyEnd - 1)])
             } else if isAssignmentKeyCharacter(characters[index]) {
                 while keyEnd < characters.count, isAssignmentKeyCharacter(characters[keyEnd]) {
                     keyEnd += 1
@@ -289,14 +310,15 @@ public enum RelayPublicLogRedactor {
             while separator < characters.count, isInlineWhitespace(characters[separator]) {
                 separator += 1
             }
+            let separatorCharacter = separator < characters.count ? characters[separator] : nil
             guard isSensitiveKey(key),
-                  separator < characters.count,
-                  characters[separator] == ":" || characters[separator] == "=" else {
+                  separatorCharacter == ":" || separatorCharacter == "=",
+                  !(keyQuote == "\"" && separatorCharacter != "=") else {
                 index = max(index + 1, keyEnd)
                 continue
             }
             var valueStart = separator + 1
-            while valueStart < characters.count, isInlineWhitespace(characters[valueStart]) {
+            while valueStart < characters.count, characters[valueStart].isWhitespace {
                 valueStart += 1
             }
             let valueEnd = assignmentValueEnd(characters, start: valueStart)
@@ -317,11 +339,53 @@ public enum RelayPublicLogRedactor {
         if first == "\"" || first == "'" {
             return quotedValueEnd(characters, start: start, quote: first)
         }
+        if first == "{" || first == "[" {
+            return structuredValueEnd(characters, start: start)
+        }
         var index = start
-        while index < characters.count, !isValueDelimiter(characters[index]) {
+        while index < characters.count {
+            let character = characters[index]
+            if character == "\n" || [",", ";", "&", "}", "]", "\"", "'", "<", ">"].contains(character) {
+                break
+            }
+            if isInlineWhitespace(character) {
+                var next = index
+                while next < characters.count, isInlineWhitespace(characters[next]) {
+                    next += 1
+                }
+                if startsAssignmentAt(characters, start: next) { break }
+                index = next
+                continue
+            }
             index += 1
         }
         return index
+    }
+
+    private static func startsAssignmentAt(_ characters: [Character], start: Int) -> Bool {
+        guard start < characters.count else { return false }
+        var keyEnd = start
+        let quote: Character? = characters[start] == "'" || characters[start] == "\""
+            ? characters[start]
+            : nil
+        if let quote {
+            keyEnd = quotedValueEnd(characters, start: start, quote: quote)
+            guard keyEnd > start + 1,
+                  keyEnd <= characters.count,
+                  characters[keyEnd - 1] == quote else {
+                return false
+            }
+        } else {
+            while keyEnd < characters.count, isAssignmentKeyCharacter(characters[keyEnd]) {
+                keyEnd += 1
+            }
+            guard keyEnd > start else { return false }
+        }
+        while keyEnd < characters.count, isInlineWhitespace(characters[keyEnd]) {
+            keyEnd += 1
+        }
+        guard keyEnd < characters.count else { return false }
+        return characters[keyEnd] == ":" || characters[keyEnd] == "="
     }
 
     private static func isValueDelimiter(_ character: Character) -> Bool {
@@ -360,6 +424,15 @@ public enum RelayPublicLogRedactor {
             .map(String.init)
             .joined()
         return sensitiveKeyFragments.contains { normalized.contains($0) }
+    }
+
+    private static func redactDeviceIdentifiers(_ text: String) -> String {
+        replacingRegex(
+            in: text,
+            pattern: #"\b(?:udid|device[\s_.-]*(?:id|identifier|uuid)|identifier[\s_.-]*for[\s_.-]*vendor|vendor[\s_.-]*identifier|installation[\s_.-]*id|install[\s_.-]*id|advertising[\s_.-]*id|idfa)\b(?:\s*(?::|=)\s*|\s+)(?:\"(?:\\.|[^\"\\])+\"|'(?:\\.|[^'\\])+'|[A-Za-z0-9][A-Za-z0-9._:-]{7,})"#,
+            with: credentialMarker,
+            caseInsensitive: true
+        )
     }
 
     private static func redactURLsAndPaths(_ text: String) -> String {

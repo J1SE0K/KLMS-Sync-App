@@ -49,7 +49,7 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
             from: Data(contentsOf: fixtureURL)
         )
 
-        XCTAssertEqual(fixture.version, 2)
+        XCTAssertEqual(fixture.version, 3)
         for testCase in fixture.cases {
             let output = RelayPublicLogRedactor.redact(testCase.input)
             XCTAssertEqual(output, testCase.expected, testCase.id)
@@ -77,6 +77,14 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
         XCTAssertTrue(deepOutput.contains("[credential]"))
         XCTAssertFalse(deepOutput.contains("deep-secret"))
         XCTAssertLessThanOrEqual(deepOutput.utf8.count, 6_000)
+
+        let malformedPEMEndFlood = String(
+            repeating: "-----END PRIVATE KEY-----\n",
+            count: 20_000
+        ) + "tail"
+        let malformedPEMEndFloodOutput = RelayPublicLogRedactor.redact(malformedPEMEndFlood)
+        XCTAssertTrue(malformedPEMEndFloodOutput.hasSuffix("tail"))
+        XCTAssertFalse(malformedPEMEndFloodOutput.localizedCaseInsensitiveContains("PRIVATE KEY"))
     }
 
     func testTerminalCommandPersistsAcrossStoreInstancesUntilAcknowledged() async throws {

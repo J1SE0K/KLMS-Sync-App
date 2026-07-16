@@ -574,7 +574,6 @@ final class KLMSMacModel: ObservableObject {
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
         rebuildMailDashboardCaches()
-        applyCachedServerRelaySyncDataForStartup()
         let clientTokenSaved = Self.persistRelayToken(
             serverRelayClientToken,
             account: "server-relay-client-mac",
@@ -585,13 +584,24 @@ final class KLMSMacModel: ObservableObject {
             account: "server-relay-worker-mac",
             defaultsKey: Self.serverRelayWorkerTokenKey
         )
-        if serverRelayClientToken.isEmpty || clientTokenSaved {
-            UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
-        }
-        if serverRelayWorkerToken.isEmpty || workerTokenSaved {
+        let credentialPersistenceFailed =
+            (!serverRelayClientToken.isEmpty && !clientTokenSaved)
+            || (!serverRelayWorkerToken.isEmpty && !workerTokenSaved)
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
+        if credentialPersistenceFailed {
+            serverRelayClientToken = ""
+            serverRelayWorkerToken = ""
+            serverRelayEnabled = false
+            UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
+            LocalRemoteTokenStore.delete(account: "server-relay-client-mac")
+            LocalRemoteTokenStore.delete(account: "server-relay-worker-mac")
             LocalRemoteTokenStore.delete(account: "server-relay-mac")
-            UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
-            UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
+            serverRelayStatusMessage = "키체인에 서버 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
+        } else {
+            LocalRemoteTokenStore.delete(account: "server-relay-mac")
+            applyCachedServerRelaySyncDataForStartup()
         }
     }
 
@@ -604,10 +614,9 @@ final class KLMSMacModel: ObservableObject {
             return true
         }
         let saved = LocalRemoteTokenStore.save(trimmedToken, account: account)
-        if saved {
-            UserDefaults.standard.removeObject(forKey: defaultsKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: defaultsKey)
+        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        if !saved {
+            LocalRemoteTokenStore.delete(account: account)
         }
         return saved
     }
@@ -1022,11 +1031,18 @@ final class KLMSMacModel: ObservableObject {
         guard nextValue != serverRelayClientToken else { return }
         resetServerRelaySessionForConnectionChange()
         serverRelayClientToken = nextValue
-        Self.persistRelayToken(
+        let saved = Self.persistRelayToken(
             serverRelayClientToken,
             account: "server-relay-client-mac",
             defaultsKey: Self.serverRelayClientTokenKey
         )
+        guard saved else {
+            serverRelayClientToken = ""
+            serverRelayEnabled = false
+            UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
+            serverRelayStatusMessage = "키체인에 클라이언트 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
+            return
+        }
         if serverRelayEnabled {
             configureServerRelayRealtime()
         }
@@ -1037,11 +1053,18 @@ final class KLMSMacModel: ObservableObject {
         guard nextValue != serverRelayWorkerToken else { return }
         resetServerRelaySessionForConnectionChange()
         serverRelayWorkerToken = nextValue
-        Self.persistRelayToken(
+        let saved = Self.persistRelayToken(
             serverRelayWorkerToken,
             account: "server-relay-worker-mac",
             defaultsKey: Self.serverRelayWorkerTokenKey
         )
+        guard saved else {
+            serverRelayWorkerToken = ""
+            serverRelayEnabled = false
+            UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
+            serverRelayStatusMessage = "키체인에 Mac 전용 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
+            return
+        }
         UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
         if serverRelayEnabled {
             configureServerRelayRealtime()

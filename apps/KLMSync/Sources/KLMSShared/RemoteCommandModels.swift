@@ -1005,9 +1005,11 @@ public enum LocalRemoteTokenStore {
             guard let token = normalizedToken(backend.load(account: account, service: legacyService)) else {
                 continue
             }
-            if save(token, account: account, service: service, backend: backend) {
+            guard save(token, account: account, service: service, backend: backend) else {
                 backend.delete(account: account, service: legacyService)
+                return nil
             }
+            backend.delete(account: account, service: legacyService)
             return token
         }
         return nil

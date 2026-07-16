@@ -7987,10 +7987,44 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.save(encoded, account: \"server-relay-ios\")"))
         XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
+        XCTAssertTrue(persistToken.contains("if !saved"))
+        XCTAssertTrue(persistToken.contains("return saved"))
+        XCTAssertTrue(loadMigratingToken.contains("return migrated"))
+        XCTAssertTrue(loadMigratingToken.contains(": \"\""))
         XCTAssertFalse(persistToken.contains("UserDefaults.standard.set"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(serverToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(trimmedToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(token"))
+    }
+
+    func testMacServerTokenMigrationFailsClosedWithoutPlaintextFallback() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let mac = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift"),
+            encoding: .utf8
+        )
+        let initializer = try sourceBody(
+            after: "init(paths: KLMSPaths = KLMSPaths())",
+            in: mac,
+            description: "Mac relay credential migration"
+        )
+        let persistToken = try sourceBody(
+            after: "private static func persistRelayToken(_ token: String, account: String, defaultsKey: String) -> Bool",
+            in: mac,
+            description: "Mac relay credential persistence"
+        )
+
+        XCTAssertTrue(initializer.contains("let credentialPersistenceFailed ="))
+        XCTAssertTrue(initializer.contains("serverRelayClientToken = \"\""))
+        XCTAssertTrue(initializer.contains("serverRelayWorkerToken = \"\""))
+        XCTAssertTrue(initializer.contains("serverRelayEnabled = false"))
+        XCTAssertTrue(initializer.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
+        XCTAssertTrue(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
+        XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: defaultsKey)"))
+        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.delete(account: account)"))
     }
 
     func testLogClearPreservesActiveCancellationAndFileRequests() throws {

@@ -242,13 +242,13 @@ cloudflare_api() {
   local body="${3:-}"
   local url="https://api.cloudflare.com/client/v4${path}"
   if [[ -n "$body" ]]; then
-    curl -fsS -X "$method" "$url" \
-      -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    print -r -- "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | curl -fsS -X "$method" "$url" \
+      --header @- \
       -H "Content-Type: application/json" \
       --data "$body"
   else
-    curl -fsS -X "$method" "$url" \
-      -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+    print -r -- "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | curl -fsS -X "$method" "$url" \
+      --header @- \
       -H "Content-Type: application/json"
   fi
 }
@@ -433,7 +433,8 @@ deploy_worker() {
     print -- "readyz 확인 중..."
     local worker_token
     worker_token="$(<"$WORKER_TOKEN_FILE")"
-    curl --tlsv1.2 -fsS -H "Authorization: Bearer $worker_token" "$worker_url/readyz"
+    print -r -- "Authorization: Bearer $worker_token" \
+      | curl --tlsv1.2 -fsS --header @- "$worker_url/readyz"
     print
   fi
 

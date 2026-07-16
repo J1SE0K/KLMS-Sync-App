@@ -9,7 +9,7 @@ const publicLogRedactionFixture = JSON.parse(await fs.readFile(
   new URL("../../../tests/fixtures/public_log_redaction_cases.json", import.meta.url),
   "utf8",
 ));
-assert.equal(publicLogRedactionFixture.version, 2);
+assert.equal(publicLogRedactionFixture.version, 3);
 for (const testCase of publicLogRedactionFixture.cases) {
   const output = redactPublicLogText(testCase.input);
   assert.equal(output, testCase.expected, testCase.id);
@@ -29,6 +29,10 @@ assert.equal(
 const deeplyNestedPublicLog = `${"[".repeat(2_000)}{"token":"deep-secret"}${"]".repeat(2_000)}`;
 assert.match(redactPublicLogText(deeplyNestedPublicLog), /\[credential\]/);
 assert.doesNotMatch(redactPublicLogText(deeplyNestedPublicLog), /deep-secret/);
+const malformedPEMEndFlood = `${"-----END PRIVATE KEY-----\n".repeat(20_000)}tail`;
+const malformedPEMEndFloodOutput = redactPublicLogText(malformedPEMEndFlood);
+assert.ok(malformedPEMEndFloodOutput.endsWith("tail"));
+assert.doesNotMatch(malformedPEMEndFloodOutput, /PRIVATE KEY/i);
 const publicLogRedactionCases = publicLogRedactionFixture.cases.filter((testCase) => [
   "nested-json-credential",
   "bare-credential-assignment",
