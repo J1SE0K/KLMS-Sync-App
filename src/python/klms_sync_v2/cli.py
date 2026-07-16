@@ -426,7 +426,12 @@ def load_source_items(
     course_pages_json: str | None,
     all_week_course_pages_json: str | None,
     overrides: dict[str, Any] | None,
-) -> tuple[list[Assignment], list[Event], dict[str, dict[str, str]]]:
+) -> tuple[
+    list[Assignment],
+    list[Event],
+    dict[str, dict[str, str]],
+    list[dict[str, Any]],
+]:
     if not dashboard_json:
         raise ValueError("dashboard JSON is required for an authoritative state build")
     dashboard_path = Path(dashboard_json)
@@ -472,7 +477,7 @@ def load_source_items(
         else:
             assignments.append(legacy_assignment_to_v2(record))
 
-    return assignments, events, metadata
+    return assignments, events, metadata, course_pages
 
 
 def status_from_state(state_payload: dict[str, Any], previous_state: dict[str, Any]) -> dict[str, Any]:
@@ -530,7 +535,12 @@ def command_build_note(args: argparse.Namespace) -> int:
     validation_error = validate_pages_for_state_build(all_state_pages)
     if not validation_error:
         validation_error = validate_dashboard_for_state_build(args.dashboard_json)
-    source_payload: tuple[list[Assignment], list[Event], dict[str, dict[str, str]]] | None = None
+    source_payload: tuple[
+        list[Assignment],
+        list[Event],
+        dict[str, dict[str, str]],
+        list[dict[str, Any]],
+    ] | None = None
     if not validation_error:
         try:
             source_payload = load_source_items(
@@ -560,7 +570,7 @@ def command_build_note(args: argparse.Namespace) -> int:
         overrides = load_optional_json(args.overrides_json, None)
         if source_payload is None:
             raise RuntimeError("validated source payload is missing")
-        source_assignments, source_events, source_metadata = source_payload
+        source_assignments, source_events, source_metadata, course_pages = source_payload
         file_assignments, file_events, file_metadata = load_file_manifest_items(
             args.course_file_manifest_json,
             generated_at=generated_at,
@@ -582,7 +592,9 @@ def command_build_note(args: argparse.Namespace) -> int:
         payload = state.to_legacy_state()
         payload["html"] = render_success_html(payload)
         destructive_delta_error = legacy().legacy.destructive_state_delta_error(
-            previous_state, payload
+            previous_state,
+            payload,
+            course_pages=course_pages,
         )
         if destructive_delta_error:
             validation_error = destructive_delta_error

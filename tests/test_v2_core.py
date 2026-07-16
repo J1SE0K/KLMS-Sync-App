@@ -1345,8 +1345,54 @@ class V2CoreTests(unittest.TestCase):
 
         self.assertTrue(certificate.authoritative)
         self.assertTrue(certificate.recognized_shell)
+        self.assertTrue(certificate.explicit_empty)
         self.assertEqual(certificate.module_link_count, 0)
         self.assertEqual(certificate.parsed_activity_count, 0)
+
+    def test_course_semantic_certificate_rejects_ambiguous_empty_shell(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics"><li class="section">1주차</li></ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertTrue(certificate.recognized_shell)
+        self.assertFalse(certificate.explicit_empty)
+        self.assertIn("명시적인 빈 상태", certificate.reason)
+
+    def test_course_semantic_certificate_rejects_partially_changed_activity_links(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics">
+                <li class="activity assign">
+                  <div class="activityinstance">
+                    <a href="https://klms.kaist.ac.kr/mod/assign/view.php?id=1">Homework 1</a>
+                  </div>
+                </li>
+                <li class="activity assign">
+                  <div class="new-activity-instance">
+                    <a href="https://klms.kaist.ac.kr/activity/assign/2">Homework 2</a>
+                  </div>
+                </li>
+              </ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertEqual(certificate.activity_node_count, 2)
+        self.assertEqual(certificate.parsed_activity_count, 1)
+        self.assertIn("화면 구조", certificate.reason)
 
     def test_destructive_state_delta_rejects_sudden_all_zero_result(self) -> None:
         previous_state = {
@@ -1363,6 +1409,181 @@ class V2CoreTests(unittest.TestCase):
         error = klms_sync.destructive_state_delta_error(previous_state, next_state)
 
         self.assertIn("갑자기 모두 사라져", error)
+
+    def test_destructive_state_delta_rejects_partial_course_loss(self) -> None:
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": f"https://klms.kaist.ac.kr/mod/assign/view.php?id={item_id}",
+                        "course": "알고리즘",
+                    }
+                    for item_id in (1, 2, 3)
+                ]
+            },
+        }
+        next_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+                        "course": "알고리즘",
+                    }
+                ]
+            },
+        }
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("일부가 갑자기 사라져", error)
+
+    def test_destructive_state_delta_rejects_single_item_loss(self) -> None:
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+                        "course": "알고리즘",
+                    }
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("모두 사라져", error)
+
+    def test_destructive_state_delta_accepts_matching_explicit_empty_course(self) -> None:
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {
+                        "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+                        "course": "알고리즘",
+                    }
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+        course_pages = [
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "title": "강좌: 알고리즘",
+                "html": """
+                <main data-region="course-content">
+                  <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+                </main>
+                """,
+            }
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            next_state,
+            course_pages=course_pages,
+        )
+
+        self.assertEqual(error, "")
+
+    def test_cli_build_note_rejects_partial_course_loss(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            dashboard = self.write_authoritative_dashboard(tmp_dir)
+            course_pages = tmp_dir / "course_pages.json"
+            details = tmp_dir / "details.json"
+            previous_state = tmp_dir / "state.json"
+            output_state = tmp_dir / "next_state.json"
+            output_status = tmp_dir / "status.json"
+            output_html = tmp_dir / "section.html"
+            course_pages.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                            "url": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                            "title": "강좌: 알고리즘",
+                            "html": """
+                            <main data-region="course-content">
+                              <ul class="topics">
+                                <li class="activity assign modtype_assign">
+                                  <div class="activityinstance">
+                                    <a href="https://klms.kaist.ac.kr/mod/assign/view.php?id=1">
+                                      <span class="instancename">Homework 1</span>
+                                    </a>
+                                  </div>
+                                  <div class="contentafterlink">마감 일시: 2099년 1월 2일 오후 11:59</div>
+                                </li>
+                              </ul>
+                            </main>
+                            """,
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            details.write_text("[]", encoding="utf-8")
+            previous_state.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "generated_at": "2026-07-15 12:00 KST",
+                        "content": {
+                            "assignments": [
+                                {
+                                    "url": f"https://klms.kaist.ac.kr/mod/assign/view.php?id={item_id}",
+                                    "course": "알고리즘",
+                                    "title": f"Homework {item_id}",
+                                }
+                                for item_id in (1, 2, 3)
+                            ]
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
+                    "--course-pages-json",
+                    str(course_pages),
+                    "--details-json",
+                    str(details),
+                    "--state-json",
+                    str(previous_state),
+                    "--output-html",
+                    str(output_html),
+                    "--output-state",
+                    str(output_state),
+                    "--output-status",
+                    str(output_status),
+                ],
+                cwd=PROJECT_DIR,
+                env=PYTHON_SUBPROCESS_ENV,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            rendered = json.loads(output_state.read_text(encoding="utf-8"))
+            status = json.loads(output_status.read_text(encoding="utf-8"))
+            self.assertEqual(rendered["status"], "error")
+            self.assertEqual(status["status"], "error")
+            self.assertIn("일부가 갑자기 사라져", rendered["content"]["message"])
+            self.assertEqual(rendered["content"]["last_success_at"], "2026-07-15 12:00 KST")
 
     def test_cli_build_note_renders_completed_assignment_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

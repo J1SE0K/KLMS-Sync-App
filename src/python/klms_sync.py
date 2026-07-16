@@ -577,7 +577,11 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             past_exam_items,
             exam_records,
         )
-        destructive_delta_error = destructive_state_delta_error(previous_state, payload)
+        destructive_delta_error = destructive_state_delta_error(
+            previous_state,
+            payload,
+            course_pages=course_pages,
+        )
         if destructive_delta_error:
             payload = build_error_payload(destructive_delta_error, previous_state)
 
@@ -970,6 +974,9 @@ class CoursePageSemanticCertificate:
     module_link_count: int
     activity_node_count: int
     parsed_activity_count: int
+    course: str = ""
+    module_urls: tuple[str, ...] = ()
+    explicit_empty: bool = False
     reason: str = ""
 
 
@@ -2775,6 +2782,7 @@ def course_page_semantic_certificate(
         )
 
     soup = BeautifulSoup(html, "html.parser")
+    course = extract_course_name(page, soup)
     recognized_shell = soup.select_one(
         "[data-region='course-content'], #region-main .course-content, .course-content, "
         "ul.topics, ul.weeks, li.section, li.activity"
@@ -2791,20 +2799,49 @@ def course_page_semantic_certificate(
         for link in activity.select(".activityinstance a[href*='/mod/']")
         if normalize_url(str(link.get("href") or ""))
     }
+    linked_activity_node_count = sum(
+        activity.select_one("a[href]") is not None
+        for activity in activity_nodes
+    )
 
     module_link_count = len(module_urls)
     parsed_activity_count = len(parsed_urls)
+    shell_text = normalize_whitespace(soup.get_text(" ", strip=True)).casefold()
+    explicit_empty = (
+        recognized_shell
+        and module_link_count == 0
+        and linked_activity_node_count == 0
+        and any(
+            marker in shell_text
+            for marker in (
+                "등록된 활동이 없습니다",
+                "등록된 활동이 없어요",
+                "활동이 없습니다",
+                "no activities",
+                "there are no activities",
+                "nothing to display",
+            )
+        )
+    )
     authoritative = False
     reason = ""
     if module_link_count:
-        authoritative = module_urls == parsed_urls
+        authoritative = (
+            module_urls == parsed_urls
+            and linked_activity_node_count == parsed_activity_count
+        )
         if not authoritative:
             reason = (
                 "KLMS 과목 화면 구조가 바뀐 것으로 보여 기존 동기화 상태를 유지했어. "
                 "과목 화면을 다시 확인해 줘."
             )
-    elif recognized_shell:
+    elif recognized_shell and explicit_empty:
         authoritative = True
+    elif recognized_shell:
+        reason = (
+            "KLMS 과목 화면에서 활동 목록이나 명시적인 빈 상태를 확인하지 못해 "
+            "기존 동기화 상태를 유지했어. 과목 화면을 다시 확인해 줘."
+        )
     else:
         reason = (
             "KLMS 과목 화면 구조를 확인하지 못해 기존 동기화 상태를 유지했어. "
@@ -2818,6 +2855,9 @@ def course_page_semantic_certificate(
         module_link_count=module_link_count,
         activity_node_count=len(activity_nodes),
         parsed_activity_count=parsed_activity_count,
+        course=course,
+        module_urls=tuple(sorted(module_urls)),
+        explicit_empty=explicit_empty,
         reason=reason,
     )
 
@@ -5028,11 +5068,11 @@ TRACKED_STATE_SECTIONS = (
 )
 
 
-def tracked_state_module_urls(state: dict[str, Any]) -> set[str]:
+def tracked_state_module_courses(state: dict[str, Any]) -> dict[str, str]:
     content = state.get("content")
     if not isinstance(content, dict):
-        return set()
-    urls: set[str] = set()
+        return {}
+    courses: dict[str, str] = {}
     for section in TRACKED_STATE_SECTIONS:
         records = content.get(section)
         if not isinstance(records, list):
@@ -5043,23 +5083,65 @@ def tracked_state_module_urls(state: dict[str, Any]) -> set[str]:
             url = normalize_url(str(record.get("url") or ""))
             parsed = urlparse(url)
             if parsed.hostname == "klms.kaist.ac.kr" and parsed.path.startswith("/mod/"):
-                urls.add(url)
-    return urls
+                course = normalize_whitespace(str(record.get("course") or ""))
+                if url not in courses or (course and not courses[url]):
+                    courses[url] = course
+    return courses
+
+
+def tracked_state_module_urls(state: dict[str, Any]) -> set[str]:
+    return set(tracked_state_module_courses(state))
+
+
+def explicit_empty_course_keys(course_pages: list[dict[str, Any]]) -> set[str]:
+    certificates_by_course: dict[str, list[CoursePageSemanticCertificate]] = {}
+    for page in course_pages:
+        certificate = course_page_semantic_certificate(page)
+        course_key = normalize_whitespace(certificate.course).casefold()
+        if course_key:
+            certificates_by_course.setdefault(course_key, []).append(certificate)
+    return {
+        course_key
+        for course_key, certificates in certificates_by_course.items()
+        if certificates
+        and all(
+            certificate.authoritative and certificate.explicit_empty
+            for certificate in certificates
+        )
+    }
 
 
 def destructive_state_delta_error(
-    previous_state: dict[str, Any], next_state: dict[str, Any]
+    previous_state: dict[str, Any],
+    next_state: dict[str, Any],
+    *,
+    course_pages: list[dict[str, Any]] | None = None,
 ) -> str:
     if previous_state.get("status") != "ok" or next_state.get("status") != "ok":
         return ""
-    previous_urls = tracked_state_module_urls(previous_state)
+    previous_courses = tracked_state_module_courses(previous_state)
+    previous_urls = set(previous_courses)
     next_urls = tracked_state_module_urls(next_state)
-    if len(previous_urls) >= 2 and not next_urls:
+    removed_urls = previous_urls - next_urls
+    if not removed_urls:
+        return ""
+    empty_course_keys = explicit_empty_course_keys(course_pages or [])
+    explicitly_removed_urls = {
+        url
+        for url in removed_urls
+        if normalize_whitespace(previous_courses.get(url, "")).casefold() in empty_course_keys
+    }
+    if explicitly_removed_urls == removed_urls:
+        return ""
+    if not next_urls:
         return (
             "KLMS 일정과 과제가 갑자기 모두 사라져 파싱 오류 가능성이 있어 기존 동기화 상태를 유지했어. "
             "KLMS 화면을 확인한 뒤 다시 동기화해 줘."
         )
-    return ""
+    return (
+        "KLMS 일정과 과제 일부가 갑자기 사라져 부분 파싱 오류 가능성이 있어 기존 동기화 상태를 유지했어. "
+        "KLMS 화면을 확인한 뒤 다시 동기화해 줘."
+    )
 
 
 def append_exam_scope_location_lines(lines: list[str], item: dict[str, Any]) -> None:
