@@ -636,6 +636,39 @@ final class LiveStatePolicyTests: XCTestCase {
         )
     }
 
+    func testMutationVersionsIsolateItemsAndRejectOlderSameItemRollback() {
+        var tracker = KeyedMutationVersionTracker<String>()
+        let firstItemVersion = tracker.begin(for: "assignment-1")
+        let otherItemVersion = tracker.begin(for: "assignment-2")
+
+        XCTAssertTrue(tracker.owns(key: "assignment-1", version: firstItemVersion))
+        XCTAssertTrue(tracker.end(key: "assignment-1", version: firstItemVersion))
+        XCTAssertTrue(tracker.owns(key: "assignment-2", version: otherItemVersion))
+
+        let olderVersion = tracker.begin(for: "assignment-2")
+        let latestVersion = tracker.begin(for: "assignment-2")
+        XCTAssertFalse(tracker.end(key: "assignment-2", version: olderVersion))
+        XCTAssertTrue(tracker.owns(key: "assignment-2", version: latestVersion))
+    }
+
+    func testOptimisticRollbackRequiresCurrentVersionAndUnchangedOptimisticValue() {
+        XCTAssertTrue(OptimisticRollbackPolicy.shouldRestore(
+            ownsCurrentVersion: true,
+            currentValue: "hidden",
+            optimisticValue: "hidden"
+        ))
+        XCTAssertFalse(OptimisticRollbackPolicy.shouldRestore(
+            ownsCurrentVersion: false,
+            currentValue: "hidden",
+            optimisticValue: "hidden"
+        ))
+        XCTAssertFalse(OptimisticRollbackPolicy.shouldRestore(
+            ownsCurrentVersion: true,
+            currentValue: "restored-by-newer-update",
+            optimisticValue: "hidden"
+        ))
+    }
+
     func testRelayEventEnvelopeDecodesVersionedAndLegacyFrames() throws {
         let versioned = try JSONDecoder().decode(
             RelayEventEnvelope.self,

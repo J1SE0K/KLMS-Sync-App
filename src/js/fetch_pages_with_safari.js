@@ -50,6 +50,9 @@ function run(argv) {
   if (urls.length === 0) {
     throw new Error("At least one URL is required.");
   }
+  if (!urls.every((url) => isExactKlmsHttpsUrl(url))) {
+    throw new Error("Every fetch URL must use the exact https://klms.kaist.ac.kr origin.");
+  }
 
   const safari = Application("/Applications/Safari.app");
   const safariWasRunning = safeValue(() => safari.running()) === true;
@@ -147,12 +150,11 @@ function fetchPage(windowRef, tab, targetUrl, options) {
 }
 
 function canUseXHR(tab, targetUrl) {
-  const currentUrl = safeString(() => tab.url()).toLowerCase();
-  const requestedUrl = String(targetUrl || "").toLowerCase();
-  return (
-    currentUrl.includes("klms.kaist.ac.kr") &&
-    requestedUrl.startsWith("https://klms.kaist.ac.kr/")
-  );
+  return isExactKlmsHttpsUrl(safeString(() => tab.url())) && isExactKlmsHttpsUrl(targetUrl);
+}
+
+function isExactKlmsHttpsUrl(url) {
+  return /^https:\/\/klms\.kaist\.ac\.kr(?::443)?(?:[/?#]|$)/i.test(String(url || "").trim());
 }
 
 function fetchPagesViaXHRBatch(tab, urls) {
@@ -343,7 +345,7 @@ function findReusableKlmsWindow(safari, backgroundWindowEnabled) {
   const klmsWindows = safeList(() => safari.windows()).filter((windowRef) => {
     const tab = safeValue(() => windowRef.currentTab());
     const url = safeString(() => tab.url()).toLowerCase();
-    return url.includes("klms.kaist.ac.kr");
+    return isExactKlmsHttpsUrl(url);
   });
   if (backgroundWindowEnabled) {
     return klmsWindows.find((windowRef) => isBackgroundWindow(windowRef)) || null;

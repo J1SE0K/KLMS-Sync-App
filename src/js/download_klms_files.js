@@ -15,6 +15,9 @@ function run(argv) {
   const manifestPath = standardizePath(options.manifestPath);
   const outputRoot = standardizePath(options.outputRoot);
   const baseUrl = options.baseUrl || "https://klms.kaist.ac.kr/my/";
+  if (!isExactKlmsHttpsUrl(baseUrl)) {
+    throw new Error("The KLMS base URL must use the exact https://klms.kaist.ac.kr origin.");
+  }
   const downloadsDir = standardizePath(options.downloadsDir || `${homeDirectory()}/Downloads`);
   const timeoutSeconds = nonnegativeNumberOrDefault(options.timeoutSeconds, 0);
   const downloadStartTimeoutSeconds = nonnegativeNumberOrDefault(
@@ -432,6 +435,9 @@ function run(argv) {
         const beforeEntrySignatures = buildDirectoryEntrySignatures(downloadsDir, beforeEntries);
         const originalUrl = String(entry.url || "");
         const downloadUrl = cachedDirectResource.url || originalUrl;
+        if (!isExactKlmsHttpsUrl(originalUrl) || !isExactKlmsHttpsUrl(downloadUrl)) {
+          throw new Error("Refusing a file URL outside the exact KLMS HTTPS origin.");
+        }
         const targetUrl = withForcedDownload(downloadUrl);
         const isResourceViewDownload =
           originalUrl.includes("/mod/resource/view.php?") ||
@@ -466,8 +472,12 @@ function run(argv) {
         step = "launch-safari";
         safari = ensureSafari(safari);
         let downloadedPath = "";
-        const directFetchPage =
-          String(entry.source_url || cachedDirectResource.page_url || baseUrl || "").trim() || targetUrl;
+        const directFetchPage = String(
+          entry.source_url || cachedDirectResource.page_url || baseUrl || ""
+        ).trim() || targetUrl;
+        if (!isExactKlmsHttpsUrl(directFetchPage)) {
+          throw new Error("Refusing a source page outside the exact KLMS HTTPS origin.");
+        }
         step = "open-download-page";
         downloadWindowRef = openReusableDownloadPage(
           safari,
@@ -1885,7 +1895,11 @@ function waitForAutoUnzippedArchive(downloadsDir, beforeEntries, expectedFilenam
 
 function canDirectFetchKlmsFile(url) {
   const text = String(url || "").trim();
-  return text.includes("klms.kaist.ac.kr/pluginfile.php/");
+  return /^https:\/\/klms\.kaist\.ac\.kr(?::443)?\/pluginfile\.php(?:[/?#]|$)/i.test(text);
+}
+
+function isExactKlmsHttpsUrl(url) {
+  return /^https:\/\/klms\.kaist\.ac\.kr(?::443)?(?:[/?#]|$)/i.test(String(url || "").trim());
 }
 
 function isIgnoredDownloadName(name) {
@@ -2768,7 +2782,7 @@ function reusableWindowByReference(safari, existingWindowRef) {
 
 function findKlmsWindow(safari, backgroundWindowEnabled) {
   const klmsWindows = safeList(() => safari.windows()).filter((windowRef) =>
-    currentTabUrl(windowRef).includes("klms.kaist.ac.kr")
+    isExactKlmsHttpsUrl(currentTabUrl(windowRef))
   );
   if (backgroundWindowEnabled) {
     return klmsWindows.find((windowRef) => isBackgroundWindow(windowRef)) || null;

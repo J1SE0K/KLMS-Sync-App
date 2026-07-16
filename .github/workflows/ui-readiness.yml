@@ -23,13 +23,14 @@ concurrency:
 jobs:
   private-mac-readiness:
     name: Private Mac and device readiness
+    if: github.repository_visibility == 'private'
     runs-on: [self-hosted, macOS, klms-ui-readiness]
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
           persist-credentials: false
-      - name: Run sanitized UI readiness gate
+      - name: Run private UI readiness gate
         env:
           KLMS_READINESS_SWIFT_TESTS: "1"
           KLMS_READINESS_MAC: "1"
@@ -37,13 +38,9 @@ jobs:
           KLMS_READINESS_IOS_BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ios_devices && '1' || '0' }}
           KLMS_READINESS_IOS_LAUNCH: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ios_devices && '1' || '0' }}
         run: |
-          set -o pipefail
-          tools/verify_klms_app_readiness.sh | tee ui-readiness.log
-      - name: Upload sanitized readiness log
-        if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
-        with:
-          name: sanitized-ui-readiness-${{ github.run_id }}
-          path: ui-readiness.log
-          if-no-files-found: warn
-          retention-days: 7
+          set +e
+          tools/verify_klms_app_readiness.sh > ui-readiness.log 2>&1
+          readiness_status=$?
+          grep '^readiness-summary ' ui-readiness.log || printf '%s\n' 'readiness-summary status=fail summary=missing'
+          rm -f ui-readiness.log
+          exit "$readiness_status"

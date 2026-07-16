@@ -307,14 +307,26 @@ final class CompanionModel: ObservableObject {
     private var pendingRemoteSettingActionsByKey: [String: ServerRelaySettingAction] = [:]
     private var pendingSubmittedCommandsByID: [UUID: RemoteRunCommand] = [:]
     private var statusCommandID: UUID?
+    private struct PendingItemValueSnapshot {
+        var id: String
+        var previous: ServerRelaySyncItem?
+        var optimistic: ServerRelaySyncItem?
+    }
+    private struct PendingCalendarResolutionSnapshot {
+        var id: String
+        var previous: Bool
+        var optimistic: Bool
+    }
     private struct PendingItemActionOverlay {
         var action: ServerRelayItemAction
-        var previousSyncItems: [ServerRelaySyncItem]?
-        var previousSyncItemsSignature: Int?
-        var previousMailDashboardItems: [ServerRelaySyncItem]?
-        var previousResolvedCalendarChangeIDs: Set<String>?
+        var mutationKey: String?
+        var mutationVersion: UInt64?
+        var syncItemSnapshot: PendingItemValueSnapshot?
+        var mailDashboardItemSnapshot: PendingItemValueSnapshot?
+        var calendarResolutionSnapshots: [PendingCalendarResolutionSnapshot]
     }
     private var pendingItemActionOverlaysByID: [UUID: PendingItemActionOverlay] = [:]
+    private var itemActionMutationVersions = KeyedMutationVersionTracker<String>()
     private var pendingFileAccessRequestsByID: [UUID: ServerRelayFileAccessRequest] = [:]
     private var sharedRunLogsClearPending = false
     private var lastTerminalCommandID: UUID?
@@ -845,9 +857,17 @@ final class CompanionModel: ObservableObject {
 
     func submitMailDashboardItem(_ item: ServerRelaySyncItem) async {
         let normalizedItem = item.normalizedDashboardItem
-        let previousMailDashboardItems = mailDashboardItems
+        let mutationKey = mailDashboardMutationKey(itemID: normalizedItem.id)
+        let mutationVersion = itemActionMutationVersions.begin(for: mutationKey)
+        let previousItem = mailDashboardItems.first { $0.id == normalizedItem.id }
         addMailDashboardItem(normalizedItem)
+        let mutationSnapshot = itemSnapshot(
+            id: normalizedItem.id,
+            previous: previousItem,
+            in: mailDashboardItems
+        )
         guard let serverRelayStore else {
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
             return
         }
         let generation = relaySessionGeneration
@@ -861,10 +881,15 @@ final class CompanionModel: ObservableObject {
                 itemTitle: normalizedItem.title,
                 message: message
             ))
+            guard isCurrentRelaySession(generation: generation) else { return }
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            mailDashboardItems = previousMailDashboardItems
-            persistMailDashboardItems()
+            rollbackMailDashboardMutation(
+                key: mutationKey,
+                version: mutationVersion,
+                snapshot: mutationSnapshot
+            )
             errorMessage = userFacingMessage(for: error)
         }
     }
@@ -877,9 +902,17 @@ final class CompanionModel: ObservableObject {
     }
 
     func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
-        let previousMailDashboardItems = mailDashboardItems
+        let mutationKey = mailDashboardMutationKey(itemID: item.id)
+        let mutationVersion = itemActionMutationVersions.begin(for: mutationKey)
+        let previousItem = mailDashboardItems.first { $0.id == item.id }
         removeMailDashboardItem(item)
+        let mutationSnapshot = itemSnapshot(
+            id: item.id,
+            previous: previousItem,
+            in: mailDashboardItems
+        )
         guard let serverRelayStore else {
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
             return
         }
         let generation = relaySessionGeneration
@@ -893,10 +926,15 @@ final class CompanionModel: ObservableObject {
                 itemTitle: item.title,
                 message: message
             ))
+            guard isCurrentRelaySession(generation: generation) else { return }
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            mailDashboardItems = previousMailDashboardItems
-            persistMailDashboardItems()
+            rollbackMailDashboardMutation(
+                key: mutationKey,
+                version: mutationVersion,
+                snapshot: mutationSnapshot
+            )
             errorMessage = userFacingMessage(for: error)
         }
     }
@@ -2209,19 +2247,56 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    private func restoreServerDisplayItemActionState(
-        syncItems previousSyncItems: [ServerRelaySyncItem],
-        syncItemsSignature previousSyncItemsSignature: Int?,
-        mailDashboardItems previousMailDashboardItems: [ServerRelaySyncItem]
-    ) {
-        syncItems = previousSyncItems
-        syncItemsSignature = previousSyncItemsSignature
-        mailDashboardItems = previousMailDashboardItems
-        persistMailDashboardItems()
-        rebuildDashboardDerivedState()
+    private func itemActionMutationKey(itemID: String) -> String {
+        "item:\(itemID)"
+    }
+
+    private func mailDashboardMutationKey(itemID: String) -> String {
+        "mail:\(itemID)"
+    }
+
+    private func calendarMutationKey(itemID: String) -> String {
+        "calendar:\(itemID)"
+    }
+
+    private func itemSnapshot(
+        id: String,
+        previous: ServerRelaySyncItem?,
+        in items: [ServerRelaySyncItem]
+    ) -> PendingItemValueSnapshot {
+        PendingItemValueSnapshot(
+            id: id,
+            previous: previous,
+            optimistic: items.first { $0.id == id }
+        )
+    }
+
+    private func restoredItems(
+        from items: [ServerRelaySyncItem],
+        snapshot: PendingItemValueSnapshot,
+        sortForDashboard: Bool
+    ) -> [ServerRelaySyncItem]? {
+        guard OptimisticRollbackPolicy.shouldRestore(
+            ownsCurrentVersion: true,
+            currentValue: items.first(where: { $0.id == snapshot.id }),
+            optimisticValue: snapshot.optimistic
+        ) else {
+            return nil
+        }
+        var restored = items.filter { $0.id != snapshot.id }
+        if let previous = snapshot.previous {
+            restored.append(previous)
+        }
+        if sortForDashboard {
+            return restored.companionSorted(by: .recent)
+        }
+        return restored.dedupedForServerRelay().prefix(80).map { $0 }
+    }
+
+    private func persistCurrentServerSyncData() {
         persistCachedServerSyncData(ServerRelaySyncData(
             generatedAt: ServerRelaySyncItem.isoTimestamp(),
-            items: previousSyncItems,
+            items: syncItems,
             dryRunReports: dryRunReports,
             calendarChanges: calendarChanges,
             settings: remoteSettings,
@@ -2229,6 +2304,130 @@ final class CompanionModel: ObservableObject {
             runLogs: sharedRunLogs,
             verifySummary: verifySummary
         ))
+    }
+
+    private func finishItemActionMutation(_ overlay: PendingItemActionOverlay) {
+        guard let key = overlay.mutationKey, let version = overlay.mutationVersion else { return }
+        _ = itemActionMutationVersions.end(key: key, version: version)
+    }
+
+    private func rollbackItemActionMutation(_ overlay: PendingItemActionOverlay) {
+        guard let key = overlay.mutationKey,
+              let version = overlay.mutationVersion,
+              itemActionMutationVersions.owns(key: key, version: version) else {
+            return
+        }
+        var syncItemsChanged = false
+        var mailItemsChanged = false
+        var calendarResolutionChanged = false
+        if let snapshot = overlay.syncItemSnapshot,
+           let restored = restoredItems(from: syncItems, snapshot: snapshot, sortForDashboard: true),
+           restored != syncItems {
+            syncItems = restored
+            syncItemsSignature = Self.signature(for: syncItems)
+            syncItemsChanged = true
+        }
+        if let snapshot = overlay.mailDashboardItemSnapshot,
+           let restored = restoredItems(from: mailDashboardItems, snapshot: snapshot, sortForDashboard: false),
+           restored != mailDashboardItems {
+            mailDashboardItems = restored
+            persistMailDashboardItems()
+            mailItemsChanged = true
+        }
+        for snapshot in overlay.calendarResolutionSnapshots {
+            let current = resolvedCalendarChangeIDs.contains(snapshot.id)
+            guard OptimisticRollbackPolicy.shouldRestore(
+                ownsCurrentVersion: true,
+                currentValue: current,
+                optimisticValue: snapshot.optimistic
+            ) else { continue }
+            if snapshot.previous {
+                calendarResolutionChanged = resolvedCalendarChangeIDs.insert(snapshot.id).inserted
+                    || calendarResolutionChanged
+            } else {
+                calendarResolutionChanged = resolvedCalendarChangeIDs.remove(snapshot.id) != nil
+                    || calendarResolutionChanged
+            }
+        }
+        _ = itemActionMutationVersions.end(key: key, version: version)
+        if calendarResolutionChanged {
+            persistResolvedCalendarChangeIDs()
+            rebuildVisibleCalendarChanges()
+        }
+        if syncItemsChanged || mailItemsChanged {
+            persistCurrentServerSyncData()
+        }
+    }
+
+    private func rollbackMailDashboardMutation(
+        key: String,
+        version: UInt64,
+        snapshot: PendingItemValueSnapshot
+    ) {
+        guard itemActionMutationVersions.owns(key: key, version: version) else { return }
+        if let restored = restoredItems(
+            from: mailDashboardItems,
+            snapshot: snapshot,
+            sortForDashboard: false
+        ), restored != mailDashboardItems {
+            mailDashboardItems = restored
+            persistMailDashboardItems()
+            persistCurrentServerSyncData()
+        }
+        _ = itemActionMutationVersions.end(key: key, version: version)
+    }
+
+    private func rollbackCalendarResolutionMutation(
+        key: String,
+        version: UInt64,
+        snapshots: [PendingCalendarResolutionSnapshot]
+    ) {
+        guard itemActionMutationVersions.owns(key: key, version: version) else { return }
+        var didChange = false
+        for snapshot in snapshots {
+            let current = resolvedCalendarChangeIDs.contains(snapshot.id)
+            guard OptimisticRollbackPolicy.shouldRestore(
+                ownsCurrentVersion: true,
+                currentValue: current,
+                optimisticValue: snapshot.optimistic
+            ) else { continue }
+            if snapshot.previous {
+                didChange = resolvedCalendarChangeIDs.insert(snapshot.id).inserted || didChange
+            } else {
+                didChange = resolvedCalendarChangeIDs.remove(snapshot.id) != nil || didChange
+            }
+        }
+        _ = itemActionMutationVersions.end(key: key, version: version)
+        if didChange {
+            persistResolvedCalendarChangeIDs()
+            rebuildVisibleCalendarChanges()
+        }
+    }
+
+    private func calendarResolutionMutation(
+        for change: CalendarChange,
+        key: String
+    ) -> (version: UInt64, snapshots: [PendingCalendarResolutionSnapshot]) {
+        let candidateIDs = calendarChangeResolvedIDs(for: change)
+        let previous = candidateIDs.map {
+            PendingCalendarResolutionSnapshot(
+                id: $0,
+                previous: resolvedCalendarChangeIDs.contains($0),
+                optimistic: false
+            )
+        }
+        let version = itemActionMutationVersions.begin(for: key)
+        markCalendarChangeResolvedLocally(change)
+        return (
+            version,
+            previous.map {
+                PendingCalendarResolutionSnapshot(
+                    id: $0.id,
+                    previous: $0.previous,
+                    optimistic: resolvedCalendarChangeIDs.contains($0.id)
+                )
+            }
+        )
     }
 
     func updateSharedAppearanceMode(_ rawValue: String) async {
@@ -2368,9 +2567,10 @@ final class CompanionModel: ObservableObject {
         let generation = relaySessionGeneration
         let updatesServerVisibleState = actionKind.isCompanionImmediateDisplayAction
         let suppressSuccessFeedback = actionKind.suppressesImmediateSuccessFeedback
-        let previousSyncItems = syncItems
-        let previousSyncItemsSignature = syncItemsSignature
-        let previousMailDashboardItems = mailDashboardItems
+        let mutationKey = updatesServerVisibleState ? itemActionMutationKey(itemID: item.id) : nil
+        let mutationVersion = mutationKey.map { itemActionMutationVersions.begin(for: $0) }
+        let previousSyncItem = syncItems.first { $0.id == item.id }
+        let previousMailDashboardItem = mailDashboardItems.first { $0.id == item.id }
         let action = ServerRelayItemAction(
             action: actionKind,
             itemID: item.id,
@@ -2382,10 +2582,19 @@ final class CompanionModel: ObservableObject {
             let localAction = action.optimisticCompanionDisplayAction
             pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
                 action: localAction,
-                previousSyncItems: previousSyncItems,
-                previousSyncItemsSignature: previousSyncItemsSignature,
-                previousMailDashboardItems: previousMailDashboardItems,
-                previousResolvedCalendarChangeIDs: nil
+                mutationKey: mutationKey,
+                mutationVersion: mutationVersion,
+                syncItemSnapshot: updatesServerVisibleState
+                    ? itemSnapshot(id: item.id, previous: previousSyncItem, in: syncItems)
+                    : nil,
+                mailDashboardItemSnapshot: updatesServerVisibleState
+                    ? itemSnapshot(
+                        id: item.id,
+                        previous: previousMailDashboardItem,
+                        in: mailDashboardItems
+                    )
+                    : nil,
+                calendarResolutionSnapshots: []
             )
             replaceRecentItemAction(localAction) { $0.itemID == item.id }
             if !suppressSuccessFeedback {
@@ -2399,7 +2608,13 @@ final class CompanionModel: ObservableObject {
             guard isCurrentRelaySession(generation: generation) else { return }
             if var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
                 overlay.action = savedAction
-                pendingItemActionOverlaysByID[savedAction.id] = overlay
+                if savedAction.status.isInFlight {
+                    pendingItemActionOverlaysByID[savedAction.id] = overlay
+                } else if savedAction.status.isFailedLike {
+                    rollbackItemActionMutation(overlay)
+                } else {
+                    finishItemActionMutation(overlay)
+                }
             }
             applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             replaceRecentItemAction(savedAction) { $0.id == action.id || $0.itemID == item.id }
@@ -2413,13 +2628,8 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            pendingItemActionOverlaysByID.removeValue(forKey: action.id)
-            if updatesServerVisibleState {
-                restoreServerDisplayItemActionState(
-                    syncItems: previousSyncItems,
-                    syncItemsSignature: previousSyncItemsSignature,
-                    mailDashboardItems: previousMailDashboardItems
-                )
+            if let overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
+                rollbackItemActionMutation(overlay)
             }
             removeRecentItemActions { ($0.id == action.id || $0.itemID == item.id) && $0.action == actionKind }
             syncDataNeedsRefresh = true
@@ -2443,10 +2653,10 @@ final class CompanionModel: ObservableObject {
         let generation = relaySessionGeneration
         let actionItemID = serverRelayCalendarChange(change).id
         let candidateIDs = calendarChangeResolvedIDs(for: change)
-        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
-        if actionKind.resolvesCalendarChange {
-            markCalendarChangeResolvedLocally(change)
-        }
+        let mutationKey = actionKind.resolvesCalendarChange
+            ? calendarMutationKey(itemID: actionItemID)
+            : nil
+        var mutationVersion: UInt64?
         var pendingActionID: UUID?
         do {
             let action = ServerRelayItemAction(
@@ -2456,13 +2666,32 @@ final class CompanionModel: ObservableObject {
                 itemTitle: change.title.nilIfEmpty ?? change.course.nilIfEmpty ?? "캘린더 변경",
                 message: try edit?.encodedMessage() ?? ""
             )
+            mutationVersion = mutationKey.map { itemActionMutationVersions.begin(for: $0) }
+            let previousResolutionSnapshots = candidateIDs.map {
+                PendingCalendarResolutionSnapshot(
+                    id: $0,
+                    previous: resolvedCalendarChangeIDs.contains($0),
+                    optimistic: false
+                )
+            }
+            if actionKind.resolvesCalendarChange {
+                markCalendarChangeResolvedLocally(change)
+            }
+            let calendarResolutionSnapshots = previousResolutionSnapshots.map {
+                PendingCalendarResolutionSnapshot(
+                    id: $0.id,
+                    previous: $0.previous,
+                    optimistic: resolvedCalendarChangeIDs.contains($0.id)
+                )
+            }
             pendingActionID = action.id
             pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
                 action: action,
-                previousSyncItems: nil,
-                previousSyncItemsSignature: nil,
-                previousMailDashboardItems: nil,
-                previousResolvedCalendarChangeIDs: previousResolvedCalendarChangeIDs
+                mutationKey: mutationKey,
+                mutationVersion: mutationVersion,
+                syncItemSnapshot: nil,
+                mailDashboardItemSnapshot: nil,
+                calendarResolutionSnapshots: calendarResolutionSnapshots
             )
             replaceRecentItemAction(action) { candidateIDs.contains($0.itemID) }
             connectionMessage = "\(actionKind.displayName) 요청을 보내는 중입니다."
@@ -2472,15 +2701,19 @@ final class CompanionModel: ObservableObject {
             guard isCurrentRelaySession(generation: generation) else { return }
             if var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) {
                 overlay.action = savedAction
-                pendingItemActionOverlaysByID[savedAction.id] = overlay
-                pendingActionID = savedAction.id
+                if savedAction.status.isInFlight {
+                    pendingItemActionOverlaysByID[savedAction.id] = overlay
+                    pendingActionID = savedAction.id
+                } else if savedAction.status.isFailedLike {
+                    rollbackItemActionMutation(overlay)
+                    pendingActionID = nil
+                } else {
+                    finishItemActionMutation(overlay)
+                    pendingActionID = nil
+                }
             }
             if savedAction.action.resolvesCalendarChange, !savedAction.status.isFailedLike {
                 markCalendarChangeResolvedLocally(change)
-            } else if savedAction.status.isFailedLike {
-                resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
-                persistResolvedCalendarChangeIDs()
-                rebuildVisibleCalendarChanges()
             }
             replaceRecentItemAction(savedAction) { $0.id == action.id || candidateIDs.contains($0.itemID) }
             connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
@@ -2488,13 +2721,11 @@ final class CompanionModel: ObservableObject {
             errorMessage = ""
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            if let pendingActionID {
-                pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID)
-            }
-            if actionKind.resolvesCalendarChange {
-                resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
-                persistResolvedCalendarChangeIDs()
-                rebuildVisibleCalendarChanges()
+            if let pendingActionID,
+               let overlay = pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID) {
+                rollbackItemActionMutation(overlay)
+            } else if let mutationKey, let mutationVersion {
+                _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
             }
             removeRecentItemActions { candidateIDs.contains($0.itemID) && $0.action == actionKind && $0.status == .pending }
             guard !isCancellationError(error) else { return }
@@ -2517,8 +2748,8 @@ final class CompanionModel: ObservableObject {
     func editCalendarEventOnDevice(change: CalendarChange, edit: CalendarEventEdit) async -> Bool {
         let generation = relaySessionGeneration
         let originalStore = serverRelayStore
-        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
-        markCalendarChangeResolvedLocally(change)
+        let mutationKey = calendarMutationKey(itemID: serverRelayCalendarChange(change).id)
+        let mutation = calendarResolutionMutation(for: change, key: mutationKey)
         await Task.yield()
         do {
             try await Task.detached(priority: .userInitiated) {
@@ -2532,16 +2763,19 @@ final class CompanionModel: ObservableObject {
                 generation: generation
             )
             guard isCurrentRelaySession(generation: generation) else { return true }
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutation.version)
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return false }
+            rollbackCalendarResolutionMutation(
+                key: mutationKey,
+                version: mutation.version,
+                snapshots: mutation.snapshots
+            )
             guard !isCancellationError(error) else { return false }
-            resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
-            persistResolvedCalendarChangeIDs()
-            rebuildVisibleCalendarChanges()
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "캘린더 수정 실패", message: message)
@@ -2553,8 +2787,8 @@ final class CompanionModel: ObservableObject {
     func deleteCalendarEventOnDevice(change: CalendarChange) async -> Bool {
         let generation = relaySessionGeneration
         let originalStore = serverRelayStore
-        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
-        markCalendarChangeResolvedLocally(change)
+        let mutationKey = calendarMutationKey(itemID: serverRelayCalendarChange(change).id)
+        let mutation = calendarResolutionMutation(for: change, key: mutationKey)
         await Task.yield()
         if change.isDeletedAction {
             guard isCurrentRelaySession(generation: generation) else { return true }
@@ -2565,6 +2799,7 @@ final class CompanionModel: ObservableObject {
                 generation: generation
             )
             guard isCurrentRelaySession(generation: generation) else { return true }
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutation.version)
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
@@ -2582,16 +2817,19 @@ final class CompanionModel: ObservableObject {
                 generation: generation
             )
             guard isCurrentRelaySession(generation: generation) else { return true }
+            _ = itemActionMutationVersions.end(key: mutationKey, version: mutation.version)
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return false }
+            rollbackCalendarResolutionMutation(
+                key: mutationKey,
+                version: mutation.version,
+                snapshots: mutation.snapshots
+            )
             guard !isCancellationError(error) else { return false }
-            resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
-            persistResolvedCalendarChangeIDs()
-            rebuildVisibleCalendarChanges()
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "캘린더 삭제 실패", message: message)
@@ -2625,9 +2863,11 @@ final class CompanionModel: ObservableObject {
     ) async -> Bool {
         let generation = relaySessionGeneration
         let originalStore = serverRelayStore
-        let previousResolvedCalendarChangeIDs = resolvedCalendarChangeIDs
-        if let change {
-            markCalendarChangeResolvedLocally(change)
+        let mutationKey = change.map { calendarMutationKey(itemID: serverRelayCalendarChange($0).id) }
+        let mutation = change.flatMap { change in
+            mutationKey.map { calendarResolutionMutation(for: change, key: $0) }
+        }
+        if change != nil {
             await Task.yield()
         }
         do {
@@ -2644,18 +2884,23 @@ final class CompanionModel: ObservableObject {
                 )
             }
             guard isCurrentRelaySession(generation: generation) else { return true }
+            if let mutationKey, let mutation {
+                _ = itemActionMutationVersions.end(key: mutationKey, version: mutation.version)
+            }
             connectionMessage = ""
             connectionSucceeded = nil
             errorMessage = ""
             return true
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return false }
-            guard !isCancellationError(error) else { return false }
-            if change != nil {
-                resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
-                persistResolvedCalendarChangeIDs()
-                rebuildVisibleCalendarChanges()
+            if let mutationKey, let mutation {
+                rollbackCalendarResolutionMutation(
+                    key: mutationKey,
+                    version: mutation.version,
+                    snapshots: mutation.snapshots
+                )
             }
+            guard !isCancellationError(error) else { return false }
             let message = userFacingMessage(for: error)
             errorMessage = message
             userAlert = UserAlert(title: "캘린더 등록 실패", message: message)
@@ -3846,20 +4091,10 @@ final class CompanionModel: ObservableObject {
                 pendingItemActionOverlaysByID[action.id] = overlay
             } else {
                 pendingItemActionOverlaysByID.removeValue(forKey: action.id)
-                if action.status.isFailedLike,
-                   let previousSyncItems = overlay.previousSyncItems,
-                   let previousMailDashboardItems = overlay.previousMailDashboardItems {
-                    restoreServerDisplayItemActionState(
-                        syncItems: previousSyncItems,
-                        syncItemsSignature: overlay.previousSyncItemsSignature,
-                        mailDashboardItems: previousMailDashboardItems
-                    )
-                }
-                if action.status.isFailedLike,
-                   let previousResolvedCalendarChangeIDs = overlay.previousResolvedCalendarChangeIDs {
-                    resolvedCalendarChangeIDs = previousResolvedCalendarChangeIDs
-                    persistResolvedCalendarChangeIDs()
-                    rebuildVisibleCalendarChanges()
+                if action.status.isFailedLike {
+                    rollbackItemActionMutation(overlay)
+                } else {
+                    finishItemActionMutation(overlay)
                 }
             }
         }
@@ -4048,6 +4283,7 @@ final class CompanionModel: ObservableObject {
         pendingRemoteSettingActionsByKey = [:]
         pendingSubmittedCommandsByID = [:]
         pendingItemActionOverlaysByID = [:]
+        itemActionMutationVersions.reset()
         pendingFileAccessRequestsByID = [:]
         sharedRunLogsClearPending = false
         trackedReportNotificationCommandIDs = []

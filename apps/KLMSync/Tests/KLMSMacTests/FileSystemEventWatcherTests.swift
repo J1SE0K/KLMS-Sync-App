@@ -25,6 +25,7 @@ final class FileSystemEventWatcherTests: XCTestCase {
             try? FileManager.default.removeItem(at: root)
         }
 
+        let changedURL = root.appendingPathComponent("state.json")
         let probe = FileSystemEventCallbackProbe()
         let watcher = KLMSFileSystemEventWatcher(paths: [root]) {
             probe.signalOnce()
@@ -34,16 +35,28 @@ final class FileSystemEventWatcherTests: XCTestCase {
         }
 
         XCTAssertTrue(watcher.start())
-        try Data("changed".utf8).write(
-            to: root.appendingPathComponent("state.json"),
-            options: .atomic
-        )
+        try Data("changed".utf8).write(to: changedURL)
 
         XCTAssertEqual(
             probe.semaphore.wait(timeout: .now() + 3),
             .success,
             "FSEvents should deliver a local state change without periodic polling."
         )
+    }
+
+    func testNestedCourseFileChangeForcesSnapshotReload() throws {
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+
+        XCTAssertTrue(source.contains("let paths = unsafeBitCast(eventPaths, to: NSArray.self)"))
+        XCTAssertTrue(source.contains("flags: eventFlags[index]"))
+        XCTAssertTrue(source.contains("path == courseFilesPath || path.hasPrefix(courseFilesPrefix)"))
+        XCTAssertTrue(source.contains("kFSEventStreamEventFlagMustScanSubDirs"))
+        XCTAssertTrue(source.contains("await self.loadEngineSnapshotOffMain(force: forceSnapshotReload)"))
     }
 
     func testLiveRefreshReloadsSettingsAndCanonicalOverridesBeforeSnapshot() throws {
@@ -53,7 +66,7 @@ final class FileSystemEventWatcherTests: XCTestCase {
             .deletingLastPathComponent()
             .appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
         let source = try String(contentsOf: sourceURL, encoding: .utf8)
-        let start = try XCTUnwrap(source.range(of: "private func scheduleFileSystemEventRefresh()"))
+        let start = try XCTUnwrap(source.range(of: "private func scheduleFileSystemEventRefresh(_ events: [KLMSFileSystemEvent])"))
         let end = try XCTUnwrap(
             source.range(of: "func reloadEngineState()", range: start.upperBound..<source.endIndex)
         )
@@ -61,9 +74,10 @@ final class FileSystemEventWatcherTests: XCTestCase {
 
         let config = try XCTUnwrap(refresh.range(of: "try self.loadConfig()"))
         let overrides = try XCTUnwrap(refresh.range(of: "try self.mergeConfiguredOverridesIntoCanonicalStore()"))
-        let snapshot = try XCTUnwrap(refresh.range(of: "self.loadEngineSnapshot(force: false)"))
+        let snapshot = try XCTUnwrap(refresh.range(of: "await self.loadEngineSnapshotOffMain(force: forceSnapshotReload)"))
         XCTAssertLessThan(config.lowerBound, overrides.lowerBound)
         XCTAssertLessThan(overrides.lowerBound, snapshot.lowerBound)
         XCTAssertTrue(source.contains("paths.overridesURL"))
+        XCTAssertTrue(source.contains("Task.detached(priority: .utility)"))
     }
 }

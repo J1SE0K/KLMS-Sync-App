@@ -183,6 +183,9 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"', readiness_script)
         self.assertIn('KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS="$ALLOW_DESTRUCTIVE_ACTIONS"', readiness_script)
         self.assertIn('KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS: "0"', readiness_workflow)
+        self.assertIn("if: github.repository_visibility == 'private'", readiness_workflow)
+        self.assertIn("tools/verify_klms_app_readiness.sh > ui-readiness.log 2>&1", readiness_workflow)
+        self.assertNotIn("actions/upload-artifact", readiness_workflow)
         self.assertIn('record_step "mac-tab-response"', readiness_script)
         self.assertIn('record_step "ios-signed-build"', readiness_script)
         self.assertIn('record_step "ios-device-launch"', readiness_script)
@@ -1608,6 +1611,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('restore_previous_app', build_script)
         self.assertIn('if ! restore_previous_app; then', build_script)
         self.assertIn('Previous app preserved at: $BACKUP_APP_BUNDLE', build_script)
+        self.assertIn('VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"', build_script)
+        self.assertIn('ditto --norsrc "$VENDORED_PYTHON_PACKAGES" "$PAYLOAD_ROOT/python-packages"', build_script)
+        self.assertNotIn(
+            'ditto --norsrc "$ROOT_DIR/runtime/python-packages" "$PAYLOAD_ROOT/python-packages"',
+            build_script,
+        )
         self.assertNotIn("  manual_assignment_overrides.json\n", build_script)
 
     def test_private_readiness_builds_an_isolated_app_copy(self) -> None:

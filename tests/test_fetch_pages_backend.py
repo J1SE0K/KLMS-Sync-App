@@ -13,6 +13,15 @@ import fetch_pages_backend  # noqa: E402
 
 
 class FetchPagesBackendTests(unittest.TestCase):
+    def test_safari_fetch_script_rejects_non_klms_origins(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("urls.every((url) => isExactKlmsHttpsUrl(url))", text)
+        self.assertIn("function isExactKlmsHttpsUrl(url)", text)
+        self.assertNotIn('currentUrl.includes("klms.kaist.ac.kr")', text)
+
     def test_load_previous_pages_discards_oversized_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pages.json"

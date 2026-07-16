@@ -29,7 +29,7 @@ if [ "${#DOMAIN}" -gt 253 ]; then
   exit 64
 fi
 
-SCRIPT_DIR="$(CDPATH= cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)"
 ENV_PATH="$SCRIPT_DIR/.env"
 
 if [ -f "$ENV_PATH" ] && [ "${FORCE:-0}" != "1" ]; then

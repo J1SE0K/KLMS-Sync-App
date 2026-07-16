@@ -58,12 +58,12 @@ test("2,000 mixed items stay responsive through reconciliation, search, scroll f
   expect(fixture.itemCount).toBe(expectedItemCount);
   expect(fixture.searchIndex).toBeLessThan(expectedItemCount - intentionalInitialRowCap);
 
-  await page.locator("#relayURL").fill(relay.url);
-  await page.locator("#relayToken").fill(TEST_TOKEN);
-  await page.evaluate(() => {
+  await page.evaluate(({ relayURL, relayToken }) => {
+    document.querySelector("#relayURL").value = relayURL;
+    document.querySelector("#relayToken").value = relayToken;
     window.__klmsPerformanceInitialStart = performance.now();
-  });
-  await page.locator("#saveConnectionButton").click();
+    document.querySelector("#saveConnectionButton").click();
+  }, { relayURL: relay.url, relayToken: TEST_TOKEN });
   await page.waitForFunction(({ itemCount, visibleItemCount, initialRowCap }) => (
     state.items.length === itemCount
       && document.querySelector("#listCount")?.textContent === `${visibleItemCount}개`

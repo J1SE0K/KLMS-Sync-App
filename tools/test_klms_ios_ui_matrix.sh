@@ -11,6 +11,8 @@ TEST_IDENTIFIERS=(
   "KLMSiOSUITests/KLMSiOSUITests/testAllMajorSectionsRemainReachableAndHorizontallyContained"
   "KLMSiOSUITests/KLMSiOSUITests/testWorkstationUsesVerticalFallbackAtNarrowWideBoundary"
   "KLMSiOSUITests/KLMSiOSUITests/testAX5KeepsSyncActionsAndCompactNavigationReachable"
+  "KLMSiOSUITests/KLMSiOSUITests/testHistoryClearActionsStayCompactAndRequireConfirmation"
+  "KLMSiOSUITests/KLMSiOSUITests/testLargeDatasetPerformanceLazySearchAndSelectionPreservation"
 )
 
 select_simulator() {

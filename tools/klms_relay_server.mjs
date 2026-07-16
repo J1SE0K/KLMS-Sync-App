@@ -15,6 +15,10 @@ const DB_PATH = process.env.KLMS_RELAY_DB
   ? expandHome(process.env.KLMS_RELAY_DB)
   : path.join(os.homedir(), ".local", "state", "klms-sync-relay.sqlite");
 const MAX_BODY_BYTES = 1024 * 1024;
+const MIN_RELAY_TOKEN_BYTES = 32;
+const MAX_REALTIME_CONNECTIONS = 32;
+const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
+const REQUESTS_PER_MINUTE = boundedInt(process.env.KLMS_RELAY_REQUESTS_PER_MINUTE, 600, 1, 6_000);
 const MAX_COMMANDS = 100;
 const MAX_ITEM_ACTIONS = 200;
 const MAX_SETTING_ACTIONS = 100;
@@ -175,6 +179,11 @@ if (!CLIENT_TOKEN || !WORKER_TOKEN) {
   console.error("KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN are required.");
   process.exit(64);
 }
+if (Buffer.byteLength(CLIENT_TOKEN, "utf8") < MIN_RELAY_TOKEN_BYTES
+    || Buffer.byteLength(WORKER_TOKEN, "utf8") < MIN_RELAY_TOKEN_BYTES) {
+  console.error("KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN must each be at least 32 bytes.");
+  process.exit(64);
+}
 if (CLIENT_TOKEN === WORKER_TOKEN) {
   console.error("KLMS_RELAY_CLIENT_TOKEN and KLMS_RELAY_WORKER_TOKEN must be different.");
   process.exit(64);
@@ -219,6 +228,7 @@ recoverStaleFileDownloadReservations({ notify: false });
 await recoverInterruptedFileUploads({ recoverDeletionClaims: true });
 let state = loadState();
 const realtimeClients = new Set();
+const requestRateWindows = new Map();
 let expiredFileCleanupPromise = null;
 
 const server = http.createServer(async (request, response) => {
@@ -255,6 +265,14 @@ async function route(request, response) {
   }
 
   if (request.method === "GET" && url.pathname === "/readyz") {
+    if (!consumeRequestRateLimit(request, "worker-readiness")) {
+      sendRateLimitResponse(response);
+      return;
+    }
+    if (!authorized(request, "worker")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
     const readiness = relayReadiness();
     sendJSON(response, readiness.ok ? 200 : 503, readiness);
     return;
@@ -271,6 +289,10 @@ async function route(request, response) {
       sendJSON(response, 400, { error: "role must be client or worker" });
       return;
     }
+    if (!consumeRequestRateLimit(request, `${role}-realtime`)) {
+      sendRateLimitResponse(response);
+      return;
+    }
     if (!authorized(request, role)) {
       sendJSON(response, 401, { error: "unauthorized" });
       return;
@@ -284,18 +306,44 @@ async function route(request, response) {
     return;
   }
 
+  const fileDownloadMatch = url.pathname.match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
+  if (request.method === "GET" && fileDownloadMatch) {
+    if (!consumeRequestRateLimit(request, "public-download")) {
+      sendRateLimitResponse(response);
+      return;
+    }
+    if (!validDownloadTicket(url.searchParams.get("ticket"))) {
+      sendFileAccessDownloadPage(response, url, {
+        status: 403,
+        title: "권한이 없는 링크입니다",
+        message: "링크의 인증 정보가 올바르지 않습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+      });
+      return;
+    }
+    await downloadFileAccess(response, url, fileDownloadMatch[1]);
+    return;
+  }
+
+  const requiredRole = requiredRoleFor(request.method, url.pathname);
+  if (!requiredRole) {
+    sendJSON(response, 404, { error: "not found" });
+    return;
+  }
+  if (!consumeRequestRateLimit(request, requiredRole)) {
+    sendRateLimitResponse(response);
+    return;
+  }
+  if (!authorized(request, requiredRole)) {
+    sendJSON(response, 401, { error: "unauthorized" });
+    return;
+  }
+
   expireStaleCommands();
   expireStalePendingItemActions();
   expireStalePendingSettingActions();
   recoverStaleFileDownloadReservations();
   expireStaleFileAccessRequests();
   scheduleExpiredFileAccessCleanup();
-
-  const fileDownloadMatch = url.pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
-  if (request.method === "GET" && fileDownloadMatch) {
-    await downloadFileAccess(response, url, fileDownloadMatch[1]);
-    return;
-  }
 
   if (request.method === "GET" && url.pathname === "/v1/worker/inbox") {
     if (!authorized(request, "worker")) {
@@ -948,6 +996,41 @@ async function route(request, response) {
   }
 
   sendJSON(response, 404, { error: "not found" });
+}
+
+function requiredRoleFor(method, pathname) {
+  if (method === "GET" && pathname === "/v1/worker/inbox") return "worker";
+  if (method === "GET" && pathname === "/v1/status") return "client";
+  if (method === "POST" && pathname === "/v1/status") return "worker";
+  if (method === "GET" && pathname === "/v1/sync-data") return "client";
+  if (method === "GET" && pathname === "/v1/shared-settings") return "client";
+  if (method === "PUT" && /^\/v1\/shared-settings\/[A-Z][A-Z0-9_]*$/.test(pathname)) return "client";
+  if (method === "POST" && pathname === "/v1/sync-data") return "worker";
+  if (method === "DELETE" && pathname === "/v1/sync-data/run-logs") return "client";
+  if (method === "POST" && pathname === "/v1/cancel") return "client";
+  if (method === "GET" && pathname === "/v1/cancel") return "worker";
+  if (method === "DELETE" && pathname === "/v1/cancel") return "worker";
+  if (method === "POST" && pathname === "/v1/commands") return "client";
+  if (method === "GET" && pathname === "/v1/commands/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/commands/recent") return "client";
+  if (method === "PUT" && /^\/v1\/commands\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pathname)) return "worker";
+  if (method === "POST" && pathname === "/v1/item-actions") return "client";
+  if (method === "GET" && pathname === "/v1/item-actions/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/item-actions/recent") return "client";
+  if (method === "PUT" && /^\/v1\/item-actions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pathname)) return "worker";
+  if (method === "POST" && pathname === "/v1/setting-actions") return "client";
+  if (method === "GET" && pathname === "/v1/setting-actions/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/setting-actions/recent") return "client";
+  if (method === "PUT" && /^\/v1\/setting-actions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pathname)) return "worker";
+  if (method === "POST" && pathname === "/v1/file-access") return "client";
+  if (method === "GET" && pathname === "/v1/file-access/pending") return "worker";
+  if (method === "GET" && pathname === "/v1/file-access/recent") return "client";
+  if (method === "GET" && pathname === "/v1/request-log/recent") return "client";
+  if (method === "DELETE" && pathname === "/v1/logs/display") return "client";
+  if (method === "DELETE" && pathname === "/v1/logs") return "worker";
+  if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pathname)) return "worker";
+  if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/upload$/.test(pathname)) return "worker";
+  return null;
 }
 
 function commandListResponse(commands) {
@@ -1861,6 +1944,10 @@ function normalizeUUIDText(value) {
     : "";
 }
 
+function validDownloadTicket(value) {
+  return /^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/.test(String(value || "").trim());
+}
+
 function normalizeStatus(raw, fallbackPhase) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const status = { ...defaultStatus };
@@ -2074,6 +2161,28 @@ function authorized(request, role) {
   return tokenMatches(actual, WORKER_TOKEN);
 }
 
+function consumeRequestRateLimit(request, scope) {
+  const address = String(request.socket?.remoteAddress || "unknown").slice(0, 128);
+  const key = `${scope}:${address}`;
+  const now = Date.now();
+  const current = requestRateWindows.get(key);
+  if (!current || current.expiresAt <= now) {
+    requestRateWindows.set(key, { count: 1, expiresAt: now + 60_000 });
+    pruneRequestRateWindows(now);
+    return true;
+  }
+  if (current.count >= REQUESTS_PER_MINUTE) return false;
+  current.count += 1;
+  return true;
+}
+
+function pruneRequestRateWindows(now) {
+  if (requestRateWindows.size <= 512) return;
+  for (const [key, value] of requestRateWindows) {
+    if (value.expiresAt <= now) requestRateWindows.delete(key);
+  }
+}
+
 function handleWebSocketUpgrade(request, socket, head) {
   try {
     const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
@@ -2086,8 +2195,16 @@ function handleWebSocketUpgrade(request, socket, head) {
       rejectWebSocketUpgrade(socket, 400, "role must be client or worker");
       return;
     }
+    if (!consumeRequestRateLimit(request, `${role}-realtime`)) {
+      rejectWebSocketUpgrade(socket, 429, "request rate limit exceeded", { "Retry-After": "60" });
+      return;
+    }
     if (!authorized(request, role === "worker" ? "worker" : "client")) {
       rejectWebSocketUpgrade(socket, 401, "unauthorized");
+      return;
+    }
+    if (realtimeClients.size >= MAX_REALTIME_CONNECTIONS) {
+      rejectWebSocketUpgrade(socket, 429, "too many realtime connections");
       return;
     }
     if (String(request.headers.upgrade || "").toLowerCase() !== "websocket"
@@ -2140,7 +2257,7 @@ function handleWebSocketUpgrade(request, socket, head) {
 }
 
 function rejectWebSocketUpgrade(socket, status, message, extraHeaders = {}) {
-  const labels = { 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 426: "Upgrade Required" };
+  const labels = { 400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 426: "Upgrade Required", 429: "Too Many Requests" };
   const body = JSON.stringify({ error: message });
   const headers = Object.entries(extraHeaders).map(([key, value]) => `${key}: ${value}`);
   socket.end([
@@ -2175,14 +2292,14 @@ function handleWebSocketData(client, chunk) {
     } else if (length === 127) {
       if (client.buffer.length < 10) return;
       const largeLength = client.buffer.readBigUInt64BE(2);
-      if (largeLength > 65_536n) {
+      if (largeLength > BigInt(MAX_REALTIME_MESSAGE_BYTES)) {
         closeWebSocketClient(client, 1009, "message too large");
         return;
       }
       length = Number(largeLength);
       offset = 10;
     }
-    if (length > 65_536) {
+    if (length > MAX_REALTIME_MESSAGE_BYTES) {
       closeWebSocketClient(client, 1009, "message too large");
       return;
     }
@@ -2294,6 +2411,16 @@ function sendJSON(response, statusCode, value) {
   response.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
+  });
+  response.end(body);
+}
+
+function sendRateLimitResponse(response) {
+  const body = JSON.stringify({ error: "request rate limit exceeded" });
+  response.writeHead(429, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "Retry-After": "60",
   });
   response.end(body);
 }
@@ -2448,41 +2575,22 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS file_download_reservations_created_idx
       ON file_download_reservations(created_at);
   `);
-  try {
-    db.exec("ALTER TABLE commands ADD COLUMN options_json TEXT NOT NULL DEFAULT '{}'");
-  } catch {
-    // Older local relay DBs already have the column after the first upgraded run.
-  }
-  try {
-    db.exec("ALTER TABLE file_access_requests ADD COLUMN upload_claim TEXT");
-  } catch {
-    // Older local relay DBs already have the column after the first upgraded run.
-  }
-  try {
-    db.exec("ALTER TABLE file_access_requests ADD COLUMN pending_object_key TEXT");
-  } catch {
-    // Older local relay DBs already have the column after the first upgraded run.
-  }
-  try {
-    db.exec("ALTER TABLE file_access_requests ADD COLUMN reserved_upload_bytes INTEGER NOT NULL DEFAULT 0");
-  } catch {
-    // Older local relay DBs already have the column after the first upgraded run.
-  }
-  try {
-    db.exec("ALTER TABLE file_access_requests ADD COLUMN reserved_upload_quota_key TEXT");
-  } catch {
-    // Older local relay DBs already have the column after the first upgraded run.
-  }
-  try {
-    db.exec("ALTER TABLE item_actions ADD COLUMN idempotency_key TEXT");
-  } catch {
-    // Older local relay DBs already have the column after the first upgraded run.
-  }
+  addColumnIfMissing("commands", "options_json", "TEXT NOT NULL DEFAULT '{}'");
+  addColumnIfMissing("file_access_requests", "upload_claim", "TEXT");
+  addColumnIfMissing("file_access_requests", "pending_object_key", "TEXT");
+  addColumnIfMissing("file_access_requests", "reserved_upload_bytes", "INTEGER NOT NULL DEFAULT 0");
+  addColumnIfMissing("file_access_requests", "reserved_upload_quota_key", "TEXT");
+  addColumnIfMissing("item_actions", "idempotency_key", "TEXT");
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS item_actions_idempotency_key_idx
       ON item_actions(idempotency_key)
       WHERE idempotency_key IS NOT NULL;
   `);
+}
+
+function addColumnIfMissing(table, column, definition) {
+  const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map((row) => row.name));
+  if (!columns.has(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 function loadState() {
@@ -3158,14 +3266,43 @@ async function recoverInterruptedFileUploads({ recoverDeletionClaims = false } =
     }
     if (removed) releasePreparedFileAccessUpload(row.id, row.upload_claim);
   }
-  // Claims without a pre-write tombstone are from deletion work or an older
-  // relay version. No live process can own them after startup.
   if (recoverDeletionClaims) {
-    db.prepare(`
-      UPDATE file_access_requests
-      SET upload_claim = NULL, reserved_upload_bytes = 0, reserved_upload_quota_key = NULL
+    const claims = db.prepare(`
+      SELECT id, object_key, upload_claim
+      FROM file_access_requests
       WHERE pending_object_key IS NULL AND upload_claim IS NOT NULL
-    `).run();
+    `).all();
+    for (const row of claims) {
+      if (!row.object_key) {
+        db.prepare(`
+          UPDATE file_access_requests
+          SET upload_claim = NULL, reserved_upload_bytes = 0, reserved_upload_quota_key = NULL
+          WHERE id = ? AND upload_claim = ? AND object_key IS NULL
+        `).run(row.id, row.upload_claim);
+        continue;
+      }
+      let objectMissing = !isValidFileObjectKey(row.object_key, row.id);
+      if (!objectMissing) {
+        try {
+          await fs.stat(localFileObjectPath(row.object_key, row.id));
+        } catch (error) {
+          if (error?.code !== "ENOENT") throw error;
+          objectMissing = true;
+        }
+      }
+      if (objectMissing) {
+        db.prepare(`
+          DELETE FROM file_access_requests
+          WHERE id = ? AND upload_claim = ? AND object_key = ?
+        `).run(row.id, row.upload_claim, row.object_key);
+      } else {
+        db.prepare(`
+          UPDATE file_access_requests
+          SET upload_claim = NULL, reserved_upload_bytes = 0, reserved_upload_quota_key = NULL
+          WHERE id = ? AND upload_claim = ? AND object_key = ?
+        `).run(row.id, row.upload_claim, row.object_key);
+      }
+    }
   }
   await cleanupUnreferencedFileObjects();
 }
@@ -3748,24 +3885,21 @@ function sendFileAccessPreviewPage(response, url, {
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
   const isPDFPreview = preview?.kind === "pdf";
-  const pageControlsMarkup = `
+  const pageControlsMarkup = isPDFPreview ? "" : `
         <div class="tool-group">
           <button type="button" data-action="prev">이전</button>
           <button type="button" data-action="next">다음</button>
         </div>`;
-  const zoomControlsMarkup = `
+  const zoomControlsMarkup = isPDFPreview ? "" : `
         <div class="tool-group">
           <button type="button" data-action="zoom-out">축소</button>
           <button type="button" data-action="fit">맞춤</button>
           <button type="button" data-action="zoom-in">확대</button>
         </div>`;
-  const previewStatusText = isPDFPreview ? "PDF 불러오는 중" : "1 / 1 · 100%";
+  const previewStatusText = isPDFPreview ? "브라우저 PDF 뷰어" : "1 / 1 · 100%";
   const previewNote = isPDFPreview
-    ? "위 도구막대로 PDF 쪽 이동과 확대/축소를 조절할 수 있습니다."
+    ? "브라우저의 내장 PDF 도구로 쪽 이동과 확대/축소를 조절할 수 있습니다."
     : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다.";
-  const pdfScriptMarkup = isPDFPreview
-    ? `<script nonce="${scriptNonce}" src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>`
-    : "";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -3793,9 +3927,8 @@ function sendFileAccessPreviewPage(response, url, {
     button:disabled { color: var(--muted); cursor: not-allowed; opacity: .55; }
     .status { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 750; }
     .viewer { min-height: min(74vh, 760px); background: rgba(15,23,42,.05); }
-    .pdf-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #334155; }
-    .pdf-stage canvas { max-width: none; background: white; border-radius: 6px; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
-    .pdf-error { color: white; font-weight: 750; padding: 18px; text-align: center; }
+    .pdf-stage { height: min(74vh, 760px); background: #334155; }
+    .pdf-stage iframe { width: 100%; height: 100%; border: 0; background: white; }
     .image-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #0f172a; }
     .image-stage img { max-width: 100%; transform-origin: top center; transition: transform .12s ease; border-radius: 8px; background: white; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
     .text-stage { height: min(74vh, 760px); overflow: auto; background: #fff; color: #111827; }
@@ -3828,7 +3961,6 @@ ${zoomControlsMarkup}
       <div class="note">${escapeHTML(previewNote)}</div>
     </section>
   </main>
-  ${pdfScriptMarkup}
   <script nonce="${scriptNonce}">
     const root = document.querySelector("main");
     const kind = root.dataset.kind;
@@ -3839,8 +3971,6 @@ ${zoomControlsMarkup}
     let page = 1;
     let zoom = 1;
     let pages = [""];
-    let pdfDoc = null;
-    let pdfRenderToken = 0;
     const bumpUsage = () => {
       if (!usageChip || usageBumped) return;
       usageBumped = true;
@@ -3851,11 +3981,6 @@ ${zoomControlsMarkup}
     };
     const setStatus = () => {
       if (!status) return;
-      if (kind === "pdf") {
-        const max = Math.max(1, pages.length);
-        status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
-        return;
-      }
       const max = Math.max(1, pages.length);
       status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
     };
@@ -3871,38 +3996,8 @@ ${zoomControlsMarkup}
       } else if (kind === "image") {
         const img = document.querySelector("[data-image-preview]");
         if (img) img.style.transform = "scale(" + zoom + ")";
-      } else if (kind === "pdf") {
-        renderPDF();
       }
       setStatus();
-    };
-    const renderPDF = async () => {
-      if (!pdfDoc) {
-        setStatus();
-        return;
-      }
-      const canvas = document.querySelector("[data-pdf-canvas]");
-      const errorBox = document.querySelector("[data-pdf-error]");
-      if (!canvas) return;
-      const token = ++pdfRenderToken;
-      try {
-        const pdfPage = await pdfDoc.getPage(page);
-        if (token !== pdfRenderToken) return;
-        const viewport = pdfPage.getViewport({ scale: zoom });
-        const context = canvas.getContext("2d");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = Math.ceil(viewport.width) + "px";
-        canvas.style.height = Math.ceil(viewport.height) + "px";
-        await pdfPage.render({ canvasContext: context, viewport }).promise;
-        if (errorBox) errorBox.hidden = true;
-        setStatus();
-      } catch (error) {
-        if (errorBox) {
-          errorBox.hidden = false;
-          errorBox.textContent = "PDF 미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
-        }
-      }
     };
     const splitTextPages = (text) => {
       const target = 3600;
@@ -3928,33 +4023,8 @@ ${zoomControlsMarkup}
         .then((text) => { pages = splitTextPages(text); page = 1; render(); })
         .catch(() => { pages = ["미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."]; render(); });
     } else if (kind === "pdf") {
-      if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-        window.pdfjsLib.getDocument({ url: rawURL, disableWorker: true }).promise
-          .then((doc) => {
-            pdfDoc = doc;
-            pages = Array.from({ length: Math.max(1, doc.numPages) }, (_, index) => String(index + 1));
-            page = 1;
-            bumpUsage();
-            render();
-          })
-          .catch(() => {
-            const errorBox = document.querySelector("[data-pdf-error]");
-            if (errorBox) {
-              errorBox.hidden = false;
-              errorBox.textContent = "PDF 미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
-            }
-            pages = [""];
-            render();
-          });
-      } else {
-        const errorBox = document.querySelector("[data-pdf-error]");
-        if (errorBox) {
-          errorBox.hidden = false;
-          errorBox.textContent = "PDF 미리보기 모듈을 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
-        }
-        render();
-      }
+      const resource = document.querySelector("[data-pdf-preview]");
+      if (resource) resource.addEventListener("load", bumpUsage, { once: true });
     } else {
       pages = [""];
       render();
@@ -3984,7 +4054,7 @@ ${zoomControlsMarkup}
   response.writeHead(status, {
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-store",
-    "Content-Security-Policy": `default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'nonce-${scriptNonce}'; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
+    "Content-Security-Policy": `default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'nonce-${scriptNonce}'; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
@@ -4017,7 +4087,7 @@ function filePreviewViewerMarkup(preview, rawURL) {
     return `<div class="media-stage"><video controls src="${url}"></video></div>`;
   }
   if (preview.kind === "pdf") {
-    return `<div class="pdf-stage"><canvas data-pdf-canvas aria-label="PDF 미리보기"></canvas><div class="pdf-error" data-pdf-error hidden></div></div>`;
+    return `<div class="pdf-stage"><iframe data-pdf-preview src="${url}" title="PDF 미리보기"></iframe></div>`;
   }
   return `<div class="empty">이 파일은 웹 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</div>`;
 }

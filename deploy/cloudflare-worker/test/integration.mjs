@@ -12,8 +12,8 @@ const wrangler = path.join(cwd, "node_modules", "wrangler", "bin", "wrangler.js"
 const persistTo = await fs.mkdtemp(path.join(os.tmpdir(), "klms-d1-integration-"));
 const port = await availablePort();
 const baseURL = `http://127.0.0.1:${port}`;
-const clientToken = "integration-client-token";
-const workerToken = "integration-worker-token";
+const clientToken = "integration-client-token-0123456789abcdef0123456789abcdef";
+const workerToken = "integration-worker-token-fedcba9876543210fedcba9876543210";
 let dev = null;
 let devOutput = "";
 

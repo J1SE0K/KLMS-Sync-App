@@ -114,6 +114,49 @@ test("light and dark semantic status colors exceed WCAG AA normal-text contrast"
   }
 });
 
+test("light and dark interactive boundaries exceed WCAG non-text contrast", () => {
+  const styles = read("src/styles.css");
+  const lightVariables = cssVariables(styles.match(/^:root\s*\{([\s\S]*?)\}/)?.[1]);
+  const darkVariables = cssVariables(
+    styles.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([\s\S]*?)\}/)?.[1]
+  );
+
+  for (const [theme, variables] of [["light", lightVariables], ["dark", darkVariables]]) {
+    const pairs = [
+      ["control-border", "input-bg"],
+      ["active-border", "active-bg"],
+      ["status-ok-border", "status-ok-bg"],
+      ["status-warn-border", "status-warn-bg"],
+      ["status-fail-border", "status-fail-bg"]
+    ];
+    for (const [foregroundName, backgroundName] of pairs) {
+      const foreground = variables.get(foregroundName);
+      const background = variables.get(backgroundName);
+      assert.ok(foreground, `${theme} ${foregroundName} is declared`);
+      assert.ok(background, `${theme} ${backgroundName} is declared`);
+      assert.ok(
+        contrastRatio(foreground, background) >= 3,
+        `${theme} ${foregroundName} ${foreground} on ${backgroundName} ${background}`
+      );
+    }
+  }
+
+  assert.match(styles, /button\.secondary\s*\{[^}]*border: 1px solid var\(--control-border\)/);
+  assert.match(styles, /button\.ghost\s*\{[^}]*border: 1px solid var\(--control-border\)/);
+  assert.match(styles, /input,\s*select,\s*textarea\s*\{[^}]*border: 1px solid var\(--control-border\)/);
+  assert.match(styles, /\.metric-card\s*\{[^}]*border: 1px solid var\(--control-border\)/);
+  assert.match(styles, /\.item-row\s*\{[^}]*border: 1px solid var\(--control-border\)/);
+  assert.match(styles, /\.toggle-action\s*\{[^}]*border: 1px solid var\(--control-border\)/);
+});
+
+function cssVariables(block) {
+  assert.ok(block, "CSS variable block exists");
+  return new Map(
+    [...block.matchAll(/--([a-z0-9-]+):\s*(#[0-9a-f]{6})\s*;/gi)]
+      .map((match) => [match[1], match[2]])
+  );
+}
+
 function contrastRatio(foreground, background) {
   const [lighter, darker] = [relativeLuminance(foreground), relativeLuminance(background)]
     .sort((lhs, rhs) => rhs - lhs);

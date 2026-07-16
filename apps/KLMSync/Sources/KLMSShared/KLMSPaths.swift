@@ -61,6 +61,10 @@ public struct KLMSPaths: Sendable, Equatable {
         cacheURL.appendingPathComponent("app_command_history.json")
     }
 
+    public var serverRelayTerminalCommandOutboxURL: URL {
+        cacheURL.appendingPathComponent("server_relay_terminal_command_outbox.json")
+    }
+
     public var installedPayloadVersionURL: URL {
         automationURL.appendingPathComponent("app_engine_payload_version")
     }

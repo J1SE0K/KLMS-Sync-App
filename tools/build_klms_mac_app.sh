@@ -152,9 +152,12 @@ for directory in src bin examples docs tools; do
     ditto --norsrc "$ROOT_DIR/$directory" "$PAYLOAD_ROOT/$directory"
   fi
 done
-if [[ -d "$ROOT_DIR/runtime/python-packages" ]]; then
-  ditto --norsrc "$ROOT_DIR/runtime/python-packages" "$PAYLOAD_ROOT/python-packages"
+VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"
+if [[ ! -d "$VENDORED_PYTHON_PACKAGES/bs4" || ! -d "$VENDORED_PYTHON_PACKAGES/soupsieve" ]]; then
+  print -r -- "missing tracked Python runtime packages: $VENDORED_PYTHON_PACKAGES" >&2
+  exit 1
 fi
+ditto --norsrc "$VENDORED_PYTHON_PACKAGES" "$PAYLOAD_ROOT/python-packages"
 
 root_files=(
   klms_login_assist.sh

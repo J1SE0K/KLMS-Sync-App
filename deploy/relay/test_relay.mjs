@@ -47,10 +47,47 @@ child.stderr.on("data", (chunk) => { stderr += chunk; });
 
 try {
   await waitForServer();
-  const initialReadiness = await fetch(`${baseURL}/readyz`);
+  assert.equal((await fetch(`${baseURL}/readyz`)).status, 401);
+  const initialReadiness = await request("/readyz", { role: "worker" });
   assert.equal(initialReadiness.status, 200);
   assert.equal((await initialReadiness.json()).ok, true);
   await fs.writeFile(sentinelPath, "must survive", "utf8");
+
+  {
+    const staleID = crypto.randomUUID();
+    const staleAt = new Date(Date.now() - (2 * 60 * 60 * 1000)).toISOString();
+    const observer = new DatabaseSync(dbPath);
+    try {
+      observer.prepare(`
+        INSERT INTO file_access_requests(
+          id, item_id, item_kind, item_title, status, created_at, updated_at, message
+        ) VALUES (?, 'unauthorized-maintenance', 'file', 'private', 'pending', ?, ?, '')
+      `).run(staleID, staleAt, staleAt);
+    } finally {
+      observer.close();
+    }
+    assert.equal((await fetch(`${baseURL}/v1/status`)).status, 401);
+    const verifier = new DatabaseSync(dbPath);
+    try {
+      assert.equal(
+        verifier.prepare("SELECT status FROM file_access_requests WHERE id = ?").get(staleID).status,
+        "pending",
+        "unauthorized requests must not run relay maintenance"
+      );
+      verifier.prepare("DELETE FROM file_access_requests WHERE id = ?").run(staleID);
+    } finally {
+      verifier.close();
+    }
+  }
+
+  assert.equal(
+    (await fetch(`${baseURL}/v1/file-access/not-a-uuid/download?ticket=${"a".repeat(64)}`)).status,
+    404
+  );
+  assert.equal(
+    (await fetch(`${baseURL}/v1/file-access/00000000-0000-4000-8000-000000000001/download?ticket=short`)).status,
+    403
+  );
 
   const initialStatus = await jsonRequest("/v1/status");
   assert.equal(initialStatus.revision, 0);
@@ -279,6 +316,34 @@ try {
   const scriptNonce = /<script nonce="([^"]+)"/.exec(previewPageHTML)?.[1] || "";
   assert.ok(scriptNonce);
   assert.ok(previewPageCSP.includes(`script-src 'nonce-${scriptNonce}'`));
+
+  const pdfPreview = await createUploadedFile(
+    "file-pdf-preview",
+    "lecture.pdf",
+    "%PDF-1.4\n",
+    "application/pdf"
+  );
+  const pdfPreviewURL = new URL(pdfPreview.downloadURL);
+  pdfPreviewURL.searchParams.set("preview", "1");
+  const pdfPreviewResponse = await fetch(pdfPreviewURL);
+  assert.equal(pdfPreviewResponse.status, 200);
+  const pdfPreviewHTML = await pdfPreviewResponse.text();
+  assert.match(pdfPreviewHTML, /브라우저의 내장 PDF 도구/);
+  assert.match(pdfPreviewHTML, /data-pdf-preview/);
+  assert.doesNotMatch(pdfPreviewHTML, /pdfjs-dist|pdfjsLib|getDocument/);
+
+  const hostileTitle = '<img src=x onerror="globalThis.__klmsXSS=true">.txt';
+  const hostilePreview = await createUploadedFile(
+    "file-hostile-title",
+    hostileTitle,
+    "escaped",
+    "text/plain"
+  );
+  const hostilePageResponse = await fetch(hostilePreview.downloadURL);
+  assert.equal(hostilePageResponse.status, 200);
+  const hostilePageHTML = await hostilePageResponse.text();
+  assert.match(hostilePageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
+  assert.doesNotMatch(hostilePageHTML, /<img src=x onerror=/);
 
   {
     const orphanRequestID = crypto.randomUUID();
@@ -839,9 +904,9 @@ try {
       "startup must recover an upload claim owned by a dead relay process"
     );
     assert.equal(
-      recoveredDB.prepare("SELECT upload_claim FROM file_access_requests WHERE id = ?").get(interruptedDeletionRequest.id).upload_claim,
-      null,
-      "startup must recover an interrupted deletion claim after its file was removed"
+      recoveredDB.prepare("SELECT id FROM file_access_requests WHERE id = ?").get(interruptedDeletionRequest.id),
+      undefined,
+      "startup must remove an interrupted deletion row after its file was removed"
     );
   } finally {
     recoveredDB.close();
@@ -961,13 +1026,71 @@ try {
   }
 
   {
+    const shortTokenPort = await availablePort();
+    const shortTokenChild = spawn(process.execPath, [serverPath], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        KLMS_RELAY_HOST: "127.0.0.1",
+        KLMS_RELAY_PORT: String(shortTokenPort),
+        KLMS_RELAY_DB: path.join(root, "short-token.sqlite"),
+        KLMS_RELAY_FILE_DIR: path.join(root, "short-token-files"),
+        KLMS_RELAY_CLIENT_TOKEN: "short-client-token",
+        KLMS_RELAY_WORKER_TOKEN: "short-worker-token",
+        NODE_ENV: "test",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const shortTokenResult = await collectChild(shortTokenChild);
+    assert.notEqual(shortTokenResult.code, 0);
+    assert.match(shortTokenResult.stderr, /at least 32 bytes/);
+  }
+
+  {
+    const rateLimitPort = await availablePort();
+    const rateLimitBaseURL = `http://127.0.0.1:${rateLimitPort}`;
+    const rateLimitChild = spawn(process.execPath, [serverPath], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        KLMS_RELAY_HOST: "127.0.0.1",
+        KLMS_RELAY_PORT: String(rateLimitPort),
+        KLMS_RELAY_DB: path.join(root, "rate-limit.sqlite"),
+        KLMS_RELAY_FILE_DIR: path.join(root, "rate-limit-files"),
+        KLMS_RELAY_CLIENT_TOKEN: clientToken,
+        KLMS_RELAY_WORKER_TOKEN: workerToken,
+        KLMS_RELAY_REQUESTS_PER_MINUTE: "2",
+        NODE_ENV: "test",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let rateLimitStderr = "";
+    rateLimitChild.stderr.setEncoding("utf8");
+    rateLimitChild.stderr.on("data", (chunk) => { rateLimitStderr += chunk; });
+    try {
+      await waitForHTTPServer(rateLimitChild, rateLimitBaseURL, () => rateLimitStderr);
+      const headers = { Authorization: `Bearer ${clientToken}` };
+      assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers })).status, 200);
+      assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers })).status, 200);
+      const limited = await fetch(`${rateLimitBaseURL}/v1/status`, { headers });
+      assert.equal(limited.status, 429);
+      assert.equal(limited.headers.get("Retry-After"), "60");
+    } finally {
+      if (rateLimitChild.exitCode == null) {
+        rateLimitChild.kill("SIGTERM");
+        await onceExit(rateLimitChild);
+      }
+    }
+  }
+
+  {
     const readinessDB = new DatabaseSync(dbPath);
     try {
       readinessDB.exec("DROP TABLE item_actions");
     } finally {
       readinessDB.close();
     }
-    const unavailable = await fetch(`${baseURL}/readyz`);
+    const unavailable = await request("/readyz", { role: "worker" });
     assert.equal(unavailable.status, 503);
     assert.equal((await unavailable.json()).ok, false);
   }
@@ -1000,7 +1123,7 @@ async function request(route, { method = "GET", role = "client", body, rawBody, 
   });
 }
 
-async function createUploadedFile(itemID, itemTitle, rawBody) {
+async function createUploadedFile(itemID, itemTitle, rawBody, contentType = "text/plain") {
   const fileRequest = await jsonRequest("/v1/file-access", {
     method: "POST",
     expectedStatus: 201,
@@ -1011,7 +1134,7 @@ async function createUploadedFile(itemID, itemTitle, rawBody) {
     role: "worker",
     rawBody,
     headers: {
-      "Content-Type": "text/plain",
+      "Content-Type": contentType,
       "Content-Length": String(Buffer.byteLength(rawBody)),
       "X-KLMS-Filename": encodeURIComponent(itemTitle),
     },

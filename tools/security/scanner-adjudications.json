@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "semgrep": {
+    "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
+    "expectedFindings": 33,
+    "coordinatesSha256": "e52841920d541359ee9de4416461b401ca92b8ca6b6bee1e8d04148e6e814f3b",
+    "adjudications": [
+      {
+        "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
+        "path": "apps/KLMSyncWindows/src/renderer.js",
+        "expectedCount": 1,
+        "reason": "The key is escaped with escapeRegExp before RegExp construction and is used only to parse bounded diagnostic counters."
+      },
+      {
+        "rule": "javascript.lang.security.html-in-template-string",
+        "path": "deploy/cloudflare-worker/src/worker.mjs",
+        "expectedCount": 12,
+        "reason": "The download UI is intentionally server-rendered; every variable is escaped or assembled from fixed same-origin URL helpers, and CSP plus hostile-title regression tests prevent script execution."
+      },
+      {
+        "rule": "javascript.lang.security.html-in-template-string",
+        "path": "tools/klms_relay_server.mjs",
+        "expectedCount": 12,
+        "reason": "The download UI is intentionally server-rendered; every variable is escaped or assembled from fixed same-origin URL helpers, and CSP plus hostile-title regression tests prevent script execution."
+      },
+      {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
+        "path": "src/python/doctor.py",
+        "expectedCount": 1,
+        "reason": "The executable and arguments come from a fixed application-name allowlist, use an argv array without a shell, and have a timeout."
+      },
+      {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
+        "path": "src/python/fetch_pages_backend.py",
+        "expectedCount": 1,
+        "reason": "The Safari helper command is constructed from repository-owned paths and validated numeric options, uses an argv array without a shell, and is serialized by a file lock."
+      },
+      {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
+        "path": "src/python/process_klms_assignments.py",
+        "expectedCount": 1,
+        "reason": "The fixed Codex CLI argv uses a read-only sandbox and receives assignment text through stdin rather than shell interpolation."
+      },
+      {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
+        "path": "tools/generate_klms_app_icon.py",
+        "expectedCount": 1,
+        "reason": "The optional iconutil invocation uses a fixed executable and fixed argv array without a shell."
+      },
+      {
+        "rule": "python.lang.security.insecure-hash-algorithm-sha1",
+        "path": "src/python/build_course_file_manifest.py",
+        "expectedCount": 1,
+        "reason": "SHA-1 preserves an existing cache signature and is explicitly marked usedforsecurity=False; it does not protect credentials or integrity."
+      },
+      {
+        "rule": "python.lang.security.insecure-hash-algorithm-sha1",
+        "path": "src/python/klms_sync.py",
+        "expectedCount": 1,
+        "reason": "SHA-1 preserves an existing notice deduplication fingerprint and is explicitly marked usedforsecurity=False; it is not a trust decision."
+      },
+      {
+        "rule": "python.lang.security.insecure-hash-algorithm-sha1",
+        "path": "src/python/process_klms_assignments.py",
+        "expectedCount": 1,
+        "reason": "SHA-1 preserves stable fallback assignment identifiers and is explicitly marked usedforsecurity=False; it is not a trust decision."
+      },
+      {
+        "rule": "python.lang.security.insecure-hash-algorithm-sha1",
+        "path": "tools/generate_klms_ios_xcode_project.py",
+        "expectedCount": 1,
+        "reason": "SHA-1 deterministically derives non-secret Xcode object identifiers and is not used for authentication or integrity."
+      }
+    ]
+  },
+  "detectSecrets": {
+    "excludedFiles": [
+      {
+        "path": "tools/security/security-tool-versions.env",
+        "reason": "This manifest intentionally contains public release commit IDs and SHA-256 checksums only."
+      },
+      {
+        "path": "tools/security/scanner-adjudications.json",
+        "reason": "This policy intentionally contains only scanner-coordinate SHA-256 digests and false-positive rationale."
+      }
+    ],
+    "expectedFindings": 20,
+    "coordinatesSha256": "cdc2fe02b47e707579cababa5a68080dc85822408652b27ba302bdf11fb9fe5f",
+    "adjudications": [
+      {
+        "type": "Base64 High Entropy String",
+        "path": "apps/KLMSync/Tests/KLMSSharedTests/DashboardDataModelTests.swift",
+        "expectedCount": 1,
+        "reason": "The match is Swift source syntax asserted as a test fixture, not a credential."
+      },
+      {
+        "type": "Hex High Entropy String",
+        "path": "apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj/xcshareddata/xcschemes/KLMSiOS.xcscheme",
+        "expectedCount": 2,
+        "reason": "The matches are deterministic Xcode BlueprintIdentifier values."
+      },
+      {
+        "type": "Basic Auth Credentials",
+        "path": "apps/KLMSyncWindows/test/relay-security.test.cjs",
+        "expectedCount": 1,
+        "reason": "The match is an intentionally invalid URL credential fixture used to prove rejection."
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "path": "deploy/cloudflare-worker/test/integration.mjs",
+        "expectedCount": 2,
+        "reason": "The matches are fixed synthetic client and worker tokens for an isolated local integration relay."
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "path": "deploy/cloudflare-worker/test/smoke.mjs",
+        "expectedCount": 2,
+        "reason": "The matches are fixed synthetic client and worker tokens for an in-memory smoke relay."
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "path": "tools/generate_klms_ios_xcode_project.py",
+        "expectedCount": 9,
+        "reason": "The matches are deterministic Xcode build-setting and generated-project literals."
+      },
+      {
+        "type": "Base64 High Entropy String",
+        "path": "tools/test_klms_ios_ui_matrix.sh",
+        "expectedCount": 3,
+        "reason": "The matches are public XCTest method identifiers used to select responsive-layout tests."
+      }
+    ]
+  }
+}

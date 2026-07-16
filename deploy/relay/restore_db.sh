@@ -140,7 +140,7 @@ compose up -d --force-recreate relay
 attempt=0
 while [ "$attempt" -lt "$READINESS_ATTEMPTS" ]; do
   if compose exec -T relay node -e \
-    "fetch('http://127.0.0.1:18484/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+    "fetch('http://127.0.0.1:18484/readyz',{headers:{Authorization:'Bearer '+process.env.KLMS_RELAY_WORKER_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
     RESTORE_COMMITTED=1
     RELAY_STOPPED=0
     CANDIDATE_STARTED=0

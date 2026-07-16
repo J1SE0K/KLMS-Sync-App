@@ -1714,9 +1714,7 @@ function toAllWeekCourseUrl(courseViewUrl) {
   if (!match) {
     return "";
   }
-  const originMatch = text.match(/^https?:\/\/[^/]+/);
-  const origin = originMatch ? originMatch[0] : "https://klms.kaist.ac.kr";
-  return `${origin}/course/view.php?id=${match[1]}&section=0`;
+  return `https://klms.kaist.ac.kr/course/view.php?id=${match[1]}&section=0`;
 }
 
 function fetchPages(urls, waitSeconds, scriptDir, options) {

@@ -368,6 +368,122 @@ public protocol RemoteCommandStore: Sendable {
     func update(_ command: RemoteRunCommand) async throws
 }
 
+public enum RemoteCommandTerminalOutboxError: Error, Equatable {
+    case commandIsNotTerminal
+}
+
+public struct RemoteCommandTerminalOutboxEntry: Codable, Sendable, Equatable {
+    public var relayURL: String
+    public var workerTokenFingerprint: String
+    public var command: RemoteRunCommand
+    public var enqueuedAt: Date
+
+    public init(
+        relayURL: String,
+        workerTokenFingerprint: String,
+        command: RemoteRunCommand,
+        enqueuedAt: Date = Date()
+    ) {
+        self.relayURL = relayURL
+        self.workerTokenFingerprint = workerTokenFingerprint
+        self.command = command
+        self.enqueuedAt = enqueuedAt
+    }
+}
+
+private struct RemoteCommandTerminalOutboxDocument: Codable {
+    var entries: [RemoteCommandTerminalOutboxEntry] = []
+}
+
+public struct RemoteCommandTerminalOutboxStore: Sendable {
+    public var url: URL
+
+    public init(url: URL) {
+        self.url = url
+    }
+
+    public func enqueue(
+        _ command: RemoteRunCommand,
+        relayURL: String,
+        workerTokenFingerprint: String,
+        now: Date = Date()
+    ) throws {
+        guard command.status.isTerminal else {
+            throw RemoteCommandTerminalOutboxError.commandIsNotTerminal
+        }
+        let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
+        var document = try load()
+        document.entries.removeAll {
+            $0.command.id == command.id
+                && $0.relayURL == normalizedRelayURL
+                && $0.workerTokenFingerprint == workerTokenFingerprint
+        }
+        document.entries.append(
+            RemoteCommandTerminalOutboxEntry(
+                relayURL: normalizedRelayURL,
+                workerTokenFingerprint: workerTokenFingerprint,
+                command: command,
+                enqueuedAt: now
+            )
+        )
+        document.entries.sort { $0.enqueuedAt < $1.enqueuedAt }
+        try save(document)
+    }
+
+    public func pending(
+        relayURL: String,
+        workerTokenFingerprint: String
+    ) throws -> [RemoteCommandTerminalOutboxEntry] {
+        let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
+        return try load().entries.filter {
+            $0.relayURL == normalizedRelayURL
+                && $0.workerTokenFingerprint == workerTokenFingerprint
+        }
+    }
+
+    public func acknowledge(
+        commandID: UUID,
+        relayURL: String,
+        workerTokenFingerprint: String
+    ) throws {
+        let normalizedRelayURL = Self.normalizedRelayURL(relayURL)
+        var document = try load()
+        document.entries.removeAll {
+            $0.command.id == commandID
+                && $0.relayURL == normalizedRelayURL
+                && $0.workerTokenFingerprint == workerTokenFingerprint
+        }
+        try save(document)
+    }
+
+    private func load() throws -> RemoteCommandTerminalOutboxDocument {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            return RemoteCommandTerminalOutboxDocument()
+        }
+        let data = try Data(contentsOf: url)
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try decoder.decode(RemoteCommandTerminalOutboxDocument.self, from: data)
+    }
+
+    private func save(_ document: RemoteCommandTerminalOutboxDocument) throws {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(document).write(to: url, options: .atomic)
+    }
+
+    private static func normalizedRelayURL(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+}
+
 public struct LocalRemoteConnectionInfo: Sendable, Equatable {
     public static let defaultPort: UInt16 = 18483
 

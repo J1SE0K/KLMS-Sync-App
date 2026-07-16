@@ -858,6 +858,44 @@ public struct KeyedCommittedBaselineTracker<Key: Hashable, Value> {
     }
 }
 
+public struct KeyedMutationVersionTracker<Key: Hashable> {
+    private var nextVersion: UInt64 = 0
+    private var versions: [Key: UInt64] = [:]
+
+    public init() {}
+
+    public mutating func begin(for key: Key) -> UInt64 {
+        nextVersion &+= 1
+        versions[key] = nextVersion
+        return nextVersion
+    }
+
+    public func owns(key: Key, version: UInt64) -> Bool {
+        versions[key] == version
+    }
+
+    @discardableResult
+    public mutating func end(key: Key, version: UInt64) -> Bool {
+        guard owns(key: key, version: version) else { return false }
+        versions.removeValue(forKey: key)
+        return true
+    }
+
+    public mutating func reset() {
+        versions.removeAll()
+    }
+}
+
+public enum OptimisticRollbackPolicy {
+    public static func shouldRestore<Value: Equatable>(
+        ownsCurrentVersion: Bool,
+        currentValue: Value,
+        optimisticValue: Value
+    ) -> Bool {
+        ownsCurrentVersion && currentValue == optimisticValue
+    }
+}
+
 public enum RelayHeartbeatPolicy {
     public static let helloTimeoutNanoseconds: UInt64 = 10_000_000_000
     public static let intervalNanoseconds: UInt64 = 10_000_000_000

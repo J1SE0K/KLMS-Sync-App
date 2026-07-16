@@ -872,7 +872,7 @@ def stable_assignment_id(assignment: dict[str, Any]) -> str:
             normalize_whitespace(str(assignment.get("sync_due") or assignment.get("due", ""))),
         ]
     )
-    return "item-" + hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12]
+    return "item-" + hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
 
 
 def assignment_output_dir(output_root: Path, assignment: dict[str, Any], assignment_id: str) -> Path:

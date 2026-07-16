@@ -106,7 +106,7 @@ DB 백업:
 ./restore_db.sh /data/backups/klms-sync-relay.sqlite-20260714T120000Z.backup
 ```
 
-마이그레이션은 relay 시작 시 additive schema 변경을 적용한다. 업데이트 전 `./backup_db.sh`, 업데이트 후 `curl -fsS https://sync.example.com/readyz` 순서로 확인한다. `/healthz`는 프로세스 생존만, `/readyz`는 DB schema와 WebSocket upgrade 준비까지 검사한다.
+마이그레이션은 relay 시작 시 additive schema 변경을 적용한다. 업데이트 전 `./backup_db.sh`, 업데이트 후 `curl -fsS -H "Authorization: Bearer $KLMS_RELAY_WORKER_TOKEN" https://sync.example.com/readyz` 순서로 확인한다. `/healthz`는 공개 프로세스 생존만, `/readyz`는 worker token 인증 후 DB schema와 WebSocket upgrade 준비까지 검사한다.
 다운로드 reservation table이 없던 이전 backup도 검증·복원할 수 있으며, relay가 시작되면서 해당 table을
 additive하게 생성한다. 복원 완료 판정은 새 schema가 반영된 `/readyz` 200 응답까지 포함한다.
 

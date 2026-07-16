@@ -84,7 +84,7 @@ remove_path "$REPO_ROOT/runtime/cache/generated_section.html"
 while IFS= read -r pycache_dir; do
   remove_path "$pycache_dir"
 done < <(
-  find "$REPO_ROOT/src" "$REPO_ROOT/tests" "$REPO_ROOT/runtime/python-packages" \
+  find "$REPO_ROOT/src" "$REPO_ROOT/tests" "$REPO_ROOT/runtime/python-packages" "$REPO_ROOT/vendor/python-packages" \
     -type d -name __pycache__ -prune 2>/dev/null | sort
 )
 

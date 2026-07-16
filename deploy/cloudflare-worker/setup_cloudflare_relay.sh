@@ -431,7 +431,9 @@ deploy_worker() {
 
   if command -v curl >/dev/null 2>&1 && [[ "$worker_url" == https://* ]]; then
     print -- "readyz 확인 중..."
-    curl --tlsv1.2 -fsS "$worker_url/readyz"
+    local worker_token
+    worker_token="$(<"$WORKER_TOKEN_FILE")"
+    curl --tlsv1.2 -fsS -H "Authorization: Bearer $worker_token" "$worker_url/readyz"
     print
   fi
 

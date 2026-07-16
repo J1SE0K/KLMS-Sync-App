@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -7,6 +8,14 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
+PYTHON_SUBPROCESS_ENV = {
+    "PYTHONPATH": os.pathsep.join(
+        (
+            str(PROJECT_DIR / "src" / "python"),
+            str(PROJECT_DIR / "vendor" / "python-packages"),
+        )
+    )
+}
 
 
 def extract_function(text: str, name: str) -> str:
@@ -286,7 +295,7 @@ console.log(JSON.stringify({{
                     "--validate-only",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -374,7 +383,7 @@ console.log(JSON.stringify({{
                     "--validate-only",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -454,7 +463,7 @@ if (!result.includes("changed=3")) {
                     str(output_status),
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=False,

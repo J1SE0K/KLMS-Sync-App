@@ -12,6 +12,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-evidence:
+    name: Reproducible security evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "22"
+      - name: Install pinned security scanners
+        run: tools/security/install_security_scanners.sh "$RUNNER_TEMP/klms-security-scanners"
+      - name: Run private security evidence gate
+        env:
+          KLMS_SECURITY_REQUIRE_CLEAN: "1"
+        run: |
+          tools/security/run_security_evidence.sh \
+            "$RUNNER_TEMP/klms-security-evidence" \
+            "$RUNNER_TEMP/klms-security-scanners"
+
   core-tests:
     name: Core safety tests
     runs-on: macos-26
@@ -29,6 +53,8 @@ jobs:
             -not -path '*/node_modules/*' -print0 \
             | xargs -0 -n 1 zsh -n
       - name: Run Python regression suite
+        env:
+          PYTHONPATH: ${{ github.workspace }}/vendor/python-packages
         run: python3 -B -m unittest discover -s tests
 
   swift-tests:

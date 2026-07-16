@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import worker from "../src/worker.mjs";
 
-const clientToken = "test-client-token";
-const workerToken = "test-worker-token";
+const clientToken = "test-client-token-0123456789abcdef0123456789abcdef";
+const workerToken = "test-worker-token-fedcba9876543210fedcba9876543210";
 let env;
 
 async function runSmoke() {
@@ -15,19 +15,21 @@ async function runSmoke() {
   };
 
   await expectJSON("/healthz", { ok: true, storage: "cloudflare-d1", configured: true }, { auth: false });
+  assert.equal((await request("/healthz", { auth: false })).headers.get("Access-Control-Allow-Origin"), null);
 
   {
-    const missingRealtime = await expectJSON("/readyz", undefined, { auth: false, status: 503 });
+    assert.equal((await request("/readyz", { auth: false })).status, 401);
+    const missingRealtime = await expectJSON("/readyz", undefined, { role: "worker", status: 503 });
     assert.equal(missingRealtime.ok, false);
     assert.equal(missingRealtime.checks.realtime, false);
     env.RELAY_REALTIME = {
       idFromName: () => "default",
       get: () => ({ fetch: async () => new Response("ok") }),
     };
-    const ready = await expectJSON("/readyz", undefined, { auth: false });
+    const ready = await expectJSON("/readyz", undefined, { role: "worker" });
     assert.equal(ready.ok, true);
     env.RELAY_DB.schemaComplete = false;
-    const missingSchema = await expectJSON("/readyz", undefined, { auth: false, status: 503 });
+    const missingSchema = await expectJSON("/readyz", undefined, { role: "worker", status: 503 });
     assert.equal(missingSchema.checks.schema, false);
     env.RELAY_DB.schemaComplete = true;
     delete env.RELAY_REALTIME;
@@ -44,6 +46,42 @@ async function runSmoke() {
   {
     const response = await request("/v1/status", { auth: false });
     assert.equal(response.status, 401);
+  }
+
+  {
+    env.RELAY_REQUESTS_PER_MINUTE = "2";
+    const headers = { "CF-Connecting-IP": "203.0.113.42" };
+    assert.equal((await request("/v1/status", { headers })).status, 200);
+    assert.equal((await request("/v1/status", { headers })).status, 200);
+    const limited = await request("/v1/status", { headers });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("Retry-After"), "60");
+    delete env.RELAY_REQUESTS_PER_MINUTE;
+  }
+
+  {
+    const prepareCount = env.RELAY_DB.prepareCount;
+    const malformedID = await request(`/v1/file-access/not-a-uuid/download?ticket=${"a".repeat(64)}`, { auth: false });
+    assert.equal(malformedID.status, 404);
+    assert.equal(env.RELAY_DB.prepareCount, prepareCount, "malformed download UUID must not touch D1");
+    const malformedTicket = await request("/v1/file-access/00000000-0000-4000-8000-000000000001/download?ticket=short", { auth: false });
+    assert.equal(malformedTicket.status, 401);
+    assert.equal(env.RELAY_DB.prepareCount, prepareCount, "malformed download ticket must not touch D1");
+    for (const malformedPath of [
+      "/v1/commands/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a",
+      "/v1/item-actions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a",
+      "/v1/setting-actions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a",
+      "/v1/file-access/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a",
+      "/v1/file-access/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a/upload",
+    ]) {
+      const malformedMutation = await request(malformedPath, {
+        method: "PUT",
+        role: "worker",
+        body: {},
+      });
+      assert.equal(malformedMutation.status, 404);
+      assert.equal(env.RELAY_DB.prepareCount, prepareCount, "malformed mutation UUID must not touch D1");
+    }
   }
 
   {
@@ -1434,14 +1472,9 @@ async function runSmoke() {
     const scriptNonce = /<script nonce="([^"]+)"/.exec(previewPageHTML)?.[1] || "";
     assert.ok(scriptNonce);
     assert.ok(previewPageCSP.includes(`script-src 'nonce-${scriptNonce}'`));
-    assert.match(previewPageHTML, /위 도구막대로 PDF 쪽 이동과 확대\/축소/);
-    assert.match(previewPageHTML, /data-action="zoom-in"/);
-    assert.match(previewPageHTML, /data-action="next"/);
-    assert.match(previewPageHTML, /pdfjs-dist/);
-    assert.match(previewPageHTML, /integrity="sha384-/);
-    assert.match(previewPageHTML, /disableWorker: true/);
-    assert.doesNotMatch(previewPageHTML, /pdf\.worker\.min\.js/);
-    assert.match(previewPageHTML, /data-pdf-canvas/);
+    assert.match(previewPageHTML, /브라우저의 내장 PDF 도구/);
+    assert.match(previewPageHTML, /data-pdf-preview/);
+    assert.doesNotMatch(previewPageHTML, /pdfjs-dist|pdfjsLib|getDocument/);
     assert.match(previewPageHTML, /data-status/);
 
     const previewURL = new URL(pdf.downloadURL);
@@ -1451,6 +1484,20 @@ async function runSmoke() {
     assert.equal(previewResponse.status, 200);
     assert.match(previewResponse.headers.get("Content-Type"), /^application\/pdf/);
     assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
+  }
+  {
+    const hostileTitle = '<img src=x onerror="globalThis.__klmsXSS=true">.txt';
+    const hostile = await createUploadedFile({
+      itemID: "file-hostile-title",
+      itemTitle: hostileTitle,
+      body: "escaped",
+      contentType: "text/plain",
+    });
+    const pageResponse = await worker.fetch(new Request(hostile.downloadURL), env);
+    assert.equal(pageResponse.status, 200);
+    const pageHTML = await pageResponse.text();
+    assert.match(pageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
+    assert.doesNotMatch(pageHTML, /<img src=x onerror=/);
   }
   {
     const png = await createUploadedFile({
@@ -1725,6 +1772,7 @@ class FakeD1 {
     this.lastChanges = 0;
     this.batchTail = Promise.resolve();
     this.schemaComplete = true;
+    this.prepareCount = 0;
   }
 
   async exec() {
@@ -1732,6 +1780,7 @@ class FakeD1 {
   }
 
   prepare(sql) {
+    this.prepareCount += 1;
     return new FakeStatement(this, sql);
   }
 

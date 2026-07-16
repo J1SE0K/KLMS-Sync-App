@@ -5,13 +5,14 @@
   --panel-soft: #f0f0eb;
   --input-bg: #ffffff;
   --line: #d8d5cc;
+  --control-border: #858178;
   --text: #151515;
   --muted: #6b6760;
   --accent: #c8b892;
   --accent-ink: #0e0d0a;
   --neutral-button: #30343a;
   --active-bg: #f0f0eb;
-  --active-border: #d8d5cc;
+  --active-border: #817d74;
   --blue: #2266d2;
   --green: #075e43;
   --orange: #7a3700;
@@ -21,9 +22,9 @@
   --status-ok-bg: #e3f4ed;
   --status-warn-bg: #fff0dc;
   --status-fail-bg: #fde8e9;
-  --status-ok-border: #78bca4;
-  --status-warn-border: #d39a59;
-  --status-fail-border: #d88a8f;
+  --status-ok-border: #3e8068;
+  --status-warn-border: #9b5c18;
+  --status-fail-border: #aa4b53;
   --attention-warn-bg: #fff4e6;
   --attention-success-bg: #e8f7f0;
   --inverse-bg: #30343a;
@@ -40,13 +41,14 @@
     --panel-soft: #222620;
     --input-bg: #151815;
     --line: #444a40;
+    --control-border: #6f786a;
     --text: #f1f3ed;
     --muted: #c1c6ba;
     --accent: #d2c092;
     --accent-ink: #17140d;
     --neutral-button: #e1e5dc;
     --active-bg: #30362c;
-    --active-border: #98a18f;
+    --active-border: #95a08f;
     --green: #8be2bd;
     --orange: #ffc27c;
     --purple: #cbb1ff;
@@ -165,13 +167,14 @@ button {
 }
 
 button.secondary {
+  border: 1px solid var(--control-border);
   background: var(--panel-soft);
   color: var(--text);
 }
 
 button.ghost {
   background: transparent;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   color: var(--muted);
 }
 
@@ -197,7 +200,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 10px 11px;
   background: var(--input-bg);
@@ -550,7 +553,7 @@ body.viewport-resizing .sidebar {
   gap: 7px;
   min-height: 104px;
   padding: 14px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   background: var(--panel);
   text-align: left;
@@ -681,7 +684,7 @@ body.viewport-resizing .sidebar {
   display: grid;
   gap: 4px;
   width: 100%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   border-radius: 8px;
   padding: 10px 11px;
   background: var(--input-bg);
@@ -878,7 +881,7 @@ body.viewport-resizing .sidebar {
   align-items: center;
   gap: 10px;
   min-height: 58px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--control-border);
   background: var(--input-bg);
   color: var(--text);
   text-align: left;

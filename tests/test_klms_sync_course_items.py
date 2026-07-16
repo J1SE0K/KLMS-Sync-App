@@ -18,6 +18,18 @@ def course_page(html: str) -> dict[str, str]:
 
 
 class CourseItemParsingTests(unittest.TestCase):
+    def test_klms_url_guard_requires_exact_https_origin(self) -> None:
+        self.assertTrue(klms_sync.is_same_klms_url("https://klms.kaist.ac.kr/course/view.php?id=1"))
+        self.assertTrue(klms_sync.is_same_klms_url("https://klms.kaist.ac.kr:443/my/"))
+        for url in (
+            "http://klms.kaist.ac.kr/my/",
+            "https://klms.kaist.ac.kr.evil.example/my/",
+            "https://klms.kaist.ac.kr@evil.example/my/",
+            "https://evil.example/?next=https://klms.kaist.ac.kr/my/",
+            "https://klms.kaist.ac.kr:444/my/",
+        ):
+            self.assertFalse(klms_sync.is_same_klms_url(url), url)
+
     def test_ignored_dashboard_course_is_not_collected(self) -> None:
         dashboard = klms_sync.DashboardParseResult(
             status="ok",

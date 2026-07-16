@@ -146,7 +146,8 @@ https://klms-sync-relay.<cloudflare-account>.workers.dev
 상태 확인:
 
 ```sh
-curl -fsS https://klms-sync-relay.<cloudflare-account>.workers.dev/readyz
+curl -fsS -H "Authorization: Bearer $WORKER_TOKEN" \
+  https://klms-sync-relay.<cloudflare-account>.workers.dev/readyz
 ```
 
 앱 연결값:
@@ -225,7 +226,7 @@ Object queue에서 직렬화한다. 느린 업로드 body 수신, R2 put/get/del
 `status`·`object_key`·`updated_at`을 다시 확인한다. 따라서 대용량 파일 전송 중에도 상태,
 동기화, 명령 API가 전역 queue에 막히지 않는다. binding이 없으면 Worker는 해당 API를
 503으로 차단하고 `/healthz`의 `configured`를 `false`로 반환한다. `/healthz`는 process
-liveness이고 `/readyz`는 token, D1 schema, R2, WebSocket, mutation coordinator를 모두 검사한다. 여러 Worker isolate가
+liveness이고 worker token으로 인증하는 `/readyz`는 token, D1 schema, R2, WebSocket, mutation coordinator를 모두 검사한다. 여러 Worker isolate가
 동시에 JSON snapshot을 갱신하면서 설정·항목·요청 로그를 유실하는 것을 막기 위한 필수
 binding이다.
 
@@ -243,7 +244,7 @@ npx wrangler --config wrangler.local.toml dev
 다른 터미널에서 확인한다.
 
 ```sh
-curl -fsS http://127.0.0.1:8787/readyz
+curl -fsS -H "Authorization: Bearer <RELAY_WORKER_TOKEN>" http://127.0.0.1:8787/readyz
 curl -fsS -H "Authorization: Bearer <RELAY_CLIENT_TOKEN>" http://127.0.0.1:8787/v1/status
 ```
 
@@ -251,7 +252,7 @@ curl -fsS -H "Authorization: Bearer <RELAY_CLIENT_TOKEN>" http://127.0.0.1:8787/
 
 기존 Node/SQLite 릴레이와 동일하다.
 
-- `GET /healthz` (liveness), `GET /readyz` (readiness)
+- `GET /healthz` (공개 liveness), worker token `GET /readyz` (인증된 readiness)
 - 클라이언트/worker: `GET /v1/status`, `POST /v1/commands`, `GET /v1/commands/recent?limit=8`, `GET /v1/sync-data?kind=exam&limit=50`, `GET /v1/shared-settings`, `PUT /v1/shared-settings/:key`, `POST /v1/item-actions`, `GET /v1/item-actions/recent?limit=10`
 - 파일 열기: 클라이언트 `POST /v1/file-access`, `GET /v1/file-access/recent`; worker `GET /v1/file-access/pending`, `PUT /v1/file-access/:id`, `PUT /v1/file-access/:id/upload`
 - worker 전용: `POST /v1/status`, `GET /v1/commands/pending`, `PUT /v1/commands/:id`, `POST /v1/sync-data`, `GET /v1/item-actions/pending`, `PUT /v1/item-actions/:id`

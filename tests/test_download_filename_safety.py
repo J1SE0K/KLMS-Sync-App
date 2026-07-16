@@ -16,6 +16,8 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
         helpers = "\n\n".join(
             self.extract_function(text, name)
             for name in (
+                "isExactKlmsHttpsUrl",
+                "canDirectFetchKlmsFile",
                 "splitFileName",
                 "extensionFamily",
                 "sanitizeDownloadFilename",
@@ -41,6 +43,20 @@ class DownloadFilenameSafetyTests(unittest.TestCase):
             text=True,
         )
         return json.loads(result.stdout)
+
+    def test_direct_fetch_requires_exact_klms_https_origin(self) -> None:
+        self.assertEqual(
+            self.run_download_filename_helpers(
+                "["
+                "canDirectFetchKlmsFile('https://klms.kaist.ac.kr/pluginfile.php/1/file.pdf'),"
+                "canDirectFetchKlmsFile('http://klms.kaist.ac.kr/pluginfile.php/1/file.pdf'),"
+                "canDirectFetchKlmsFile('https://evil.example/?u=klms.kaist.ac.kr/pluginfile.php/1/file.pdf'),"
+                "canDirectFetchKlmsFile('https://klms.kaist.ac.kr.evil.example/pluginfile.php/1/file.pdf'),"
+                "canDirectFetchKlmsFile('https://klms.kaist.ac.kr@evil.example/pluginfile.php/1/file.pdf')"
+                "]"
+            ),
+            [True, False, False, False, False],
+        )
 
     def extract_function(self, text: str, name: str) -> str:
         marker = f"function {name}("

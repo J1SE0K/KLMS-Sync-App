@@ -1,4 +1,8 @@
 const MAX_BODY_BYTES = 1024 * 1024;
+const MIN_RELAY_TOKEN_BYTES = 32;
+const MAX_REALTIME_CONNECTIONS = 32;
+const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
+const DEFAULT_REQUESTS_PER_MINUTE = 600;
 const MAX_COMMANDS = 100;
 const MAX_ITEM_ACTIONS = 200;
 const MAX_SETTING_ACTIONS = 100;
@@ -33,6 +37,12 @@ const INTERNAL_COORDINATOR_HEADER = "x-klms-relay-coordinator";
 const INTERNAL_COORDINATOR_ACTION_PATH = "/__klms_relay_action";
 const MAX_PUBLIC_TEXT_CHARS = 2_000;
 const MAX_IDENTIFIER_CHARS = 512;
+const UUID_PATH_COMPONENT = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+const COMMAND_ITEM_PATH_PATTERN = new RegExp(`^/v1/commands/(${UUID_PATH_COMPONENT})$`);
+const ITEM_ACTION_ITEM_PATH_PATTERN = new RegExp(`^/v1/item-actions/(${UUID_PATH_COMPONENT})$`);
+const SETTING_ACTION_ITEM_PATH_PATTERN = new RegExp(`^/v1/setting-actions/(${UUID_PATH_COMPONENT})$`);
+const FILE_ACCESS_ITEM_PATH_PATTERN = new RegExp(`^/v1/file-access/(${UUID_PATH_COMPONENT})$`);
+const FILE_ACCESS_UPLOAD_PATH_PATTERN = new RegExp(`^/v1/file-access/(${UUID_PATH_COMPONENT})/upload$`);
 const COMMAND_KINDS = new Set([
   "fullSync", "coreSync", "noticeSync", "filesSync", "verify", "doctor", "report", "v2BuildState",
 ]);
@@ -136,6 +146,7 @@ const defaultStatus = {
 };
 
 let schemaReady = false;
+const requestRateWindows = new Map();
 
 export class RelayRealtimeRoom {
   constructor(state, env) {
@@ -151,6 +162,9 @@ export class RelayRealtimeRoom {
       }
       const role = parseRealtimeRole(url.searchParams.get("role"));
       if (!role) return sendJSON(400, { error: "role must be client or worker" });
+      if (this.state.getWebSockets().length >= MAX_REALTIME_CONNECTIONS) {
+        return sendJSON(429, { error: "too many realtime connections" });
+      }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       server.serializeAttachment({
@@ -185,6 +199,14 @@ export class RelayRealtimeRoom {
   }
 
   async webSocketMessage(webSocket, message) {
+    if (typeof message !== "string") {
+      webSocket.close(1003, "text messages only");
+      return;
+    }
+    if (new TextEncoder().encode(message).byteLength > MAX_REALTIME_MESSAGE_BYTES) {
+      webSocket.close(1009, "message too large");
+      return;
+    }
     const text = String(message || "");
     let isPing = text === "ping";
     if (!isPing) {
@@ -297,13 +319,13 @@ async function routeResponse(request, env, ctx) {
 function fileUploadFastPathMatch(request, env) {
   if (request.method !== "PUT") return null;
   return normalizedPath(new URL(request.url).pathname, env)
-    .match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/upload$/);
+    .match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/upload$/);
 }
 
 function fileDownloadFastPathMatch(request, env) {
   if (request.method !== "GET") return null;
   return normalizedPath(new URL(request.url).pathname, env)
-    .match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
+    .match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
 }
 
 function fileLogClearFastPathScope(request, env) {
@@ -316,6 +338,7 @@ function fileLogClearFastPathScope(request, env) {
 
 async function fileUploadFastPathResponse(request, env, ctx, id) {
   try {
+    if (!consumeRequestRateLimit(request, env, "worker-upload")) return rateLimitResponse();
     if (!(await authorized(request, env, "worker"))) return sendJSON(401, { error: "unauthorized" });
     await ensureSchema(database(env));
     return await uploadFileAccess(env, request, id, ctx);
@@ -329,6 +352,15 @@ async function fileUploadFastPathResponse(request, env, ctx, id) {
 
 async function fileDownloadFastPathResponse(request, env, ctx, id) {
   try {
+    if (!consumeRequestRateLimit(request, env, "public-download")) return rateLimitResponse();
+    if (!validDownloadTicket(new URL(request.url).searchParams.get("ticket"))) {
+      return fileAccessDownloadPage({
+        request,
+        status: 401,
+        title: "권한이 없는 링크입니다",
+        message: "링크의 인증 정보가 올바르지 않습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+      });
+    }
     await ensureSchema(database(env));
     return await downloadFileAccess(database(env), env, request, id, ctx);
   } catch (error) {
@@ -353,6 +385,7 @@ async function fileDownloadFastPathResponse(request, env, ctx, id) {
 
 async function fileLogClearFastPathResponse(request, env, scope) {
   try {
+    if (!consumeRequestRateLimit(request, env, "worker-log-clear")) return rateLimitResponse();
     if (!(await authorized(request, env, "worker"))) return sendJSON(401, { error: "unauthorized" });
     const prepared = await coordinatedAction(env, "fileLogClearPrepare", { scope });
     if (prepared.status !== 200) return sendJSON(prepared.status, prepared.body);
@@ -514,6 +547,10 @@ async function route(request, env, ctx = null) {
   }
 
   if (request.method === "GET" && pathname === "/readyz") {
+    if (!consumeRequestRateLimit(request, env, "worker-readiness")) return rateLimitResponse();
+    if (!(await authorized(request, env, "worker"))) {
+      return sendJSON(401, { error: "unauthorized" });
+    }
     const readiness = await relayReadiness(env);
     return sendJSON(readiness.ok ? 200 : 503, readiness);
   }
@@ -529,7 +566,9 @@ async function route(request, env, ctx = null) {
   if (request.method === "GET" && pathname === "/v1/events") {
     const role = parseRealtimeRole(url.searchParams.get("role"));
     if (!role) return sendJSON(400, { error: "role must be client or worker" });
-    if (!(await authorized(request, env, role === "worker" ? "worker" : "client"))) {
+    const realtimeRole = role === "worker" ? "worker" : "client";
+    if (!consumeRequestRateLimit(request, env, `${realtimeRole}-realtime`)) return rateLimitResponse();
+    if (!(await authorized(request, env, realtimeRole))) {
       return sendJSON(401, { error: "unauthorized" });
     }
     const room = realtimeRoom(env);
@@ -543,8 +582,16 @@ async function route(request, env, ctx = null) {
     return sendJSON(410, { error: "event polling removed; use /v1/events websocket" });
   }
 
-  const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/download$/);
+  const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
   if (request.method === "GET" && downloadMatch) {
+    if (!validDownloadTicket(url.searchParams.get("ticket"))) {
+      return fileAccessDownloadPage({
+        request,
+        status: 401,
+        title: "권한이 없는 링크입니다",
+        message: "링크의 인증 정보가 올바르지 않습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
+      });
+    }
     const db = database(env);
     await ensureSchema(db);
     return downloadFileAccess(db, env, request, downloadMatch[1], ctx);
@@ -554,6 +601,7 @@ async function route(request, env, ctx = null) {
   if (!requiredRole) {
     return sendJSON(404, { error: "not found" });
   }
+  if (!consumeRequestRateLimit(request, env, requiredRole)) return rateLimitResponse();
   if (!(await authorized(request, env, requiredRole))) {
     return sendJSON(401, { error: "unauthorized" });
   }
@@ -765,7 +813,7 @@ async function route(request, env, ctx = null) {
       .slice(0, limit)));
   }
 
-  const commandMatch = pathname.match(/^\/v1\/commands\/([0-9a-fA-F-]+)$/);
+  const commandMatch = pathname.match(COMMAND_ITEM_PATH_PATTERN);
   if (request.method === "PUT" && commandMatch) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
@@ -864,7 +912,7 @@ async function route(request, env, ctx = null) {
       .slice(0, limit)));
   }
 
-  const itemActionMatch = pathname.match(/^\/v1\/item-actions\/([0-9a-fA-F-]+)$/);
+  const itemActionMatch = pathname.match(ITEM_ACTION_ITEM_PATH_PATTERN);
   if (request.method === "PUT" && itemActionMatch) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
@@ -948,7 +996,7 @@ async function route(request, env, ctx = null) {
       .slice(0, limit)));
   }
 
-  const settingActionMatch = pathname.match(/^\/v1\/setting-actions\/([0-9a-fA-F-]+)$/);
+  const settingActionMatch = pathname.match(SETTING_ACTION_ITEM_PATH_PATTERN);
   if (request.method === "PUT" && settingActionMatch) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
@@ -1056,7 +1104,7 @@ async function route(request, env, ctx = null) {
     return sendJSON(200, await clearRelayLogs(db, env, state, scope, ctx));
   }
 
-  const fileAccessMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)$/);
+  const fileAccessMatch = pathname.match(FILE_ACCESS_ITEM_PATH_PATTERN);
   if (request.method === "PUT" && fileAccessMatch) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
@@ -1086,7 +1134,7 @@ async function route(request, env, ctx = null) {
     return sendJSON(200, fileAccessResponseItem(fileRequest, request, env));
   }
 
-  const fileUploadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F-]+)\/upload$/);
+  const fileUploadMatch = pathname.match(FILE_ACCESS_UPLOAD_PATH_PATTERN);
   if (request.method === "PUT" && fileUploadMatch) {
     if (!(await authorized(request, env, "worker"))) {
       return sendJSON(401, { error: "unauthorized" });
@@ -1112,23 +1160,23 @@ function requiredRoleFor(method, pathname) {
   if (method === "POST" && pathname === "/v1/commands") return "client";
   if (method === "GET" && pathname === "/v1/commands/pending") return "worker";
   if (method === "GET" && pathname === "/v1/commands/recent") return "client";
-  if (method === "PUT" && /^\/v1\/commands\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "PUT" && COMMAND_ITEM_PATH_PATTERN.test(pathname)) return "worker";
   if (method === "POST" && pathname === "/v1/item-actions") return "client";
   if (method === "GET" && pathname === "/v1/item-actions/pending") return "worker";
   if (method === "GET" && pathname === "/v1/item-actions/recent") return "client";
-  if (method === "PUT" && /^\/v1\/item-actions\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "PUT" && ITEM_ACTION_ITEM_PATH_PATTERN.test(pathname)) return "worker";
   if (method === "POST" && pathname === "/v1/setting-actions") return "client";
   if (method === "GET" && pathname === "/v1/setting-actions/pending") return "worker";
   if (method === "GET" && pathname === "/v1/setting-actions/recent") return "client";
-  if (method === "PUT" && /^\/v1\/setting-actions\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
+  if (method === "PUT" && SETTING_ACTION_ITEM_PATH_PATTERN.test(pathname)) return "worker";
   if (method === "POST" && pathname === "/v1/file-access") return "client";
   if (method === "GET" && pathname === "/v1/file-access/pending") return "worker";
   if (method === "GET" && pathname === "/v1/file-access/recent") return "client";
   if (method === "GET" && pathname === "/v1/request-log/recent") return "client";
   if (method === "DELETE" && pathname === "/v1/logs/display") return "client";
   if (method === "DELETE" && pathname === "/v1/logs") return "worker";
-  if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+$/.test(pathname)) return "worker";
-  if (method === "PUT" && /^\/v1\/file-access\/[0-9a-fA-F-]+\/upload$/.test(pathname)) return "worker";
+  if (method === "PUT" && FILE_ACCESS_ITEM_PATH_PATTERN.test(pathname)) return "worker";
+  if (method === "PUT" && FILE_ACCESS_UPLOAD_PATH_PATTERN.test(pathname)) return "worker";
   return null;
 }
 
@@ -1187,8 +1235,53 @@ function relayTokens(env) {
   return {
     client,
     worker,
-    configured: Boolean(client && worker && client !== worker),
+    configured: Boolean(
+      utf8ByteLength(client) >= MIN_RELAY_TOKEN_BYTES
+      && utf8ByteLength(worker) >= MIN_RELAY_TOKEN_BYTES
+      && client !== worker
+    ),
   };
+}
+
+function utf8ByteLength(value) {
+  return new TextEncoder().encode(String(value || "")).byteLength;
+}
+
+function validDownloadTicket(value) {
+  return /^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/.test(String(value || "").trim());
+}
+
+function consumeRequestRateLimit(request, env, scope) {
+  const limit = boundedInt(env?.RELAY_REQUESTS_PER_MINUTE, DEFAULT_REQUESTS_PER_MINUTE, 1, 6_000);
+  const address = String(
+    request.headers.get("CF-Connecting-IP")
+    || request.headers.get("X-Forwarded-For")?.split(",")[0]
+    || "unknown"
+  ).trim().slice(0, 128);
+  const key = `${scope}:${address}`;
+  const now = Date.now();
+  const current = requestRateWindows.get(key);
+  if (!current || current.expiresAt <= now) {
+    requestRateWindows.set(key, { count: 1, expiresAt: now + 60_000 });
+    pruneRequestRateWindows(now);
+    return true;
+  }
+  if (current.count >= limit) return false;
+  current.count += 1;
+  return true;
+}
+
+function pruneRequestRateWindows(now) {
+  if (requestRateWindows.size <= 512) return;
+  for (const [key, value] of requestRateWindows) {
+    if (value.expiresAt <= now) requestRateWindows.delete(key);
+  }
+}
+
+function rateLimitResponse() {
+  const headers = new Headers(baseHeaders());
+  headers.set("Retry-After", "60");
+  return new Response(JSON.stringify({ error: "request rate limit exceeded" }), { status: 429, headers });
 }
 
 async function authorized(request, env, role) {
@@ -3465,24 +3558,21 @@ function fileAccessPreviewPage({
   const downloadCount = Number.isFinite(Number(fileRequest?.downloadCount)) ? Number(fileRequest.downloadCount) : 0;
   const viewerMarkup = filePreviewViewerMarkup(preview, rawURL);
   const isPDFPreview = preview?.kind === "pdf";
-  const pageControlsMarkup = `
+  const pageControlsMarkup = isPDFPreview ? "" : `
         <div class="tool-group">
           <button type="button" data-action="prev">이전</button>
           <button type="button" data-action="next">다음</button>
         </div>`;
-  const zoomControlsMarkup = `
+  const zoomControlsMarkup = isPDFPreview ? "" : `
         <div class="tool-group">
           <button type="button" data-action="zoom-out">축소</button>
           <button type="button" data-action="fit">맞춤</button>
           <button type="button" data-action="zoom-in">확대</button>
         </div>`;
-  const previewStatusText = isPDFPreview ? "PDF 불러오는 중" : "1 / 1 · 100%";
+  const previewStatusText = isPDFPreview ? "브라우저 PDF 뷰어" : "1 / 1 · 100%";
   const previewNote = isPDFPreview
-    ? "위 도구막대로 PDF 쪽 이동과 확대/축소를 조절할 수 있습니다."
+    ? "브라우저의 내장 PDF 도구로 쪽 이동과 확대/축소를 조절할 수 있습니다."
     : "텍스트와 이미지는 위 도구막대로 페이지 이동과 확대/축소를 조절할 수 있습니다.";
-  const pdfScriptMarkup = isPDFPreview
-    ? `<script nonce="${scriptNonce}" src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js" integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e" crossorigin="anonymous"></script>`
-    : "";
   const html = `<!doctype html>
 <html lang="ko">
 <head>
@@ -3510,9 +3600,8 @@ function fileAccessPreviewPage({
     button:disabled { color: var(--muted); cursor: not-allowed; opacity: .55; }
     .status { margin-left: auto; color: var(--muted); font-size: 13px; font-weight: 750; }
     .viewer { min-height: min(74vh, 760px); background: rgba(15,23,42,.05); }
-    .pdf-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #334155; }
-    .pdf-stage canvas { max-width: none; background: white; border-radius: 6px; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
-    .pdf-error { color: white; font-weight: 750; padding: 18px; text-align: center; }
+    .pdf-stage { height: min(74vh, 760px); background: #334155; }
+    .pdf-stage iframe { width: 100%; height: 100%; border: 0; background: white; }
     .image-stage { height: min(74vh, 760px); overflow: auto; display: grid; place-items: start center; padding: 18px; background: #0f172a; }
     .image-stage img { max-width: 100%; transform-origin: top center; transition: transform .12s ease; border-radius: 8px; background: white; box-shadow: 0 16px 40px rgba(0,0,0,.28); }
     .text-stage { height: min(74vh, 760px); overflow: auto; background: #fff; color: #111827; }
@@ -3545,7 +3634,6 @@ ${zoomControlsMarkup}
       <div class="note">${escapeHTML(previewNote)}</div>
     </section>
   </main>
-  ${pdfScriptMarkup}
   <script nonce="${scriptNonce}">
     const root = document.querySelector("main");
     const kind = root.dataset.kind;
@@ -3556,8 +3644,6 @@ ${zoomControlsMarkup}
     let page = 1;
     let zoom = 1;
     let pages = [""];
-    let pdfDoc = null;
-    let pdfRenderToken = 0;
     const bumpUsage = () => {
       if (!usageChip || usageBumped) return;
       usageBumped = true;
@@ -3568,11 +3654,6 @@ ${zoomControlsMarkup}
     };
     const setStatus = () => {
       if (!status) return;
-      if (kind === "pdf") {
-        const max = Math.max(1, pages.length);
-        status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
-        return;
-      }
       const max = Math.max(1, pages.length);
       status.textContent = page + " / " + max + " · " + Math.round(zoom * 100) + "%";
     };
@@ -3588,38 +3669,8 @@ ${zoomControlsMarkup}
       } else if (kind === "image") {
         const img = document.querySelector("[data-image-preview]");
         if (img) img.style.transform = "scale(" + zoom + ")";
-      } else if (kind === "pdf") {
-        renderPDF();
       }
       setStatus();
-    };
-    const renderPDF = async () => {
-      if (!pdfDoc) {
-        setStatus();
-        return;
-      }
-      const canvas = document.querySelector("[data-pdf-canvas]");
-      const errorBox = document.querySelector("[data-pdf-error]");
-      if (!canvas) return;
-      const token = ++pdfRenderToken;
-      try {
-        const pdfPage = await pdfDoc.getPage(page);
-        if (token !== pdfRenderToken) return;
-        const viewport = pdfPage.getViewport({ scale: zoom });
-        const context = canvas.getContext("2d");
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = Math.ceil(viewport.width) + "px";
-        canvas.style.height = Math.ceil(viewport.height) + "px";
-        await pdfPage.render({ canvasContext: context, viewport }).promise;
-        if (errorBox) errorBox.hidden = true;
-        setStatus();
-      } catch (error) {
-        if (errorBox) {
-          errorBox.hidden = false;
-          errorBox.textContent = "PDF 미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
-        }
-      }
     };
     const splitTextPages = (text) => {
       const target = 3600;
@@ -3645,33 +3696,8 @@ ${zoomControlsMarkup}
         .then((text) => { pages = splitTextPages(text); page = 1; render(); })
         .catch(() => { pages = ["미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요."]; render(); });
     } else if (kind === "pdf") {
-      if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = "";
-        window.pdfjsLib.getDocument({ url: rawURL, disableWorker: true }).promise
-          .then((doc) => {
-            pdfDoc = doc;
-            pages = Array.from({ length: Math.max(1, doc.numPages) }, (_, index) => String(index + 1));
-            page = 1;
-            bumpUsage();
-            render();
-          })
-          .catch(() => {
-            const errorBox = document.querySelector("[data-pdf-error]");
-            if (errorBox) {
-              errorBox.hidden = false;
-              errorBox.textContent = "PDF 미리보기를 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
-            }
-            pages = [""];
-            render();
-          });
-      } else {
-        const errorBox = document.querySelector("[data-pdf-error]");
-        if (errorBox) {
-          errorBox.hidden = false;
-          errorBox.textContent = "PDF 미리보기 모듈을 불러오지 못했습니다. 다운로드해서 확인해 주세요.";
-        }
-        render();
-      }
+      const resource = document.querySelector("[data-pdf-preview]");
+      if (resource) resource.addEventListener("load", bumpUsage, { once: true });
     } else {
       pages = [""];
       render();
@@ -3703,7 +3729,7 @@ ${zoomControlsMarkup}
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
-      "Content-Security-Policy": `default-src 'none'; img-src 'self'; media-src 'self'; connect-src 'self'; script-src 'nonce-${scriptNonce}'; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
+      "Content-Security-Policy": `default-src 'none'; img-src 'self'; media-src 'self'; frame-src 'self'; connect-src 'self'; script-src 'nonce-${scriptNonce}'; worker-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'`,
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
       "X-Frame-Options": "DENY",
@@ -3736,7 +3762,7 @@ function filePreviewViewerMarkup(preview, rawURL) {
     return `<div class="media-stage"><video controls src="${url}"></video></div>`;
   }
   if (preview.kind === "pdf") {
-    return `<div class="pdf-stage"><canvas data-pdf-canvas aria-label="PDF 미리보기"></canvas><div class="pdf-error" data-pdf-error hidden></div></div>`;
+    return `<div class="pdf-stage"><iframe data-pdf-preview src="${url}" title="PDF 미리보기"></iframe></div>`;
   }
   return `<div class="empty">이 파일은 웹 미리보기를 지원하지 않습니다. 다운로드해서 확인해 주세요.</div>`;
 }
@@ -5936,9 +5962,6 @@ function baseHeaders() {
   return {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-KLMS-Filename, X-KLMS-Content-Type",
   };
 }
 

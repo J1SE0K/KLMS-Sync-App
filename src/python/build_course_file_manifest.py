@@ -271,7 +271,7 @@ def source_page_signature(page: dict[str, Any]) -> str:
             str(page.get("html") or ""),
         ]
     )
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def reusable_manifest_entries(
@@ -1119,9 +1119,20 @@ def module_name_from_url(url: str) -> str:
 
 
 def is_downloadable_file_url(url: str) -> bool:
-    lowered = url.lower()
-    if not lowered.startswith("https://klms.kaist.ac.kr/"):
+    try:
+        parsed = urlparse(str(url).strip())
+        port = parsed.port
+    except (TypeError, ValueError):
         return False
+    if (
+        parsed.scheme.lower() != "https"
+        or (parsed.hostname or "").lower() != "klms.kaist.ac.kr"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+    ):
+        return False
+    lowered = url.lower()
     if "pluginfile.php" in lowered:
         if "/assignsubmission_" in lowered or "/submission_files/" in lowered:
             return False

@@ -13,6 +13,9 @@ function run(argv) {
   if (!displayName) {
     return JSON.stringify({ status: "error", error: "missing-display-name" });
   }
+  if (!isExactKlmsHttpsUrl(targetUrl)) {
+    return JSON.stringify({ status: "error", error: "invalid-klms-url" });
+  }
 
   const safari = Application("/Applications/Safari.app");
   const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
@@ -404,7 +407,7 @@ function readTitle(tab) {
 function looksLikeAuthenticatedKlmsUrl(url) {
   const lower = String(url || "").toLowerCase();
   return (
-    lower.includes("klms.kaist.ac.kr") &&
+    isExactKlmsHttpsUrl(lower) &&
     !lower.includes("/login/") &&
     !lower.includes("ssologin.php")
   );
@@ -412,7 +415,15 @@ function looksLikeAuthenticatedKlmsUrl(url) {
 
 function looksLikeKlmsLoginUrl(url) {
   const lower = String(url || "").toLowerCase();
-  return lower.includes("klms.kaist.ac.kr/login/");
+  return isExactKlmsHttpsUrl(lower) && lower.includes("/login/");
+}
+
+function isExactKlmsHttpsUrl(url) {
+  return /^https:\/\/klms\.kaist\.ac\.kr(?::443)?(?:[/?#]|$)/i.test(String(url || "").trim());
+}
+
+function isExactKaistSsoHttpsUrl(url) {
+  return /^https:\/\/sso\.kaist\.ac\.kr(?::443)?(?:[/?#]|$)/i.test(String(url || "").trim());
 }
 
 function kaistSsoLoginUrl(targetUrl) {
@@ -554,8 +565,7 @@ function createSafariTab(windowRef, targetUrl) {
 }
 
 function looksLikeKaistAuthUrl(url) {
-  const lower = String(url || "").toLowerCase();
-  return lower.includes("klms.kaist.ac.kr") || lower.includes("sso.kaist.ac.kr");
+  return isExactKlmsHttpsUrl(url) || isExactKaistSsoHttpsUrl(url);
 }
 
 function runPageScript(tab, script) {

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import sys
 from typing import Any
+from urllib.parse import urlparse
 
 from .classifiers import (
     ASSIGNMENT_RESULT_TITLE_RE,
@@ -116,12 +117,26 @@ def looks_like_login_page(page: Page) -> bool:
 
 
 def looks_like_authenticated_klms_page(page: Page) -> bool:
-    url = page.url.lower()
-    if "klms.kaist.ac.kr" not in url:
+    if not is_exact_klms_https_url(page.url):
         return False
     if looks_like_login_page(page):
         return False
     return True
+
+
+def is_exact_klms_https_url(value: str) -> bool:
+    try:
+        parsed = urlparse(str(value).strip())
+        port = parsed.port
+    except (TypeError, ValueError):
+        return False
+    return (
+        parsed.scheme.lower() == "https"
+        and (parsed.hostname or "").lower() == "klms.kaist.ac.kr"
+        and parsed.username is None
+        and parsed.password is None
+        and port in (None, 443)
+    )
 
 
 def validate_pages_for_state_build(pages: list[Page]) -> str:
@@ -426,6 +441,9 @@ def load_source_items(
     course_pages = legacy().load_pages(course_pages_json) + legacy().load_pages(
         all_week_course_pages_json
     )
+    course_validation_error = legacy_module.course_pages_semantic_error(course_pages)
+    if course_validation_error:
+        raise ValueError(course_validation_error)
     override_urls = assignment_override_urls(overrides)
     assignments: list[Assignment] = []
     events: list[Event] = []
@@ -512,6 +530,18 @@ def command_build_note(args: argparse.Namespace) -> int:
     validation_error = validate_pages_for_state_build(all_state_pages)
     if not validation_error:
         validation_error = validate_dashboard_for_state_build(args.dashboard_json)
+    source_payload: tuple[list[Assignment], list[Event], dict[str, dict[str, str]]] | None = None
+    if not validation_error:
+        try:
+            source_payload = load_source_items(
+                dashboard_json=args.dashboard_json,
+                course_pages_json=args.course_pages_json,
+                all_week_course_pages_json=args.all_week_course_pages_json,
+                overrides=load_optional_json(args.overrides_json, None),
+            )
+        except ValueError as error:
+            validation_error = str(error)
+
     if validation_error:
         payload = {
             "status": "error",
@@ -528,12 +558,9 @@ def command_build_note(args: argparse.Namespace) -> int:
         page_notices = notices_from_article_pages(supplemental_detail_pages)
         generated_at = args.generated_at or digest_generated_at or now_kst_label()
         overrides = load_optional_json(args.overrides_json, None)
-        source_assignments, source_events, source_metadata = load_source_items(
-            dashboard_json=args.dashboard_json,
-            course_pages_json=args.course_pages_json,
-            all_week_course_pages_json=args.all_week_course_pages_json,
-            overrides=overrides,
-        )
+        if source_payload is None:
+            raise RuntimeError("validated source payload is missing")
+        source_assignments, source_events, source_metadata = source_payload
         file_assignments, file_events, file_metadata = load_file_manifest_items(
             args.course_file_manifest_json,
             generated_at=generated_at,
@@ -554,6 +581,21 @@ def command_build_note(args: argparse.Namespace) -> int:
         )
         payload = state.to_legacy_state()
         payload["html"] = render_success_html(payload)
+        destructive_delta_error = legacy().legacy.destructive_state_delta_error(
+            previous_state, payload
+        )
+        if destructive_delta_error:
+            validation_error = destructive_delta_error
+            payload = {
+                "status": "error",
+                "generated_at": now_kst_label(),
+                "content": {
+                    "kind": "error",
+                    "message": validation_error,
+                    "last_success_at": previous_state.get("generated_at", ""),
+                },
+                "html": render_error_html(validation_error, previous_state),
+            }
 
     status = status_from_state(payload, previous_state)
     if args.validate_only:

@@ -35,13 +35,43 @@ struct KLMSMacDashboardSummaryCache: Equatable {
     var serverDashboardItemsLoaded = false
 }
 
+struct KLMSFileSystemEvent: Sendable, Equatable, Hashable {
+    var path: String
+    var flags: FSEventStreamEventFlags
+}
+
+struct KLMSFileSystemRefreshPolicy {
+    static func requiresForcedSnapshot(
+        events: [KLMSFileSystemEvent],
+        courseFilesURL: URL
+    ) -> Bool {
+        let courseFilesPath = courseFilesURL
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        let courseFilesPrefix = courseFilesPath.hasSuffix("/")
+            ? courseFilesPath
+            : courseFilesPath + "/"
+        return events.contains { event in
+            if event.flags & FSEventStreamEventFlags(kFSEventStreamEventFlagMustScanSubDirs) != 0 {
+                return true
+            }
+            let path = URL(fileURLWithPath: event.path)
+                .standardizedFileURL
+                .resolvingSymlinksInPath()
+                .path
+            return path == courseFilesPath || path.hasPrefix(courseFilesPrefix)
+        }
+    }
+}
+
 final class KLMSFileSystemEventWatcher: @unchecked Sendable {
     private let queue = DispatchQueue(label: "KLMSync.FileSystemEvents", qos: .utility)
-    private let callback: @Sendable () -> Void
+    private let callback: @Sendable ([KLMSFileSystemEvent]) -> Void
     private var stream: FSEventStreamRef?
     private var isStarted = false
 
-    init(paths: [URL], callback: @escaping @Sendable () -> Void) {
+    init(paths: [URL], callback: @escaping @Sendable ([KLMSFileSystemEvent]) -> Void) {
         self.callback = callback
         let watchPaths = paths.map(\.path) as CFArray
         var context = FSEventStreamContext(
@@ -51,12 +81,26 @@ final class KLMSFileSystemEventWatcher: @unchecked Sendable {
             release: nil,
             copyDescription: nil
         )
-        let streamCallback: FSEventStreamCallback = { _, info, _, _, _, _ in
+        let streamCallback: FSEventStreamCallback = { _, info, count, eventPaths, eventFlags, _ in
             guard let info else { return }
-            Unmanaged<KLMSFileSystemEventWatcher>
+            let watcher = Unmanaged<KLMSFileSystemEventWatcher>
                 .fromOpaque(info)
                 .takeUnretainedValue()
-                .callback()
+            let paths = unsafeBitCast(eventPaths, to: NSArray.self)
+            var events: [KLMSFileSystemEvent] = []
+            events.reserveCapacity(count)
+            for index in 0..<count {
+                guard let path = paths[index] as? String else { continue }
+                events.append(
+                    KLMSFileSystemEvent(
+                        path: path,
+                        flags: eventFlags[index]
+                    )
+                )
+            }
+            if !events.isEmpty {
+                watcher.callback(events)
+            }
         }
         stream = FSEventStreamCreate(
             nil,
@@ -65,8 +109,16 @@ final class KLMSFileSystemEventWatcher: @unchecked Sendable {
             watchPaths,
             FSEventStreamEventId(kFSEventStreamEventIdSinceNow),
             0.15,
-            FSEventStreamCreateFlags(kFSEventStreamCreateFlagFileEvents | kFSEventStreamCreateFlagNoDefer)
+            FSEventStreamCreateFlags(
+                kFSEventStreamCreateFlagFileEvents
+                    | kFSEventStreamCreateFlagNoDefer
+                    | kFSEventStreamCreateFlagUseCFTypes
+            )
         )
+    }
+
+    convenience init(paths: [URL], callback: @escaping @Sendable () -> Void) {
+        self.init(paths: paths) { _ in callback() }
     }
 
     @discardableResult
@@ -171,8 +223,8 @@ final class KLMSMacModel: ObservableObject {
         var finishedAt: Date
     }
 
-    private struct SnapshotSourceSignature: Equatable {
-        private struct FileMarker: Equatable {
+    private struct SnapshotSourceSignature: Sendable, Equatable {
+        private struct FileMarker: Sendable, Equatable {
             var path: String
             var exists: Bool
             var size: Int
@@ -235,6 +287,11 @@ final class KLMSMacModel: ObservableObject {
         var generation: UInt64
         var setting: ServerRelaySetting?
         var authoritativeObservationVersion: UInt64 = 0
+    }
+
+    private struct ServerRelayTerminalOutboxIdentity: Sendable, Equatable {
+        var relayURL: String
+        var workerTokenFingerprint: String
     }
 
     private struct ServerRelaySettingDefinition {
@@ -389,6 +446,7 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayForceSyncDataFetchOnNextWorkerRefresh = false
     private var fileSystemEventWatcher: KLMSFileSystemEventWatcher?
     private var fileSystemEventDebounceTask: Task<Void, Never>?
+    private var pendingFileSystemEvents: [KLMSFileSystemEvent] = []
     private var notifiedAuthDigits = Set<String>()
     private var notifiedAuthCompletionForCurrentRun = false
     private var notifiedAlreadyLoggedInForCurrentRun = false
@@ -2371,6 +2429,66 @@ final class KLMSMacModel: ObservableObject {
         try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayWorkerToken)
     }
 
+    private func serverRelayTerminalOutboxIdentity() -> ServerRelayTerminalOutboxIdentity {
+        ServerRelayTerminalOutboxIdentity(
+            relayURL: serverRelayURL,
+            workerTokenFingerprint: Self.relayTokenFingerprint(serverRelayWorkerToken)
+        )
+    }
+
+    private func replayServerRelayTerminalCommandOutbox(
+        using store: ServerRelayCommandStore,
+        identity: ServerRelayTerminalOutboxIdentity
+    ) async throws {
+        let outbox = RemoteCommandTerminalOutboxStore(
+            url: paths.serverRelayTerminalCommandOutboxURL
+        )
+        let entries = try outbox.pending(
+            relayURL: identity.relayURL,
+            workerTokenFingerprint: identity.workerTokenFingerprint
+        )
+        for entry in entries {
+            do {
+                try await store.update(entry.command)
+            } catch {
+                guard Self.isServerRetiredCommand(error) else { throw error }
+            }
+            try outbox.acknowledge(
+                commandID: entry.command.id,
+                relayURL: identity.relayURL,
+                workerTokenFingerprint: identity.workerTokenFingerprint
+            )
+        }
+    }
+
+    private static func isServerRetiredCommand(_ error: Error) -> Bool {
+        guard case let ServerRelayClientError.serverRejected(statusCode, _) = error else {
+            return false
+        }
+        return statusCode == 404
+    }
+
+    private func persistServerRelayTerminalCommand(
+        _ command: RemoteRunCommand,
+        using store: ServerRelayCommandStore,
+        identity: ServerRelayTerminalOutboxIdentity
+    ) async throws {
+        let outbox = RemoteCommandTerminalOutboxStore(
+            url: paths.serverRelayTerminalCommandOutboxURL
+        )
+        try outbox.enqueue(
+            command,
+            relayURL: identity.relayURL,
+            workerTokenFingerprint: identity.workerTokenFingerprint
+        )
+        try await persistServerRelayTerminalState {
+            try await self.replayServerRelayTerminalCommandOutbox(
+                using: store,
+                identity: identity
+            )
+        }
+    }
+
     private func persistServerRelayTerminalState(
         _ operation: @escaping @MainActor () async throws -> Void
     ) async throws {
@@ -2508,6 +2626,11 @@ final class KLMSMacModel: ObservableObject {
         let message: String
         do {
             store = try makeServerRelayStore()
+            let outboxIdentity = serverRelayTerminalOutboxIdentity()
+            try await replayServerRelayTerminalCommandOutbox(
+                using: store,
+                identity: outboxIdentity
+            )
             status = sanitizedRemoteStatus(
                 snapshot: snapshot,
                 phase: relayExecutionGate.isClaimed ? "running" : "idle"
@@ -4496,10 +4619,11 @@ final class KLMSMacModel: ObservableObject {
     private func configureFileSystemEventRefresh() {
         fileSystemEventDebounceTask?.cancel()
         fileSystemEventDebounceTask = nil
+        pendingFileSystemEvents.removeAll()
         fileSystemEventWatcher?.stop()
-        let watcher = KLMSFileSystemEventWatcher(paths: [paths.engineRoot]) { [weak self] in
+        let watcher = KLMSFileSystemEventWatcher(paths: [paths.engineRoot]) { [weak self] events in
             Task { @MainActor [weak self] in
-                self?.scheduleFileSystemEventRefresh()
+                self?.scheduleFileSystemEventRefresh(events)
             }
         }
         fileSystemEventWatcher = watcher
@@ -4520,12 +4644,19 @@ final class KLMSMacModel: ObservableObject {
         await reloadEngineState()
     }
 
-    private func scheduleFileSystemEventRefresh() {
+    private func scheduleFileSystemEventRefresh(_ events: [KLMSFileSystemEvent]) {
+        pendingFileSystemEvents.append(contentsOf: events)
         fileSystemEventDebounceTask?.cancel()
         fileSystemEventDebounceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: Self.fileSystemEventDebounceNanoseconds)
             guard let self, !Task.isCancelled else { return }
             self.fileSystemEventDebounceTask = nil
+            let pendingEvents = self.pendingFileSystemEvents
+            self.pendingFileSystemEvents.removeAll()
+            let forceSnapshotReload = KLMSFileSystemRefreshPolicy.requiresForcedSnapshot(
+                events: pendingEvents,
+                courseFilesURL: self.paths.courseFilesURL
+            )
             do {
                 // Settings and a configured override import are live data too.
                 // Refresh them before computing the snapshot signature so an
@@ -4537,7 +4668,8 @@ final class KLMSMacModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                 }
             }
-            let loadedSnapshot = self.loadEngineSnapshot(force: false)
+            let loadedSnapshot = await self.loadEngineSnapshotOffMain(force: forceSnapshotReload)
+            guard !Task.isCancelled else { return }
             if let loadedSnapshot {
                 self.applySnapshot(loadedSnapshot, showLoginTransition: true)
             }
@@ -5326,6 +5458,11 @@ final class KLMSMacModel: ObservableObject {
         }
         do {
             let store = try makeServerRelayStore()
+            let outboxIdentity = serverRelayTerminalOutboxIdentity()
+            try await replayServerRelayTerminalCommandOutbox(
+                using: store,
+                identity: outboxIdentity
+            )
             let inboxMutationEpoch = serverRelaySnapshotMutationEpoch
             let inbox = try await store.fetchWorkerInbox(
                 since: runningCommand == nil ? serverRelayLastInboxUpdatedAt : nil,
@@ -5587,7 +5724,8 @@ final class KLMSMacModel: ObservableObject {
                 cancelRequest: cancelRequest,
                 pending: pending,
                 now: now,
-                sessionGeneration: expectedSessionGeneration
+                sessionGeneration: expectedSessionGeneration,
+                outboxIdentity: outboxIdentity
             ) {
                 if serverRelaySessionGeneration == expectedSessionGeneration {
                     scheduleServerRelayImmediateFollowUp()
@@ -5605,9 +5743,11 @@ final class KLMSMacModel: ObservableObject {
                         snapshot: snapshot,
                         phase: stale.status.rawValue
                     )
-                    try await persistServerRelayTerminalState {
-                        try await store.update(stale)
-                    }
+                    try await persistServerRelayTerminalCommand(
+                        stale,
+                        using: store,
+                        identity: outboxIdentity
+                    )
                     if serverRelaySessionGeneration == expectedSessionGeneration {
                         serverRelaySnapshotMutationEpoch &+= 1
                         lastRemoteCommand = stale
@@ -5681,9 +5821,11 @@ final class KLMSMacModel: ObservableObject {
             }
             completed.loginRequired = lastCommandResult?.requiresLoginApproval == true || completed.summary.loginRequired
             let completionMessage = "최근 서버 요청: \(completed.kind.displayName) · \(completed.status.displayName)"
-            try await persistServerRelayTerminalState {
-                try await store.update(completed)
-            }
+            try await persistServerRelayTerminalCommand(
+                completed,
+                using: store,
+                identity: outboxIdentity
+            )
             relayExecutionGate.release(ifOwnedBy: executionOwner)
             let terminalDisposition = RelayClaimedOperationPolicy.terminalDisposition(
                 originalSessionIsCurrent: serverRelaySessionGeneration == expectedSessionGeneration
@@ -5772,7 +5914,8 @@ final class KLMSMacModel: ObservableObject {
         cancelRequest: ServerRelayCancelRequest,
         pending: [RemoteRunCommand],
         now: Date,
-        sessionGeneration: UInt64
+        sessionGeneration: UInt64,
+        outboxIdentity: ServerRelayTerminalOutboxIdentity
     ) async throws -> Bool {
         guard cancelRequest.requested else {
             return false
@@ -5801,9 +5944,11 @@ final class KLMSMacModel: ObservableObject {
         cancelled.loginRequired = false
         cancelled.summary = sanitizedRemoteStatus(snapshot: snapshot, phase: cancelled.status.rawValue)
         cancelled.summary.phaseDetail = "사용자가 실행 전 중단"
-        try await persistServerRelayTerminalState {
-            try await store.update(cancelled)
-        }
+        try await persistServerRelayTerminalCommand(
+            cancelled,
+            using: store,
+            identity: outboxIdentity
+        )
         _ = try await store.clearCancelRequest()
         let completionMessage = "\(cancelled.kind.displayName) 요청을 실행 전에 중단했습니다."
         if serverRelaySessionGeneration == sessionGeneration {
@@ -6541,6 +6686,23 @@ final class KLMSMacModel: ObservableObject {
         }
         let nextSnapshot = EngineSnapshotStore(paths: paths).load()
         lastSnapshotSourceSignature = signature
+        return nextSnapshot
+    }
+
+    private func loadEngineSnapshotOffMain(force: Bool) async -> EngineSnapshot? {
+        let currentPaths = paths
+        let previousSignature = lastSnapshotSourceSignature
+        let loaded = await Task.detached(priority: .utility) {
+            let signature = SnapshotSourceSignature(paths: currentPaths)
+            guard force || previousSignature != signature else {
+                return (signature, Optional<EngineSnapshot>.none)
+            }
+            return (signature, Optional(EngineSnapshotStore(paths: currentPaths).load()))
+        }.value
+        guard paths == currentPaths, let nextSnapshot = loaded.1 else {
+            return nil
+        }
+        lastSnapshotSourceSignature = loaded.0
         return nextSnapshot
     }
 

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -7,16 +8,34 @@ from pathlib import Path
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
+PYTHON_SUBPROCESS_ENV = {
+    "PYTHONPATH": os.pathsep.join(
+        (
+            str(PROJECT_DIR / "src" / "python"),
+            str(PROJECT_DIR / "vendor" / "python-packages"),
+        )
+    )
+}
 sys.path.insert(0, str(PROJECT_DIR / "src" / "python"))
 
 import klms_sync  # noqa: E402
 from klms_sync_v2.classifiers import classify_detail_page, classify_notice  # noqa: E402
+from klms_sync_v2.cli import looks_like_authenticated_klms_page  # noqa: E402
 from klms_sync_v2.dates import is_past, parse_due_date_only, parse_due_datetime  # noqa: E402
 from klms_sync_v2.models import Assignment, Event, Notice, Page  # noqa: E402
 from klms_sync_v2.pipeline import build_sync_state  # noqa: E402
 
 
 class V2CoreTests(unittest.TestCase):
+    def test_authenticated_page_requires_exact_klms_https_origin(self) -> None:
+        self.assertTrue(looks_like_authenticated_klms_page(Page(url="https://klms.kaist.ac.kr/my/")))
+        for url in (
+            "http://klms.kaist.ac.kr/my/",
+            "https://klms.kaist.ac.kr.evil.example/my/",
+            "https://evil.example/?next=klms.kaist.ac.kr",
+        ):
+            self.assertFalse(looks_like_authenticated_klms_page(Page(url=url)), url)
+
     def write_authoritative_dashboard(self, directory: Path) -> Path:
         dashboard = directory / "dashboard.json"
         dashboard.write_text(
@@ -1080,7 +1099,7 @@ class V2CoreTests(unittest.TestCase):
                     "--legacy",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1137,7 +1156,7 @@ class V2CoreTests(unittest.TestCase):
                     "--legacy",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1207,7 +1226,7 @@ class V2CoreTests(unittest.TestCase):
                     "2026-05-13 19:18 KST",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1219,6 +1238,131 @@ class V2CoreTests(unittest.TestCase):
             self.assertEqual(rendered["content"]["assignments"][0]["title"], "Project 3")
             status = json.loads(output_status.read_text(encoding="utf-8"))
             self.assertTrue(status["changed"])
+
+    def test_cli_build_note_rejects_authenticated_course_parser_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            dashboard = self.write_authoritative_dashboard(tmp_dir)
+            course_pages = tmp_dir / "course_pages.json"
+            details = tmp_dir / "details.json"
+            previous_state = tmp_dir / "state.json"
+            output_state = tmp_dir / "next_state.json"
+            output_status = tmp_dir / "status.json"
+            output_html = tmp_dir / "section.html"
+            course_pages.write_text(
+                json.dumps(
+                    [
+                        {
+                            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=42",
+                            "url": "https://klms.kaist.ac.kr/course/view.php?id=42",
+                            "title": "Parser drift fixture",
+                            "html": """
+                            <main data-region="course-content">
+                              <article class="activity-card">
+                                <a href="https://klms.kaist.ac.kr/mod/assign/view.php?id=4242">
+                                  새 마크업의 과제
+                                </a>
+                              </article>
+                            </main>
+                            """,
+                        }
+                    ],
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            details.write_text("[]", encoding="utf-8")
+            previous_state.write_text(
+                json.dumps(
+                    {
+                        "status": "ok",
+                        "generated_at": "2026-07-15 12:00 KST",
+                        "content": {
+                            "assignments": [
+                                {
+                                    "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1",
+                                    "title": "기존 과제 1",
+                                },
+                                {
+                                    "url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=2",
+                                    "title": "기존 과제 2",
+                                },
+                            ]
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
+                    "--course-pages-json",
+                    str(course_pages),
+                    "--details-json",
+                    str(details),
+                    "--state-json",
+                    str(previous_state),
+                    "--output-html",
+                    str(output_html),
+                    "--output-state",
+                    str(output_state),
+                    "--output-status",
+                    str(output_status),
+                ],
+                cwd=PROJECT_DIR,
+                env=PYTHON_SUBPROCESS_ENV,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            rendered = json.loads(output_state.read_text(encoding="utf-8"))
+            status = json.loads(output_status.read_text(encoding="utf-8"))
+            self.assertEqual(rendered["status"], "error")
+            self.assertEqual(status["status"], "error")
+            self.assertIn("화면 구조", rendered["content"]["message"])
+            self.assertEqual(rendered["content"]["last_success_at"], "2026-07-15 12:00 KST")
+
+    def test_course_semantic_certificate_accepts_recognized_empty_shell(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main data-region="course-content">
+              <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertTrue(certificate.authoritative)
+        self.assertTrue(certificate.recognized_shell)
+        self.assertEqual(certificate.module_link_count, 0)
+        self.assertEqual(certificate.parsed_activity_count, 0)
+
+    def test_destructive_state_delta_rejects_sudden_all_zero_result(self) -> None:
+        previous_state = {
+            "status": "ok",
+            "content": {
+                "assignments": [
+                    {"url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"},
+                    {"url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=2"},
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+
+        error = klms_sync.destructive_state_delta_error(previous_state, next_state)
+
+        self.assertIn("갑자기 모두 사라져", error)
 
     def test_cli_build_note_renders_completed_assignment_records(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1266,7 +1410,7 @@ class V2CoreTests(unittest.TestCase):
                     "2026-05-13 19:18 KST",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1337,7 +1481,7 @@ class V2CoreTests(unittest.TestCase):
                     "2026-05-26 19:18 KST",
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1385,7 +1529,7 @@ class V2CoreTests(unittest.TestCase):
                     str(output_status),
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -1440,7 +1584,7 @@ class V2CoreTests(unittest.TestCase):
                     str(output_status),
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=False,
@@ -1479,7 +1623,7 @@ class V2CoreTests(unittest.TestCase):
                     str(pages),
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1516,7 +1660,7 @@ class V2CoreTests(unittest.TestCase):
                     str(pages),
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,
@@ -1553,7 +1697,7 @@ class V2CoreTests(unittest.TestCase):
                     str(pages),
                 ],
                 cwd=PROJECT_DIR,
-                env={"PYTHONPATH": str(PROJECT_DIR / "src" / "python")},
+                env=PYTHON_SUBPROCESS_ENV,
                 text=True,
                 capture_output=True,
                 check=True,

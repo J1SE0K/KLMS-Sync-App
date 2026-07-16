@@ -453,6 +453,7 @@ def cmd_build_note(args: argparse.Namespace) -> None:
 
     dashboard = parse_dashboard_page(dashboard_page)
     detail_lookup = {page["requestedUrl"]: parse_detail_page(page) for page in detail_pages}
+    course_validation_error = course_pages_semantic_error(course_pages)
 
     if dashboard.status != "ok":
         payload = build_error_payload(dashboard.error_message, previous_state)
@@ -461,6 +462,8 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             "과목 페이지를 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
             previous_state,
         )
+    elif course_validation_error:
+        payload = build_error_payload(course_validation_error, previous_state)
     elif any(detail.get("status") == "error" for detail in detail_lookup.values()):
         payload = build_error_payload(
             "과제 상세 페이지를 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
@@ -574,6 +577,9 @@ def cmd_build_note(args: argparse.Namespace) -> None:
             past_exam_items,
             exam_records,
         )
+        destructive_delta_error = destructive_state_delta_error(previous_state, payload)
+        if destructive_delta_error:
+            payload = build_error_payload(destructive_delta_error, previous_state)
 
     changed = payload.get("content") != previous_state.get("content")
     write_text(Path(args.output_html), payload["html"])
@@ -954,6 +960,17 @@ class CourseActivity:
     course: str
     module: str
     row_text: str
+
+
+@dataclass(frozen=True)
+class CoursePageSemanticCertificate:
+    requested_url: str
+    authoritative: bool
+    recognized_shell: bool
+    module_link_count: int
+    activity_node_count: int
+    parsed_activity_count: int
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -2322,7 +2339,7 @@ def notice_article_fingerprint(
             "\n".join(attachments),
         ]
     )
-    return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return hashlib.sha1(payload.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def collect_file_seed_urls(course_pages: list[dict[str, Any]]) -> list[str]:
@@ -2729,6 +2746,88 @@ def parse_course_page(page: dict[str, Any]) -> list[DashboardItem]:
         )
 
     return items
+
+
+def course_page_semantic_certificate(
+    page: dict[str, Any],
+) -> CoursePageSemanticCertificate:
+    requested_url = page_requested_url(page)
+    html = str(page.get("html") or "")
+    if not html.strip():
+        return CoursePageSemanticCertificate(
+            requested_url=requested_url,
+            authoritative=False,
+            recognized_shell=False,
+            module_link_count=0,
+            activity_node_count=0,
+            parsed_activity_count=0,
+            reason="KLMS 과목 페이지 HTML이 비어 있어서 기존 동기화 상태를 유지했어.",
+        )
+    if looks_like_login_page(page):
+        return CoursePageSemanticCertificate(
+            requested_url=requested_url,
+            authoritative=False,
+            recognized_shell=False,
+            module_link_count=0,
+            activity_node_count=0,
+            parsed_activity_count=0,
+            reason="과목 페이지를 읽는 중 KLMS 로그인 세션이 풀렸어. 다시 로그인해 줘.",
+        )
+
+    soup = BeautifulSoup(html, "html.parser")
+    recognized_shell = soup.select_one(
+        "[data-region='course-content'], #region-main .course-content, .course-content, "
+        "ul.topics, ul.weeks, li.section, li.activity"
+    ) is not None
+    activity_nodes = soup.select("li.activity")
+    module_urls = {
+        normalize_url(str(link.get("href") or ""))
+        for link in soup.select("a[href*='/mod/']")
+        if normalize_url(str(link.get("href") or ""))
+    }
+    parsed_urls = {
+        normalize_url(str(link.get("href") or ""))
+        for activity in activity_nodes
+        for link in activity.select(".activityinstance a[href*='/mod/']")
+        if normalize_url(str(link.get("href") or ""))
+    }
+
+    module_link_count = len(module_urls)
+    parsed_activity_count = len(parsed_urls)
+    authoritative = False
+    reason = ""
+    if module_link_count:
+        authoritative = module_urls == parsed_urls
+        if not authoritative:
+            reason = (
+                "KLMS 과목 화면 구조가 바뀐 것으로 보여 기존 동기화 상태를 유지했어. "
+                "과목 화면을 다시 확인해 줘."
+            )
+    elif recognized_shell:
+        authoritative = True
+    else:
+        reason = (
+            "KLMS 과목 화면 구조를 확인하지 못해 기존 동기화 상태를 유지했어. "
+            "과목 화면을 다시 확인해 줘."
+        )
+
+    return CoursePageSemanticCertificate(
+        requested_url=requested_url,
+        authoritative=authoritative,
+        recognized_shell=recognized_shell,
+        module_link_count=module_link_count,
+        activity_node_count=len(activity_nodes),
+        parsed_activity_count=parsed_activity_count,
+        reason=reason,
+    )
+
+
+def course_pages_semantic_error(pages: list[dict[str, Any]]) -> str:
+    for page in pages:
+        certificate = course_page_semantic_certificate(page)
+        if not certificate.authoritative:
+            return certificate.reason
+    return ""
 
 
 def iter_course_activities(page: dict[str, Any]) -> list[CourseActivity]:
@@ -4916,6 +5015,53 @@ def build_error_payload(message: str | None, previous_state: dict[str, Any]) -> 
     }
 
 
+TRACKED_STATE_SECTIONS = (
+    "assignments",
+    "completed_assignments",
+    "assignment_records",
+    "exam_items",
+    "exam_candidates",
+    "past_exams",
+    "exam_records",
+    "assignment_candidates",
+    "help_desk_items",
+)
+
+
+def tracked_state_module_urls(state: dict[str, Any]) -> set[str]:
+    content = state.get("content")
+    if not isinstance(content, dict):
+        return set()
+    urls: set[str] = set()
+    for section in TRACKED_STATE_SECTIONS:
+        records = content.get(section)
+        if not isinstance(records, list):
+            continue
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            url = normalize_url(str(record.get("url") or ""))
+            parsed = urlparse(url)
+            if parsed.hostname == "klms.kaist.ac.kr" and parsed.path.startswith("/mod/"):
+                urls.add(url)
+    return urls
+
+
+def destructive_state_delta_error(
+    previous_state: dict[str, Any], next_state: dict[str, Any]
+) -> str:
+    if previous_state.get("status") != "ok" or next_state.get("status") != "ok":
+        return ""
+    previous_urls = tracked_state_module_urls(previous_state)
+    next_urls = tracked_state_module_urls(next_state)
+    if len(previous_urls) >= 2 and not next_urls:
+        return (
+            "KLMS 일정과 과제가 갑자기 모두 사라져 파싱 오류 가능성이 있어 기존 동기화 상태를 유지했어. "
+            "KLMS 화면을 확인한 뒤 다시 동기화해 줘."
+        )
+    return ""
+
+
 def append_exam_scope_location_lines(lines: list[str], item: dict[str, Any]) -> None:
     coverage = exam_coverage_summary_for_item(item)
     location = exam_location_for_item(item)
@@ -5790,8 +5936,18 @@ def contains_any_keyword(text: str, keywords: tuple[str, ...]) -> bool:
 
 
 def is_same_klms_url(url: str) -> bool:
-    lowered = url.lower()
-    return lowered.startswith("https://klms.kaist.ac.kr/") or lowered.startswith("http://klms.kaist.ac.kr/")
+    try:
+        parsed = urlparse(str(url).strip())
+        port = parsed.port
+    except (TypeError, ValueError):
+        return False
+    return (
+        parsed.scheme.lower() == "https"
+        and (parsed.hostname or "").lower() == "klms.kaist.ac.kr"
+        and parsed.username is None
+        and parsed.password is None
+        and port in (None, 443)
+    )
 
 
 def is_crawlable_klms_page_url(url: str) -> bool:

@@ -76,7 +76,7 @@ case "$*" in
     ;;
 esac
 case "$last" in
-  *"fetch('http://127.0.0.1:18484/readyz')"*)
+  *"fetch('http://127.0.0.1:18484/readyz',"*)
     printf '%s\\n' READY >> "$MOCK_COMPOSE_LOG"
     if [ "$MOCK_SCENARIO" = readiness ]; then exit 1; fi
     exit 0

@@ -23,5 +23,5 @@ printf '%s\n' "Waiting for relay readiness..."
 sleep 3
 
 . ./.env
-curl -fsS "https://$KLMS_RELAY_DOMAIN/readyz"
+curl -fsS -H "Authorization: Bearer $KLMS_RELAY_WORKER_TOKEN" "https://$KLMS_RELAY_DOMAIN/readyz"
 printf '\n%s\n' "Relay is ready: https://$KLMS_RELAY_DOMAIN"
