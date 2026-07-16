@@ -84,8 +84,8 @@
         "reason": "This policy intentionally contains only scanner-coordinate SHA-256 digests and false-positive rationale."
       }
     ],
-    "expectedFindings": 20,
-    "coordinatesSha256": "cdc2fe02b47e707579cababa5a68080dc85822408652b27ba302bdf11fb9fe5f",
+    "expectedFindings": 21,
+    "coordinatesSha256": "c3549b501734a9c5bf5e4e8ac19c4f486cf3ed14bbd6ee19239fda788a8eed83",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
@@ -126,7 +126,7 @@
       {
         "type": "Base64 High Entropy String",
         "path": "tools/test_klms_ios_ui_matrix.sh",
-        "expectedCount": 3,
+        "expectedCount": 4,
         "reason": "The matches are public XCTest method identifiers used to select responsive-layout tests."
       }
     ]
