@@ -348,7 +348,7 @@ body.viewport-resizing .sidebar {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .sidebar .panel {
@@ -420,6 +420,12 @@ body.viewport-resizing .sidebar {
   padding-inline: 8px;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.connection-panel > .button-row:not(.three) button {
+  padding-inline: 8px;
+  white-space: nowrap;
+  font-size: 13px;
 }
 
 .command-grid {

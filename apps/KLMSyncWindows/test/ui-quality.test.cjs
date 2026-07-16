@@ -68,6 +68,9 @@ test("responsive data surfaces wrap and forced-color selections use system highl
   assert.match(styles, /button:not\(\.sidebar-backdrop\)[\s\S]*border: 1px solid ButtonText/);
   assert.match(styles, /button \.icon[\s\S]*forced-color-adjust: none/);
   assert.match(styles, /\.metric-card\.active,[\s\S]*forced-color-adjust: none;[\s\S]*background: Highlight;[\s\S]*color: HighlightText;/);
+  assert.match(styles, /\.item-row\.active \.badge[\s\S]*background: Canvas;[\s\S]*color: CanvasText;/);
+  assert.match(styles, /\.panel\s*\{[^}]*box-shadow: none;/);
+  assert.match(styles, /\.connection-panel > \.button-row:not\(\.three\) button\s*\{[^}]*white-space: nowrap;/);
 });
 
 test("copied state includes the complete rendered status message", () => {

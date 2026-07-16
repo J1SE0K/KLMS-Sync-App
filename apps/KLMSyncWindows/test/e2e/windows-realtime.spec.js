@@ -138,6 +138,12 @@ test("WebSocket changes render immediately and responsive resize preserves selec
       const wideSyncPanelLayout = await readSyncPanelLayout();
       expect(wideSyncPanelLayout.connectionTop).toBeLessThan(wideSyncPanelLayout.commandsTop);
       expect(Math.abs(wideSyncPanelLayout.primaryWidth - wideSyncPanelLayout.commandsContentWidth)).toBeLessThanOrEqual(1);
+      const wideConnectionActions = await readConnectionActionLayout();
+      expect(wideConnectionActions.checkLineCount).toBe(1);
+      expect(wideConnectionActions.clearLineCount).toBe(1);
+      expect(wideConnectionActions.checkWhiteSpace).toBe("nowrap");
+      expect(wideConnectionActions.clearWhiteSpace).toBe("nowrap");
+      expect(wideConnectionActions.panelShadow).toBe("none");
     } else if (width >= 720) {
       expect(layout.shellDisplay).toBe("grid");
       expect(layout.shellColumnCount).toBe(2);
@@ -882,6 +888,26 @@ async function readSyncPanelLayout() {
         - Number.parseFloat(panelStyle.paddingRight),
       commandsTop: commandsRect.top,
       connectionTop: connectionRect.top
+    };
+  });
+}
+
+async function readConnectionActionLayout() {
+  return page.evaluate(() => {
+    const lineCount = (element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getClientRects().length;
+    };
+    const checkButton = document.querySelector("#checkConnectionButton");
+    const clearButton = document.querySelector("#clearConnectionButton");
+    const panel = document.querySelector(".connection-panel");
+    return {
+      checkLineCount: lineCount(checkButton),
+      clearLineCount: lineCount(clearButton),
+      checkWhiteSpace: getComputedStyle(checkButton).whiteSpace,
+      clearWhiteSpace: getComputedStyle(clearButton).whiteSpace,
+      panelShadow: getComputedStyle(panel).boxShadow
     };
   });
 }
