@@ -707,6 +707,11 @@ try {
     expectedStatus: 201,
     body: { itemID: "file-restart", itemKind: "file", itemTitle: "restart.txt" },
   });
+  const interruptedDeletionRequest = await createUploadedFile(
+    "file-interrupted-deletion",
+    "interrupted-deletion.txt",
+    "removed-before-database-finalization"
+  );
   child.kill("SIGKILL");
   await onceExit(child);
   const validTimestamp = "2026-07-14T00:00:00.000Z";
@@ -768,6 +773,16 @@ try {
       SET upload_claim = 'claim-owned-by-dead-process'
       WHERE id = ? AND object_key IS NULL
     `).run(restartRequest.id);
+    const interruptedDeletion = crashedDB.prepare(`
+      SELECT object_key FROM file_access_requests WHERE id = ? AND object_key IS NOT NULL
+    `).get(interruptedDeletionRequest.id);
+    assert.ok(interruptedDeletion?.object_key);
+    await fs.unlink(path.join(fileDir, ...interruptedDeletion.object_key.split("/")));
+    crashedDB.prepare(`
+      UPDATE file_access_requests
+      SET upload_claim = 'deletion-owned-by-dead-process'
+      WHERE id = ? AND object_key IS NOT NULL
+    `).run(interruptedDeletionRequest.id);
   } finally {
     crashedDB.close();
   }
@@ -822,6 +837,11 @@ try {
       recoveredDB.prepare("SELECT upload_claim FROM file_access_requests WHERE id = ?").get(restartRequest.id).upload_claim,
       null,
       "startup must recover an upload claim owned by a dead relay process"
+    );
+    assert.equal(
+      recoveredDB.prepare("SELECT upload_claim FROM file_access_requests WHERE id = ?").get(interruptedDeletionRequest.id).upload_claim,
+      null,
+      "startup must recover an interrupted deletion claim after its file was removed"
     );
   } finally {
     recoveredDB.close();

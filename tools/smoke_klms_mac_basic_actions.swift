@@ -37,7 +37,8 @@ private enum SmokeFailure: Error, CustomStringConvertible {
 private let environment = ProcessInfo.processInfo.environment
 private let bundleID = environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
 private let appName = environment["KLMS_MAC_APP_NAME"] ?? "KLMS Sync"
-private let appPath = ((environment["KLMS_MAC_APP_PATH"] ?? "~/Applications/KLMS Sync.app") as NSString)
+private let configuredAppPath = environment["KLMS_MAC_APP_PATH"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+private let appPath = ((configuredAppPath ?? "~/Applications/KLMS Sync.app") as NSString)
     .expandingTildeInPath
 private let timeout = TimeInterval(environment["KLMS_MAC_AX_TIMEOUT_SECONDS"] ?? "5.0") ?? 5.0
 private let verifyCommandQ = environment["KLMS_MAC_SMOKE_SKIP_CMD_Q"] != "1"
@@ -95,6 +96,11 @@ private func ensureAppRunning() throws -> NSRunningApplication {
 }
 
 private func findRunningApp() -> NSRunningApplication? {
+    if configuredAppPath != nil {
+        return NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && matchesConfiguredAppPath($0)
+        })
+    }
     let runningByBundleID = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
     let runningByName = NSWorkspace.shared.runningApplications.filter { app in
         app.localizedName == appName || app.executableURL?.lastPathComponent == "KLMSMac"
@@ -102,7 +108,21 @@ private func findRunningApp() -> NSRunningApplication? {
     return (runningByBundleID + runningByName).first(where: { !$0.isTerminated })
 }
 
+private func matchesConfiguredAppPath(_ app: NSRunningApplication) -> Bool {
+    guard let executablePath = app.executableURL?.resolvingSymlinksInPath().standardizedFileURL.path else {
+        return false
+    }
+    let bundlePath = URL(fileURLWithPath: appPath)
+        .resolvingSymlinksInPath()
+        .standardizedFileURL.path
+    return executablePath.hasPrefix(bundlePath + "/Contents/MacOS/")
+}
+
 private func launchApp() {
+    if configuredAppPath != nil {
+        _ = runOpen(arguments: ["-n", appPath])
+        return
+    }
     if runOpen(arguments: ["-b", bundleID]) {
         return
     }
@@ -124,6 +144,9 @@ private func runOpen(arguments: [String]) -> Bool {
 }
 
 private func openDashboardWindow(appElement: AXUIElement) throws {
+    if waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: 0.4) != nil {
+        return
+    }
     requestDashboardWindowReopen()
     guard waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: timeout) != nil else {
         throw SmokeFailure.dashboardOpenFailed
@@ -131,6 +154,10 @@ private func openDashboardWindow(appElement: AXUIElement) throws {
 }
 
 private func requestDashboardWindowReopen() {
+    if configuredAppPath != nil {
+        _ = runOpen(arguments: [appPath])
+        return
+    }
     let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -201,7 +228,7 @@ private func workspaceContentIdentifier(for buttonIdentifier: String) -> String?
 }
 
 private func verifyCommandQTerminatesAndReopens(app: NSRunningApplication) throws {
-    sendCommandQ()
+    sendCommandQ(app: app)
 
     let deadline = Date().addingTimeInterval(timeout)
     repeat {
@@ -228,17 +255,16 @@ private func isProcessAlive(_ pid: pid_t) -> Bool {
     kill(pid, 0) == 0 || errno == EPERM
 }
 
-private func sendCommandQ() {
-    let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
+private func sendCommandQ(app: NSRunningApplication) {
+    app.unhide()
+    app.activate(options: [.activateAllWindows])
+    let appElement = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
     process.arguments = [
-        "-e", "tell application \"\(escapedAppName)\" to activate",
-        "-e", "repeat 20 times",
-        "-e", "tell application \"System Events\" to set frontName to name of first application process whose frontmost is true",
-        "-e", "if frontName is \"KLMSMac\" then exit repeat",
-        "-e", "delay 0.1",
-        "-e", "end repeat",
+        "-e", "tell application \"System Events\" to set frontmost of first application process whose unix id is \(app.processIdentifier) to true",
+        "-e", "delay 0.2",
         "-e", "tell application \"System Events\" to keystroke \"q\" using command down",
     ]
     process.standardOutput = Pipe()

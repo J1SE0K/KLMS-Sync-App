@@ -14,9 +14,42 @@ ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-}"
 # attach File Provider metadata to .app directories and make codesign reject them.
 DIST_DIR="${DIST_DIR:-$HOME/Applications}"
 SWIFT_SCRATCH_PATH="${SWIFT_SCRATCH_PATH:-/private/tmp/klmsync-swiftpm-app-build}"
-APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+TARGET_APP_BUNDLE="${OUTPUT_APP:-$DIST_DIR/$APP_NAME.app}"
+TARGET_APP_PARENT="$(dirname "$TARGET_APP_BUNDLE")"
+TARGET_APP_NAME="$(basename "$TARGET_APP_BUNDLE")"
 
-mkdir -p "$DIST_DIR"
+mkdir -p "$TARGET_APP_PARENT"
+STAGING_DIR="$(mktemp -d "$TARGET_APP_PARENT/.klms-sync-app-build.XXXXXX")"
+APP_BUNDLE="$STAGING_DIR/$TARGET_APP_NAME"
+BACKUP_APP_BUNDLE="$STAGING_DIR/previous.app"
+target_app_moved=0
+
+restore_previous_app() {
+  if (( target_app_moved == 1 )) && [[ -e "$BACKUP_APP_BUNDLE" || -L "$BACKUP_APP_BUNDLE" ]]; then
+    if [[ ! -e "$TARGET_APP_BUNDLE" && ! -L "$TARGET_APP_BUNDLE" ]]; then
+      mv "$BACKUP_APP_BUNDLE" "$TARGET_APP_BUNDLE"
+    else
+      print -u2 -- "Unable to restore the previous app because the target path is occupied: $TARGET_APP_BUNDLE"
+      return 1
+    fi
+    target_app_moved=0
+  fi
+}
+
+cleanup_build() {
+  local exit_status=$?
+  trap - EXIT
+  if (( exit_status != 0 )); then
+    if ! restore_previous_app; then
+      print -u2 -- "Previous app preserved at: $BACKUP_APP_BUNDLE"
+      exit "$exit_status"
+    fi
+  fi
+  rm -rf "$STAGING_DIR"
+  exit "$exit_status"
+}
+
+trap cleanup_build EXIT
 
 swift build \
   --package-path "$APP_PACKAGE_DIR" \
@@ -38,7 +71,6 @@ if [[ ! -d "$RESOURCE_BUNDLE_SOURCE" ]]; then
   exit 1
 fi
 
-rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUNDLE/Contents/Helpers"
 
 cp -X "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/KLMSMac"
@@ -137,7 +169,6 @@ root_files=(
   sync_report.sh
   process_klms_assignments.sh
   klms_v2_build_state.sh
-  manual_assignment_overrides.json
   README.md
   LICENSE
   SECURITY.md
@@ -160,7 +191,7 @@ find "$PAYLOAD_ROOT" -type f \
   -exec chmod +x {} +
 
 if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  git_head="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+  git_head="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [[ -n "$git_head" ]]; then
     if [[ -n "$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null || true)" ]]; then
       dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
@@ -278,10 +309,26 @@ EOF
       fi
       /usr/bin/codesign --force --sign "$codesign_identity" "$NATIVE_NOTICE_HELPER_APP" >/dev/null
       /usr/bin/codesign "${app_codesign_args[@]}" "$APP_BUNDLE" >/dev/null
-    else
-      print -u2 -- "warning: ad-hoc signed app did not pass codesign verification."
     fi
+  fi
+  if ! /usr/bin/codesign --verify --deep --strict --verbose=4 "$APP_BUNDLE" >/dev/null 2>&1; then
+    print -u2 -- "Built app failed code-signature verification; the installed app was not replaced."
+    exit 1
   fi
 fi
 
-print -r -- "$APP_BUNDLE"
+if [[ -e "$TARGET_APP_BUNDLE" || -L "$TARGET_APP_BUNDLE" ]]; then
+  mv "$TARGET_APP_BUNDLE" "$BACKUP_APP_BUNDLE"
+  target_app_moved=1
+fi
+
+if ! mv "$APP_BUNDLE" "$TARGET_APP_BUNDLE"; then
+  print -u2 -- "Unable to install the newly built app; restoring the previous app."
+  restore_previous_app
+  exit 1
+fi
+target_app_moved=0
+
+trap - EXIT
+rm -rf "$STAGING_DIR"
+print -r -- "$TARGET_APP_BUNDLE"

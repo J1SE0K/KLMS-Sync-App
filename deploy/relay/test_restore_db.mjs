@@ -13,8 +13,8 @@ const scenarios = {
   "safety-backup": { safety: 1, target: 0, rollback: 0, up: 1, ready: 0 },
   replacement: { safety: 1, target: 1, rollback: 1, up: 1, ready: 0 },
   signal: { safety: 1, target: 1, rollback: 1, up: 1, ready: 0 },
-  startup: { safety: 1, target: 1, rollback: 1, up: 2, ready: 0 },
-  readiness: { safety: 1, target: 1, rollback: 1, up: 2, ready: 2 },
+  startup: { safety: 1, target: 1, rollback: 1, stop: 2, up: 2, ready: 0 },
+  readiness: { safety: 1, target: 1, rollback: 1, stop: 2, up: 2, ready: 2 },
   success: { safety: 1, target: 1, rollback: 0, up: 1, ready: 1 },
 };
 
@@ -65,7 +65,7 @@ case "$*" in
     if [ "$MOCK_SCENARIO" = stop ]; then exit 42; fi
     exit 0
     ;;
-  *" up -d relay")
+  *" up -d --force-recreate relay")
     printf '%s\\n' UP >> "$MOCK_COMPOSE_LOG"
     count=0
     if [ -f "$MOCK_UP_COUNT" ]; then count="$(sed -n '1p' "$MOCK_UP_COUNT")"; fi
@@ -102,12 +102,17 @@ exit 0
     const count = (value) => markers.filter((marker) => marker === value).length;
 
     assert.equal(count("VERIFY"), 1);
-    assert.equal(count("STOP"), 1);
+    assert.equal(count("STOP"), expected.stop ?? 1);
     assert.equal(count("SAFETY_BACKUP"), expected.safety, result.stderr);
     assert.equal(count("TARGET_REPLACE"), expected.target, result.stderr);
     assert.equal(count("ROLLBACK_COPY"), expected.rollback, result.stderr);
     assert.equal(count("UP"), expected.up, result.stderr);
     assert.equal(count("READY"), expected.ready, result.stderr);
+    if (expected.rollback === 1 && (scenario === "startup" || scenario === "readiness")) {
+      const secondStop = markers.lastIndexOf("STOP");
+      assert.ok(secondStop > markers.indexOf("UP"), result.stderr);
+      assert.ok(secondStop < markers.indexOf("ROLLBACK_COPY"), result.stderr);
+    }
     if (scenario === "success") {
       assert.equal(result.code, 0, result.stderr);
     } else {

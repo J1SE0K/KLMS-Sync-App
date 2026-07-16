@@ -21,7 +21,9 @@
     "noticeIgnored", "fileTotal", "newFiles", "quarantine", "filePruned",
     "fileArchivePruned", "calendarCreated", "calendarUpdated", "calendarDeleted"
   ];
-  const commandKinds = new Set(["fullSync", "filesSync", "coreSync", "noticeSync", "report", "doctor"]);
+  const commandKinds = new Set([
+    "fullSync", "filesSync", "coreSync", "noticeSync", "report", "doctor", "verify", "v2BuildState"
+  ]);
   const commandStatuses = new Set(["pending", "running", "completed", "cancelled", "failed", "macUnavailable"]);
   const phases = new Set(["idle", ...commandStatuses]);
 
@@ -126,7 +128,7 @@
     if ("loginRequired" in status) normalized.loginRequired = status.loginRequired === true;
     if ("authDigits" in status) {
       const digits = boundedString(status.authDigits, 12);
-      normalized.authDigits = /^\d{4,8}$/.test(digits) ? digits : null;
+      normalized.authDigits = /^\d{1,3}$/.test(digits) ? digits : null;
     }
     if ("authStatusMessage" in status) {
       normalized.authStatusMessage = nullableBoundedString(status.authStatusMessage, 500);

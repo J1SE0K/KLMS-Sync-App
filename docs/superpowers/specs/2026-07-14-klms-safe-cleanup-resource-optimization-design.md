@@ -1,6 +1,6 @@
 # KLMS Sync safe cleanup and resource optimization design
 
-Date: 2026-07-14  
+Date: 2026-07-14
 Status: approved
 
 ## Objective

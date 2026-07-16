@@ -17,8 +17,10 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.12"
       - name: Check shell syntax
@@ -37,7 +39,9 @@ jobs:
       run:
         working-directory: apps/KLMSync
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
       - name: Run Swift package tests
         run: swift test --scratch-path "$RUNNER_TEMP/klmsync-swiftpm-build" --jobs 1
       - name: Build the iPhone and iPad simulator app
@@ -58,8 +62,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: "22"
           cache: npm
@@ -70,6 +76,8 @@ jobs:
         run: node --check tools/klms_relay_server.mjs
       - name: Test self-hosted relay integrity and WebSocket flow
         run: node --test deploy/relay/test_relay.mjs
+      - name: Test self-hosted relay restore and rollback recovery
+        run: node --test deploy/relay/test_restore_db.mjs
       - name: Test Cloudflare relay
         working-directory: deploy/cloudflare-worker
         run: |
@@ -94,8 +102,10 @@ jobs:
       run:
         working-directory: apps/KLMSyncWindows
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: "22"
           cache: npm
@@ -109,7 +119,7 @@ jobs:
       - name: Build the Windows x64 installer
         run: npm run dist:win
       - name: Upload the Windows x64 installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: klms-sync-windows-x64-${{ github.run_id }}
           path: apps/KLMSyncWindows/dist/*-x64.exe

@@ -12,6 +12,7 @@ RESTORE_COMMITTED=0
 RELAY_STOPPED=0
 SAFETY_READY=0
 RECOVERY_RUNNING=0
+CANDIDATE_STARTED=0
 
 secure_env_file() {
   file="$1"
@@ -63,13 +64,17 @@ recover_on_exit() {
   RECOVERY_RUNNING=1
   set +e
   recovery_failed=0
+  if [ "$CANDIDATE_STARTED" -eq 1 ]; then
+    compose stop relay || recovery_failed=1
+    CANDIDATE_STARTED=0
+  fi
   if [ "$SAFETY_READY" -eq 1 ]; then
     printf '%s\n' "Restore failed; rolling back to $SAFETY_PATH" >&2
     restore_safety_database || recovery_failed=1
   else
     printf '%s\n' "Restore failed before the safety backup completed; restarting the original relay" >&2
   fi
-  compose up -d relay || recovery_failed=1
+  compose up -d --force-recreate relay || recovery_failed=1
   if [ "$recovery_failed" -ne 0 ]; then
     printf '%s\n' "Restore recovery could not fully restore and restart the relay" >&2
   fi
@@ -130,13 +135,15 @@ for (const suffix of ["-wal", "-shm"]) fs.rmSync(`${destination}${suffix}`, { fo
 fs.renameSync(`${destination}.restore`, destination);
 ' "$BACKUP_PATH" "$DB_PATH"
 
-compose up -d relay
+CANDIDATE_STARTED=1
+compose up -d --force-recreate relay
 attempt=0
 while [ "$attempt" -lt "$READINESS_ATTEMPTS" ]; do
   if compose exec -T relay node -e \
     "fetch('http://127.0.0.1:18484/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
     RESTORE_COMMITTED=1
     RELAY_STOPPED=0
+    CANDIDATE_STARTED=0
     trap - 0 HUP INT TERM
     printf '%s\n' "Restore verified and relay ready: $BACKUP_PATH"
     exit 0

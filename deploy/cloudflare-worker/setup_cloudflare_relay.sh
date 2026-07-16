@@ -334,20 +334,6 @@ try {
 } catch {
   process.exit(0);
 }
-
-ensure_r2_lifecycle() {
-  local rule_name="klms-file-relay-fallback"
-  local lifecycle_output
-  lifecycle_output="$(wrangler r2 bucket lifecycle list "$R2_BUCKET_NAME" 2>&1 || true)"
-  if print -r -- "$lifecycle_output" | grep -Fq "$rule_name"; then
-    print -- "R2 orphan fallback lifecycle 확인됨: $rule_name"
-    return
-  fi
-  print -- "R2 orphan fallback lifecycle 추가 중..."
-  wrangler r2 bucket lifecycle add \
-    "$R2_BUCKET_NAME" "$rule_name" "file-access/" \
-    --expire-days 1 --abort-multipart-days 1 --force
-}
 const buckets = Array.isArray(parsed) ? parsed : parsed?.buckets || parsed?.result || [];
 const found = buckets.find((item) => item && item.name === process.env.R2_BUCKET_NAME);
 if (found) process.stdout.write(found.name);
@@ -373,6 +359,20 @@ if (found) process.stdout.write(found.name);
   print -r -- "$create_output"
   set_r2_bucket_name "$R2_BUCKET_NAME"
   print -- "R2 버킷 생성됨: $R2_BUCKET_NAME"
+}
+
+ensure_r2_lifecycle() {
+  local rule_name="klms-file-relay-fallback"
+  local lifecycle_output
+  lifecycle_output="$(wrangler r2 bucket lifecycle list "$R2_BUCKET_NAME" 2>&1 || true)"
+  if print -r -- "$lifecycle_output" | grep -Fq "$rule_name"; then
+    print -- "R2 orphan fallback lifecycle 확인됨: $rule_name"
+    return
+  fi
+  print -- "R2 orphan fallback lifecycle 추가 중..."
+  wrangler r2 bucket lifecycle add \
+    "$R2_BUCKET_NAME" "$rule_name" "file-access/" \
+    --expire-days 1 --abort-multipart-days 1 --force
 }
 
 read_or_create_token() {

@@ -192,6 +192,11 @@ private func runSmoke() throws {
 }
 
 private func runningKLMSApplication() -> NSRunningApplication? {
+    if appPath != nil {
+        return NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && matchesConfiguredAppPath($0)
+        })
+    }
     if let exactBundleMatch = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
         .first(where: { !$0.isTerminated }) {
         return exactBundleMatch
@@ -201,6 +206,17 @@ private func runningKLMSApplication() -> NSRunningApplication? {
             || (appPath == nil && app.executableURL?.lastPathComponent == "KLMSMac")
     }
     return runningByName.first(where: { !$0.isTerminated })
+}
+
+private func matchesConfiguredAppPath(_ app: NSRunningApplication) -> Bool {
+    guard let appPath,
+          let executablePath = app.executableURL?.resolvingSymlinksInPath().standardizedFileURL.path else {
+        return false
+    }
+    let bundlePath = URL(fileURLWithPath: appPath)
+        .resolvingSymlinksInPath()
+        .standardizedFileURL.path
+    return executablePath.hasPrefix(bundlePath + "/Contents/MacOS/")
 }
 
 private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
@@ -219,7 +235,9 @@ private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
 }
 
 private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElement) {
-    activateApplicationBundle()
+    if appPath == nil {
+        activateApplicationBundle()
+    }
     app.unhide()
     app.activate(options: [.activateAllWindows])
     AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
@@ -240,7 +258,7 @@ private func activateApplicationBundle() {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     if let appPath, !appPath.isEmpty {
-        process.arguments = [appPath]
+        process.arguments = ["-n", appPath]
     } else {
         process.arguments = ["-b", bundleID]
     }
@@ -1079,6 +1097,7 @@ private func firstAccessibilityWindow(in appElement: AXUIElement) -> AXUIElement
 }
 
 private func setAccessibilityWindowSize(_ requestedSize: CGSize, window: AXUIElement) throws {
+    try ensureAccessibilityWindowFits(requestedSize, window: window)
     var size = requestedSize
     guard let value = AXValueCreate(.cgSize, &size) else {
         throw SmokeFailure.layoutOverlap("Could not create an accessibility window-size value.")
@@ -1100,6 +1119,44 @@ private func setAccessibilityWindowSize(_ requestedSize: CGSize, window: AXUIEle
     throw SmokeFailure.layoutOverlap(
         "KLMS window did not reach requested width \(Int(requestedSize.width)); actual=\(Int(actualWidth))."
     )
+}
+
+private func ensureAccessibilityWindowFits(_ requestedSize: CGSize, window: AXUIElement) throws {
+    guard let currentFrame = accessibilityFrame(of: window),
+          let screen = NSScreen.screens.first(where: {
+              currentFrame.midX >= $0.frame.minX && currentFrame.midX <= $0.frame.maxX
+          }) ?? NSScreen.main else {
+        return
+    }
+
+    let horizontalInset: CGFloat = 12
+    let visibleFrame = screen.visibleFrame
+    let minimumX = visibleFrame.minX + horizontalInset
+    let maximumX = visibleFrame.maxX - requestedSize.width - horizontalInset
+    let targetX = maximumX >= minimumX
+        ? min(max(currentFrame.minX, minimumX), maximumX)
+        : visibleFrame.minX
+    guard abs(currentFrame.minX - targetX) > 1 else {
+        return
+    }
+
+    var position = CGPoint(x: targetX, y: currentFrame.minY)
+    guard let value = AXValueCreate(.cgPoint, &position) else {
+        throw SmokeFailure.layoutOverlap("Could not create an accessibility window-position value.")
+    }
+    let error = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, value)
+    guard error == .success else {
+        throw SmokeFailure.layoutOverlap("Could not reposition the KLMS window before resizing: \(error).")
+    }
+
+    let deadline = Date().addingTimeInterval(min(timeout, 1.0))
+    repeat {
+        if let frame = accessibilityFrame(of: window), abs(frame.minX - targetX) <= 2 {
+            return
+        }
+        Thread.sleep(forTimeInterval: 0.05)
+    } while Date() < deadline
+    throw SmokeFailure.layoutOverlap("KLMS window did not reach its safe resize position.")
 }
 
 private func verifyWorkspaceContentLayout(

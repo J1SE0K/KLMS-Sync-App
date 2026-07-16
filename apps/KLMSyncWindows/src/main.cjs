@@ -92,32 +92,48 @@ app.on("window-all-closed", () => {
 });
 
 function registerIPC() {
-  ipcMain.handle("config:load", async () => loadConfigForRenderer());
-  ipcMain.handle("config:save", async (_event, config) => serializeConfigMutation(async () => {
+  registerTrustedIPCHandler("config:load", async () => loadConfigForRenderer());
+  registerTrustedIPCHandler("config:save", async (config) => serializeConfigMutation(async () => {
     const saved = await saveConfigFromRenderer(config || {});
     activateRelayConfigRevision(storedConfigRevision(saved));
     return configForRenderer(saved);
   }));
-  ipcMain.handle("config:clear", async () => serializeConfigMutation(async () => {
+  registerTrustedIPCHandler("config:clear", async () => serializeConfigMutation(async () => {
     const nextRevision = relayConfigRevision + 1;
     await clearConfig();
     activateRelayConfigRevision(nextRevision);
     return configForRenderer({ configRevision: nextRevision });
   }));
-  ipcMain.handle("clipboard:readText", async () => clipboard.readText("clipboard"));
-  ipcMain.handle("clipboard:writeText", async (_event, value) => {
+  registerTrustedIPCHandler("clipboard:readText", async () => clipboard.readText("clipboard"));
+  registerTrustedIPCHandler("clipboard:writeText", async (value) => {
     const text = typeof value === "string" ? value.slice(0, 200_000) : "";
     clipboard.writeText(text, "clipboard");
     return { written: true };
   });
-  ipcMain.handle("relay:request", async (_event, request) => relayRequest(request || {}));
-  ipcMain.handle("relay:socketStart", async (_event, request) => startRelayEventSocket(request || {}));
-  ipcMain.handle("relay:socketStop", async () => stopRelayEventSocket());
-  ipcMain.handle("shell:openExternal", async (_event, target) => {
+  registerTrustedIPCHandler("relay:request", async (request) => relayRequest(request || {}));
+  registerTrustedIPCHandler("relay:socketStart", async (request) => startRelayEventSocket(request || {}));
+  registerTrustedIPCHandler("relay:socketStop", async () => stopRelayEventSocket());
+  registerTrustedIPCHandler("shell:openExternal", async (target) => {
     const safeTarget = normalizeExternalURL(target);
     await shell.openExternal(safeTarget);
     return { opened: true };
   });
+}
+
+function registerTrustedIPCHandler(channel, handler) {
+  ipcMain.handle(channel, async (event, ...args) => {
+    assertTrustedIPCEvent(event);
+    return handler(...args);
+  });
+}
+
+function assertTrustedIPCEvent(event) {
+  if (!mainWindow
+      || mainWindow.isDestroyed()
+      || event.sender !== mainWindow.webContents
+      || event.senderFrame?.url !== APP_ENTRY_URL) {
+    throw new Error("허용되지 않은 앱 화면의 요청을 차단했습니다.");
+  }
 }
 
 function configPath() {
@@ -138,8 +154,21 @@ async function readConfigFile() {
 }
 
 async function writeConfigFile(config) {
-  await fs.mkdir(path.dirname(configPath()), { recursive: true });
-  await fs.writeFile(configPath(), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  const targetPath = configPath();
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  const temporaryPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
+  const temporaryHandle = await fs.open(temporaryPath, "wx", 0o600);
+  try {
+    await temporaryHandle.writeFile(`${JSON.stringify(config, null, 2)}\n`, "utf8");
+    await temporaryHandle.sync();
+  } finally {
+    await temporaryHandle.close();
+  }
+  try {
+    await fs.rename(temporaryPath, targetPath);
+  } finally {
+    await fs.rm(temporaryPath, { force: true });
+  }
 }
 
 async function clearConfig() {

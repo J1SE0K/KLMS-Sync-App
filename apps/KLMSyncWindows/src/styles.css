@@ -161,6 +161,7 @@ button {
 .button-label {
   min-width: 0;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 button.secondary {
@@ -446,6 +447,24 @@ body.viewport-resizing .sidebar {
   margin-bottom: 16px;
 }
 
+.topbar > div:first-child {
+  flex: 1 1 auto;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  overflow-x: clip;
+}
+
+#syncStatusRegion,
+.status-message-disclosure {
+  width: 100%;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+#syncStatusRegion {
+  overflow-x: clip;
+}
+
 .topbar h2 {
   font-size: 26px;
 }
@@ -689,12 +708,14 @@ body.viewport-resizing .sidebar {
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .item-row .title {
   font-weight: 760;
   line-height: 1.35;
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .item-row .title,
@@ -927,6 +948,7 @@ body.viewport-resizing .sidebar {
   display: -webkit-box;
   overflow: hidden;
   overflow-wrap: anywhere;
+  word-break: keep-all;
   -webkit-box-orient: vertical;
 }
 
@@ -984,13 +1006,48 @@ body.viewport-resizing .sidebar {
 .empty-list,
 .toast {
   overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 #statusSubtitle {
-  display: -webkit-box;
+  display: block;
+  max-block-size: 6em;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: normal;
+}
+
+.status-message-disclosure {
+  margin-block-start: 8px;
+  overflow-x: clip;
+}
+
+.status-message-disclosure summary {
+  width: fit-content;
+  max-inline-size: 100%;
+  min-height: 44px;
+  padding-block: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  word-break: keep-all;
+}
+
+#statusFullMessage {
+  max-block-size: min(40vh, 280px);
+  margin: 0;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 .toast {
@@ -1092,6 +1149,10 @@ body.viewport-resizing .sidebar {
     gap: 12px;
   }
 
+  .topbar > div:first-child {
+    width: 100%;
+  }
+
   .topbar-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1168,6 +1229,10 @@ body.viewport-resizing .sidebar {
 
   .topbar h2 {
     font-size: 22px;
+  }
+
+  #statusSubtitle {
+    max-inline-size: calc(100% - 14px);
   }
 
   .topbar-actions {
@@ -1253,6 +1318,10 @@ body.viewport-resizing .sidebar {
     display: none;
   }
 
+  #statusSubtitle {
+    max-inline-size: calc(100% - 10px);
+  }
+
   .list-pane,
   .detail-pane,
   .history-panel,
@@ -1268,6 +1337,15 @@ body.viewport-resizing .sidebar {
 }
 
 @media (forced-colors: active) {
+  button:not(.sidebar-backdrop) {
+    border: 1px solid ButtonText;
+  }
+
+  button .icon {
+    forced-color-adjust: none;
+    background: ButtonText;
+  }
+
   button:focus-visible,
   input:focus-visible,
   select:focus-visible,

@@ -121,6 +121,11 @@ private func runProbe() throws {
 }
 
 private func runningKLMSApplication() -> NSRunningApplication? {
+    if appPath != nil {
+        return NSWorkspace.shared.runningApplications.first(where: {
+            !$0.isTerminated && matchesConfiguredAppPath($0)
+        })
+    }
     if let exactBundleMatch = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
         .first(where: { !$0.isTerminated }) {
         return exactBundleMatch
@@ -130,6 +135,17 @@ private func runningKLMSApplication() -> NSRunningApplication? {
             || (appPath == nil && app.executableURL?.lastPathComponent == "KLMSMac")
     }
     return runningByName.first(where: { !$0.isTerminated })
+}
+
+private func matchesConfiguredAppPath(_ app: NSRunningApplication) -> Bool {
+    guard let appPath,
+          let executablePath = app.executableURL?.resolvingSymlinksInPath().standardizedFileURL.path else {
+        return false
+    }
+    let bundlePath = URL(fileURLWithPath: appPath)
+        .resolvingSymlinksInPath()
+        .standardizedFileURL.path
+    return executablePath.hasPrefix(bundlePath + "/Contents/MacOS/")
 }
 
 private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
@@ -148,7 +164,9 @@ private func launchKLMSApplicationIfNeeded() -> NSRunningApplication? {
 }
 
 private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElement) {
-    activateApplicationBundle()
+    if appPath == nil {
+        activateApplicationBundle()
+    }
     app.unhide()
     app.activate(options: [.activateAllWindows])
     AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
@@ -169,7 +187,7 @@ private func activateApplicationBundle() {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     if let appPath, !appPath.isEmpty {
-        process.arguments = [appPath]
+        process.arguments = ["-n", appPath]
     } else {
         process.arguments = ["-b", bundleID]
     }
@@ -347,12 +365,12 @@ private func measure(target: ProbeTarget, appElement: AXUIElement) throws -> Dou
         }
         throw ProbeFailure.workspaceContentMissing(missing.joined(separator: ", "))
     }
+    let end = DispatchTime.now()
     for renderedText in target.renderedTexts {
         guard waitForText(renderedText, in: appElement, timeout: timeout) else {
             throw ProbeFailure.workspaceContentMissing(renderedText)
         }
     }
-    let end = DispatchTime.now()
     return Double(end.uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
 }
 

@@ -1596,6 +1596,43 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("security find-identity -v -p codesigning", build_script)
         self.assertIn("Signing KLMS Sync.app with identity", build_script)
 
+    def test_mac_app_build_is_staged_and_excludes_user_override_data(self) -> None:
+        build_script = (PROJECT_DIR / "tools" / "build_klms_mac_app.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('TARGET_APP_BUNDLE="${OUTPUT_APP:-$DIST_DIR/$APP_NAME.app}"', build_script)
+        self.assertIn('mktemp -d "$TARGET_APP_PARENT/.klms-sync-app-build.XXXXXX"', build_script)
+        self.assertIn('mv "$TARGET_APP_BUNDLE" "$BACKUP_APP_BUNDLE"', build_script)
+        self.assertIn('mv "$APP_BUNDLE" "$TARGET_APP_BUNDLE"', build_script)
+        self.assertIn('restore_previous_app', build_script)
+        self.assertIn('if ! restore_previous_app; then', build_script)
+        self.assertIn('Previous app preserved at: $BACKUP_APP_BUNDLE', build_script)
+        self.assertNotIn("  manual_assignment_overrides.json\n", build_script)
+
+    def test_private_readiness_builds_an_isolated_app_copy(self) -> None:
+        readiness = (PROJECT_DIR / "tools" / "verify_klms_app_readiness.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("READINESS_TEMP_DIR", readiness)
+        self.assertIn('OUTPUT_APP="$MAC_APP_PATH"', readiness)
+        self.assertIn('rm -rf "$READINESS_TEMP_DIR"', readiness)
+        self.assertGreaterEqual(readiness.count('KLMS_MAC_APP_PATH="$MAC_APP_PATH"'), 4)
+
+    def test_github_workflows_pin_actions_and_run_restore_recovery_tests(self) -> None:
+        workflows = "\n".join(
+            path.read_text(encoding="utf-8")
+            for path in sorted((PROJECT_DIR / ".github" / "workflows").glob("*.yml"))
+        )
+
+        self.assertNotRegex(workflows, r"uses: actions/[^@\s]+@v\d+")
+        self.assertEqual(
+            workflows.count("uses: actions/checkout@"),
+            workflows.count("persist-credentials: false"),
+        )
+        self.assertIn("node --test deploy/relay/test_restore_db.mjs", workflows)
+
     def test_mac_app_notifies_auth_completion(self) -> None:
         model = (
             PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSMac" / "KLMSMacModel.swift"

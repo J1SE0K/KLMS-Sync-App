@@ -1836,8 +1836,22 @@ function renderHeader() {
   $("phaseLabel").textContent = phaseLabel(connectionOnlyPhase ? state.connectionPhase : phase);
   $("statusTitle").textContent = statusTitle();
   const subtitle = statusSubtitle();
-  $("statusSubtitle").textContent = subtitle;
-  $("statusSubtitle").title = subtitle;
+  const subtitleElement = $("statusSubtitle");
+  const disclosure = $("statusMessageDisclosure");
+  const subtitleCharacters = Array.from(subtitle);
+  subtitleElement.textContent = subtitleCharacters.length > 96
+    ? [0, 32, 64].map((offset) => subtitleCharacters.slice(offset, offset + 32).join("")).join("\n") + "…"
+    : subtitle;
+  subtitleElement.setAttribute("aria-label", subtitle);
+  subtitleElement.title = subtitle;
+  $("statusFullMessage").textContent = subtitle;
+  window.requestAnimationFrame(() => {
+    if (subtitleElement.getAttribute("aria-label") !== subtitle) return;
+    const isTruncated = subtitleCharacters.length > 96
+      || subtitleElement.scrollHeight > subtitleElement.clientHeight + 1;
+    disclosure.classList.toggle("hidden", !isTruncated);
+    if (!isTruncated) disclosure.open = false;
+  });
 
   const banner = $("attentionBanner");
   banner.className = "attention hidden";
@@ -2971,7 +2985,8 @@ async function copyState() {
   const text = JSON.stringify({
     status: state.status,
     latestCommand: state.latestCommand,
-    itemCount: state.items.length
+    itemCount: state.items.length,
+    message: statusSubtitle()
   }, null, 2);
   await window.klmsWindows.writeClipboardText(text);
   toast("현재 상태를 복사했습니다.");

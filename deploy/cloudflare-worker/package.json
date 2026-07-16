@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check": "node --check src/worker.mjs",
-    "test": "node test/smoke.mjs",
+    "test": "node --test test/setup-script.test.mjs && node test/smoke.mjs",
     "test:integration": "node test/integration.mjs",
     "setup": "zsh ./setup_cloudflare_relay.sh",
     "dev": "wrangler --config wrangler.local.toml dev",

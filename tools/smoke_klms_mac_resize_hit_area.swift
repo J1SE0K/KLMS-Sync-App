@@ -31,6 +31,8 @@ private enum ResizeProbeError: Error, CustomStringConvertible {
 }
 
 private let bundleID = ProcessInfo.processInfo.environment["KLMS_MAC_BUNDLE_ID"] ?? "com.local.KLMSync"
+private let appPath = ProcessInfo.processInfo.environment["KLMS_MAC_APP_PATH"]?
+    .trimmingCharacters(in: .whitespacesAndNewlines)
 
 do {
     try runProbe()
@@ -44,24 +46,19 @@ private func runProbe() throws {
     guard AXIsProcessTrustedWithOptions(options) else {
         throw ResizeProbeError.accessibilityPermissionMissing
     }
-    guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
-        .first(where: { !$0.isTerminated }) else {
+    guard let app = runningApplication() else {
         throw ResizeProbeError.appNotRunning
     }
 
-    app.activate(options: [.activateAllWindows])
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
-    AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
     let window = unsafeBitCast(
         try copyValue(appElement, kAXMainWindowAttribute as CFString),
         to: AXUIElement.self
     )
-    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-    Thread.sleep(forTimeInterval: 0.4)
-
-    let frontmost = NSWorkspace.shared.frontmostApplication
-    guard frontmost?.processIdentifier == app.processIdentifier else {
-        throw ResizeProbeError.appNotFrontmost(frontmost?.localizedName ?? "unknown")
+    guard waitUntilFrontmost(app: app, appElement: appElement, window: window) else {
+        throw ResizeProbeError.appNotFrontmost(
+            NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
+        )
     }
 
     let originalPosition = try pointValue(window, kAXPositionAttribute as CFString)
@@ -93,6 +90,43 @@ private func runProbe() throws {
     }
 
     print("ok: installed Mac app resizes from the native edge and the expanded 10pt inner hit area")
+}
+
+private func waitUntilFrontmost(
+    app: NSRunningApplication,
+    appElement: AXUIElement,
+    window: AXUIElement
+) -> Bool {
+    let deadline = Date().addingTimeInterval(3.0)
+    repeat {
+        app.unhide()
+        app.activate(options: [.activateAllWindows])
+        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+            Thread.sleep(forTimeInterval: 0.2)
+            return true
+        }
+        Thread.sleep(forTimeInterval: 0.1)
+    } while Date() < deadline
+    return false
+}
+
+private func runningApplication() -> NSRunningApplication? {
+    if let appPath {
+        let bundlePath = URL(fileURLWithPath: appPath)
+            .resolvingSymlinksInPath()
+            .standardizedFileURL.path
+        return NSWorkspace.shared.runningApplications.first(where: { app in
+            guard !app.isTerminated,
+                  let executablePath = app.executableURL?.resolvingSymlinksInPath().standardizedFileURL.path else {
+                return false
+            }
+            return executablePath.hasPrefix(bundlePath + "/Contents/MacOS/")
+        })
+    }
+    return NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+        .first(where: { !$0.isTerminated })
 }
 
 private func dragMouse(from start: CGPoint, horizontalDistance: CGFloat) throws {

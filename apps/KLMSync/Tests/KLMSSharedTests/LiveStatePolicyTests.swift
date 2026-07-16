@@ -231,6 +231,18 @@ final class LiveStatePolicyTests: XCTestCase {
         XCTAssertEqual(completedSidebarExpansion.workspaceWidth, wide.workspaceWidth)
     }
 
+    func testMacWorkspaceColumnModeUsesPostNavigationWorkspaceWidth() {
+        let compact = MacWorkspaceLayoutPolicy.metrics(for: 720)
+        let belowBoundary = MacWorkspaceLayoutPolicy.metrics(for: 964.5)
+        let atBoundary = MacWorkspaceLayoutPolicy.metrics(for: 965)
+
+        XCTAssertEqual(compact.contentMode, .compact)
+        XCTAssertEqual(belowBoundary.workspaceWidth, 899.5)
+        XCTAssertEqual(belowBoundary.contentMode, .medium)
+        XCTAssertEqual(atBoundary.workspaceWidth, 900)
+        XCTAssertEqual(atBoundary.contentMode, .wide)
+    }
+
     func testMacWorkspaceNavigationTransitionsUseThreeExactFixedWidths() {
         let expectations: [(CGFloat, CGFloat, CGFloat, MacWorkspaceNavigationMode)] = [
             (640, 0, 640, .compact),

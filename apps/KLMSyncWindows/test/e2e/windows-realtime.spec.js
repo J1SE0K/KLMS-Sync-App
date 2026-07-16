@@ -158,6 +158,9 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   await captureStableScreenshot("windows-wide-1040-light-connected");
 
   await resizeElectronContent(720, 700);
+  expect(await page.locator(".sidebar-rail [data-sidebar-target]").evaluateAll((buttons) => (
+    buttons.map((button) => button.dataset.sidebarTarget)
+  ))).toEqual(["commands", "connection"]);
   const commandsRailButton = page.locator('[data-sidebar-target="commands"]');
   await commandsRailButton.click();
   await expect(page.locator("body")).toHaveClass(/sidebar-open/);
@@ -560,6 +563,19 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   replacementRelay.publishEvent("long-content:updated", ["status", "syncData", "itemActions", "requestLog"]);
   const longRow = page.locator('[data-focus-key="item:long-content-assignment"]');
   await expect(longRow).toBeVisible({ timeout: 3_000 });
+  await expect(page.locator("#statusSubtitle")).toContainText("LONG_MESSAGE_");
+  await expect(page.locator("#statusSubtitle")).toHaveAttribute("aria-label", replacementRelay.message);
+  const statusDisclosure = page.locator("#statusMessageDisclosure");
+  await expect(statusDisclosure).toBeVisible();
+  await statusDisclosure.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(statusDisclosure).toHaveAttribute("open", "");
+  await expect(page.locator("#statusFullMessage")).toHaveText(replacementRelay.message);
+  await page.keyboard.press("Enter");
+  await expect(statusDisclosure).not.toHaveAttribute("open", "");
+  await page.locator("#copyStateButton").click();
+  const copiedState = await electronApp.evaluate(({ clipboard }) => clipboard.readText());
+  expect(copiedState).toContain(replacementRelay.message);
 
   await setElectronZoomFactor(1);
   await resizeElectronContent(640, 900);
@@ -654,6 +670,25 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
     }
     await expect(page.locator('[data-focus-key="item:long-content-assignment"].active')).toHaveCount(1);
     await expect(page.locator("#itemDetail .detail-header h2")).toHaveText(longTitle);
+    const statusGeometry = await page.evaluate(() => {
+      const content = document.querySelector(".content");
+      const contentStyle = getComputedStyle(content);
+      const contentRect = content.getBoundingClientRect();
+      const region = document.querySelector("#syncStatusRegion").getBoundingClientRect();
+      const subtitle = document.querySelector("#statusSubtitle").getBoundingClientRect();
+      return {
+        contentInnerRight: contentRect.right - Number.parseFloat(contentStyle.paddingRight),
+        regionRight: region.right,
+        subtitleRight: subtitle.right,
+        viewportRight: document.documentElement.clientWidth
+      };
+    });
+    expect(statusGeometry.regionRight).toBeLessThanOrEqual(statusGeometry.viewportRight + 0.5);
+    expect(statusGeometry.regionRight).toBeLessThanOrEqual(statusGeometry.contentInnerRight + 0.5);
+    expect(statusGeometry.subtitleRight).toBeLessThanOrEqual(statusGeometry.regionRight + 0.5);
+    if (factor >= 2) {
+      expect(statusGeometry.contentInnerRight - statusGeometry.subtitleRight).toBeGreaterThanOrEqual(9.5);
+    }
     if (factor === 2) {
       await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
       await captureStableScreenshot("windows-zoom-200-light-long-data");
@@ -669,13 +704,22 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   const forcedColorState = await page.evaluate(() => {
     const metric = getComputedStyle(document.querySelector("#dashboardCards .metric-card.active"));
     const row = getComputedStyle(document.querySelector("#itemList .item-row.active"));
+    const menuButton = getComputedStyle(document.querySelector("#sidebarToggleButton"));
+    const menuIcon = getComputedStyle(document.querySelector("#sidebarToggleButton .icon"));
+    const refreshButton = getComputedStyle(document.querySelector("#refreshButton"));
     return {
       metricAdjustment: metric.forcedColorAdjust,
       rowAdjustment: row.forcedColorAdjust,
       metricBackground: metric.backgroundColor,
       metricColor: metric.color,
       rowBackground: row.backgroundColor,
-      rowColor: row.color
+      rowColor: row.color,
+      menuBorderStyle: menuButton.borderStyle,
+      menuBorderWidth: menuButton.borderWidth,
+      menuIconAdjustment: menuIcon.forcedColorAdjust,
+      menuIconColor: menuIcon.backgroundColor,
+      refreshBorderStyle: refreshButton.borderStyle,
+      refreshBorderWidth: refreshButton.borderWidth
     };
   });
   expect(forcedColorState.metricAdjustment).toBe("none");
@@ -683,6 +727,12 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   expect(forcedColorState.metricBackground).toBe(forcedColorState.rowBackground);
   expect(forcedColorState.metricColor).toBe(forcedColorState.rowColor);
   expect(forcedColorState.metricBackground).not.toBe(forcedColorState.metricColor);
+  expect(forcedColorState.menuBorderStyle).toBe("solid");
+  expect(forcedColorState.menuBorderWidth).not.toBe("0px");
+  expect(forcedColorState.menuIconAdjustment).toBe("none");
+  expect(forcedColorState.menuIconColor).not.toBe("rgba(0, 0, 0, 0)");
+  expect(forcedColorState.refreshBorderStyle).toBe("solid");
+  expect(forcedColorState.refreshBorderWidth).not.toBe("0px");
   await assertNoHorizontalOverflow("forced-colors layout");
   await captureStableScreenshot("windows-narrow-640-forced-colors-selected");
   await page.emulateMedia({ colorScheme: "light", forcedColors: "none" });

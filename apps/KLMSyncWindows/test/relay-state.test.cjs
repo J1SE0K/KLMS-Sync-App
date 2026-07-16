@@ -76,6 +76,26 @@ test("normalizes a malicious relay status before renderer state", () => {
   assert.equal(normalized.message, "<img src=x onerror=globalThis.pwned=true>");
 });
 
+test("accepts the relay protocol's one-to-three-digit authentication code", () => {
+  for (const authDigits of ["7", "57", "123"]) {
+    const normalized = relayState.normalizeRelayStatusPayload({ status: { authDigits } });
+    assert.equal(normalized.status.authDigits, authDigits);
+  }
+  for (const authDigits of ["", "1234", "12x"]) {
+    const normalized = relayState.normalizeRelayStatusPayload({ status: { authDigits } });
+    assert.equal(normalized.status.authDigits, null);
+  }
+});
+
+test("retains every command kind supported by the relay protocol", () => {
+  for (const kind of ["verify", "v2BuildState"]) {
+    const normalized = relayState.normalizeRelayStatusPayload({
+      latestCommand: { id: `command-${kind}`, kind, status: "pending" }
+    });
+    assert.equal(normalized.latestCommand?.kind, kind);
+  }
+});
+
 test("revision gaps and snapshot requests force reconciliation", () => {
   assert.deepEqual(relayState.eventApplyDecision(7, { type: "changed", revision: 8 }), {
     action: "apply",

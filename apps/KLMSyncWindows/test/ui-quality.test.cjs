@@ -18,6 +18,19 @@ test("renderer uses a strict CSP, safe DOM sinks and guarded main-process naviga
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: "deny" \}\)\)/);
   assert.match(main, /webContents\.on\("will-navigate"/);
   assert.match(main, /normalizeExternalURL\(target\)/);
+  assert.match(main, /function assertTrustedIPCEvent\(event\)/);
+  assert.match(main, /event\.sender !== mainWindow\.webContents/);
+  assert.match(main, /event\.senderFrame\?\.url !== APP_ENTRY_URL/);
+  assert.doesNotMatch(main, /ipcMain\.handle\("/);
+});
+
+test("connection configuration is durably staged before atomic replacement", () => {
+  const main = read("src/main.cjs");
+
+  assert.match(main, /await temporaryHandle\.sync\(\)/);
+  assert.match(main, /await fs\.rename\(temporaryPath, targetPath\)/);
+  assert.match(main, /await fs\.rm\(temporaryPath, \{ force: true \}\)/);
+  assert.doesNotMatch(main, /fs\.writeFile\(configPath\(\)/);
 });
 
 test("dynamic status, alerts, toast and text inputs have explicit accessible names", () => {
@@ -25,6 +38,8 @@ test("dynamic status, alerts, toast and text inputs have explicit accessible nam
   assert.match(html, /id="connectionState"[^>]*role="status"[^>]*aria-live="polite"/);
   assert.match(html, /id="attentionBanner"[^>]*role="alert"[^>]*aria-live="assertive"/);
   assert.match(html, /id="toast"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(html, /id="statusMessageDisclosure"[^>]*class="status-message-disclosure hidden"/);
+  assert.match(html, /id="statusFullMessage"/);
   assert.match(html, /<label[^>]*for="connectionPaste"/);
   assert.match(html, /<label[^>]*for="searchInput"/);
 });
@@ -42,13 +57,22 @@ test("renderer receives only a boolean token state and clears pasted credentials
 test("responsive data surfaces wrap and forced-color selections use system highlight colors", () => {
   const styles = read("src/styles.css");
 
-  assert.match(styles, /\.item-row \.title[\s\S]*overflow-wrap: anywhere/);
-  assert.match(styles, /\.history-row strong,[\s\S]*overflow-wrap: anywhere/);
+  assert.match(styles, /\.item-row \.title[\s\S]*word-break: keep-all/);
+  assert.match(styles, /\.history-row strong,[\s\S]*word-break: keep-all/);
   assert.match(styles, /\.detail-header h2[\s\S]*overflow-wrap: anywhere/);
   assert.match(styles, /\.detail-header h2[\s\S]*-webkit-line-clamp: 5/);
   assert.match(styles, /\.detail-overflow-copy[\s\S]*max-height: min\(50vh, 420px\)/);
   assert.match(styles, /\.field-value[\s\S]*-webkit-line-clamp: 4/);
+  assert.match(styles, /#syncStatusRegion,[\s\S]*max-inline-size: 100%/);
+  assert.match(styles, /\.status-message-disclosure[\s\S]*max-inline-size: 100%/);
+  assert.match(styles, /button:not\(\.sidebar-backdrop\)[\s\S]*border: 1px solid ButtonText/);
+  assert.match(styles, /button \.icon[\s\S]*forced-color-adjust: none/);
   assert.match(styles, /\.metric-card\.active,[\s\S]*forced-color-adjust: none;[\s\S]*background: Highlight;[\s\S]*color: HighlightText;/);
+});
+
+test("copied state includes the complete rendered status message", () => {
+  const renderer = read("src/renderer.js");
+  assert.match(renderer, /message:\s*statusSubtitle\(\)/);
 });
 
 test("visible action icons are vendored Lucide assets rather than text symbols", () => {

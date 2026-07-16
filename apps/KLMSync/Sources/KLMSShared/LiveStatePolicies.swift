@@ -96,7 +96,10 @@ public enum MacWorkspaceLayoutPolicy {
             horizontalContentPadding: horizontalContentPadding,
             contentWidth: contentWidth,
             navigationMode: navigationMode,
-            contentMode: contentMode(for: contentWidth)
+            contentMode: contentMode(
+                forWorkspaceWidth: workspaceWidth,
+                contentWidth: contentWidth
+            )
         )
     }
 
@@ -120,11 +123,14 @@ public enum MacWorkspaceLayoutPolicy {
         return 16
     }
 
-    private static func contentMode(for contentWidth: CGFloat) -> AdaptiveLayoutMode {
+    private static func contentMode(
+        forWorkspaceWidth workspaceWidth: CGFloat,
+        contentWidth: CGFloat
+    ) -> AdaptiveLayoutMode {
         if contentWidth < compactContentUpperBound {
             return .compact
         }
-        if contentWidth < wideContentLowerBound {
+        if workspaceWidth < wideContentLowerBound {
             return .medium
         }
         return .wide

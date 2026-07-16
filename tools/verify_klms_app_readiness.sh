@@ -7,9 +7,31 @@ RUN_SWIFT_TESTS="${KLMS_READINESS_SWIFT_TESTS:-1}"
 RUN_MAC_CHECKS="${KLMS_READINESS_MAC:-1}"
 RUN_IOS_BUILD="${KLMS_READINESS_IOS_BUILD:-1}"
 RUN_IOS_LAUNCH="${KLMS_READINESS_IOS_LAUNCH:-1}"
-MAC_APP_PATH="${KLMS_MAC_APP_PATH:-$HOME/Applications/KLMS Sync.app}"
+READINESS_TEMP_DIR=""
+CANONICAL_MAC_APP_PATH="$HOME/Applications/KLMS Sync.app"
+CANONICAL_APP_WAS_RUNNING=0
+if [[ -n "${KLMS_MAC_APP_PATH:-}" ]]; then
+  MAC_APP_PATH="$KLMS_MAC_APP_PATH"
+else
+  READINESS_TEMP_DIR="$(mktemp -d "${TMPDIR:-/private/tmp}/klms-sync-readiness.XXXXXX")"
+  READINESS_TEMP_DIR="$(cd "$READINESS_TEMP_DIR" && pwd -P)"
+  MAC_APP_PATH="$READINESS_TEMP_DIR/KLMS Sync.app"
+fi
 MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-2}"
 ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"
+
+cleanup_readiness() {
+  if [[ -n "$READINESS_TEMP_DIR" ]]; then
+    /usr/bin/pkill -f "$MAC_APP_PATH/Contents/MacOS/KLMSMac" >/dev/null 2>&1 || true
+    /bin/sleep 1
+    rm -rf "$READINESS_TEMP_DIR"
+    if (( CANONICAL_APP_WAS_RUNNING == 1 )) && [[ -d "$CANONICAL_MAC_APP_PATH" ]]; then
+      /usr/bin/open "$CANONICAL_MAC_APP_PATH" >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+trap cleanup_readiness EXIT
 
 sanitize_output() {
   KLMS_REPO_ROOT="$ROOT_DIR" /usr/bin/perl -pe '
@@ -71,9 +93,12 @@ print_failure_hint() {
 }
 
 relaunch_mac_app() {
+  if /usr/bin/pgrep -x KLMSMac >/dev/null 2>&1; then
+    CANONICAL_APP_WAS_RUNNING=1
+  fi
   /usr/bin/osascript -e 'tell application "KLMS Sync" to quit' >/dev/null 2>&1 || true
   /bin/sleep 1
-  /usr/bin/open -a "$MAC_APP_PATH"
+  /usr/bin/open -n "$MAC_APP_PATH"
   /bin/sleep "$MAC_RELAUNCH_DELAY_SECONDS"
   print -r -- "$MAC_APP_PATH"
 }
@@ -85,16 +110,23 @@ if [[ "$RUN_SWIFT_TESTS" == "1" ]]; then
 fi
 
 if [[ "$RUN_MAC_CHECKS" == "1" ]]; then
-  record_step "mac-build" "$ROOT_DIR/tools/build_klms_mac_app.sh"
+  record_step "mac-build" /usr/bin/env \
+    OUTPUT_APP="$MAC_APP_PATH" \
+    "$ROOT_DIR/tools/build_klms_mac_app.sh"
   record_step "mac-relaunch" relaunch_mac_app
   record_step "mac-accessibility-smoke" /usr/bin/env \
+    KLMS_MAC_APP_PATH="$MAC_APP_PATH" \
     KLMS_MAC_AX_VERIFY_ADAPTIVE_RESIZE=1 \
     swift "$ROOT_DIR/tools/smoke_klms_mac_accessibility.swift"
-  record_step "mac-resize-hit-area" swift "$ROOT_DIR/tools/smoke_klms_mac_resize_hit_area.swift"
+  record_step "mac-resize-hit-area" /usr/bin/env \
+    KLMS_MAC_APP_PATH="$MAC_APP_PATH" \
+    swift "$ROOT_DIR/tools/smoke_klms_mac_resize_hit_area.swift"
   record_step "mac-basic-actions" /usr/bin/env \
+    KLMS_MAC_APP_PATH="$MAC_APP_PATH" \
     KLMS_MAC_SMOKE_ALLOW_DESTRUCTIVE_ACTIONS="$ALLOW_DESTRUCTIVE_ACTIONS" \
     swift "$ROOT_DIR/tools/smoke_klms_mac_basic_actions.swift"
   record_step "mac-tab-response" /usr/bin/env \
+    KLMS_MAC_APP_PATH="$MAC_APP_PATH" \
     KLMS_MAC_TAB_PROBE_RUNS=3 \
     KLMS_MAC_TAB_AVERAGE_LIMIT_MS=100 \
     KLMS_MAC_TAB_SLOWEST_LIMIT_MS=250 \

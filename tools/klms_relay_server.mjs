@@ -216,7 +216,7 @@ const activeFileUploadClaims = new Set();
 const db = new DatabaseSync(DB_PATH);
 initDatabase();
 recoverStaleFileDownloadReservations({ notify: false });
-await recoverInterruptedFileUploads();
+await recoverInterruptedFileUploads({ recoverDeletionClaims: true });
 let state = loadState();
 const realtimeClients = new Set();
 let expiredFileCleanupPromise = null;
@@ -3132,7 +3132,7 @@ function expireStaleFileAccessRequests() {
   }
 }
 
-async function recoverInterruptedFileUploads() {
+async function recoverInterruptedFileUploads({ recoverDeletionClaims = false } = {}) {
   const interrupted = db.prepare(`
     SELECT id, upload_claim, pending_object_key, reserved_upload_bytes, reserved_upload_quota_key
     FROM file_access_requests
@@ -3160,11 +3160,13 @@ async function recoverInterruptedFileUploads() {
   }
   // Claims without a pre-write tombstone are from deletion work or an older
   // relay version. No live process can own them after startup.
-  db.prepare(`
-    UPDATE file_access_requests
-    SET upload_claim = NULL, reserved_upload_bytes = 0, reserved_upload_quota_key = NULL
-    WHERE object_key IS NULL AND pending_object_key IS NULL AND upload_claim IS NOT NULL
-  `).run();
+  if (recoverDeletionClaims) {
+    db.prepare(`
+      UPDATE file_access_requests
+      SET upload_claim = NULL, reserved_upload_bytes = 0, reserved_upload_quota_key = NULL
+      WHERE pending_object_key IS NULL AND upload_claim IS NOT NULL
+    `).run();
+  }
   await cleanupUnreferencedFileObjects();
 }
 

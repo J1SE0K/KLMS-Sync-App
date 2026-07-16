@@ -3230,9 +3230,12 @@ final class CompanionModel: ObservableObject {
                     if let statusRefreshErrorMessage, loadedSyncData {
                         connectionMessage = "대시보드는 불러왔지만 현재 실행 상태 갱신은 실패했습니다. \(statusRefreshErrorMessage)"
                         connectionSucceeded = nil
-                    } else if statusRefreshErrorMessage == nil {
+                    } else if refreshSucceeded {
                         connectionMessage = "최신 상태를 불러왔습니다."
                         connectionSucceeded = true
+                    } else if statusRefreshErrorMessage == nil {
+                        connectionMessage = "일부 항목을 불러오지 못했습니다. 화면에는 확인된 최신 내용만 표시합니다."
+                        connectionSucceeded = nil
                     }
                 }
                 if statusRefreshErrorMessage == nil || loadedSyncData {
@@ -7283,7 +7286,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("바로 반영되는 설정")
                         .font(.headline)
-                    Text("화면 모드는 이 기기에 바로 적용되고, 공지 메모 설정은 서버에 저장됩니다.")
+                    Text("화면 모드는 이 기기에 바로 적용되고, 공지\u{00A0}메모\u{00A0}설정은\u{00A0}서버에\u{00A0}저장됩니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -7295,7 +7298,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
                     statusText: effectiveAppearanceMode.title,
-                    detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크 모드를 고정합니다."
+                    detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크\u{00A0}모드를 고정합니다."
                 ) {
                     CompanionAppearanceModeSelector(
                         selectedMode: effectiveAppearanceMode,
@@ -12077,7 +12080,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 }
                 RemoteCalendarActionPanel()
                 if calendarChanges.isEmpty {
-                    panelEmptyText("최근 캘린더 변경 상세가 아직 서버에 올라오지 않았습니다.")
+                    panelEmptyText("최근 캘린더 변경 상세가 아직 서버에 올라오지\u{00A0}않았습니다.")
                 } else {
                     ForEach(visibleChanges) { change in
                         DashboardCalendarChangeDetailRow(
@@ -12272,7 +12275,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
             return "\(category.value(from: status))개 · 격리 항목은 Mac 앱 파일 화면에서 처리합니다."
         }
         let count = category.value(from: status)
-        return "\(count)개 · 아래에서 필터와 정렬을 조정할 수 있습니다."
+        return "\(count)개 · 아래에서 필터와 정렬을 조정할\u{00A0}수\u{00A0}있습니다."
     }
 
     private func panelEmptyText(_ text: String) -> some View {
@@ -15241,7 +15244,7 @@ private struct RemoteCalendarActionPanel: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("캘린더 일정")
                         .font(.caption.weight(.semibold))
-                    Text("일정별 등록·수정·삭제는 아래 항목에서 처리합니다. 전체 상태 검사는 진단 화면에서 실행하세요.")
+                    Text("일정별 등록·수정·삭제는 아래 항목에서 처리합니다. 전체\u{00A0}상태\u{00A0}검사는 진단 화면에서 실행하세요.")
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
