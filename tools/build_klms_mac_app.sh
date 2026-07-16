@@ -8,6 +8,7 @@ CONFIGURATION="${CONFIGURATION:-release}"
 APP_NAME="${APP_NAME:-KLMS Sync}"
 BUNDLE_ID="${BUNDLE_ID:-com.local.KLMSync}"
 APP_ICON_SOURCE="$APP_PACKAGE_DIR/Resources/AppIcon.icns"
+PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePayloadAllowlist.txt"
 ENABLE_CLOUDKIT_ENTITLEMENT="${ENABLE_CLOUDKIT_ENTITLEMENT:-0}"
 ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-}"
 # Keep the default outside Documents/iCloud-backed workspaces. Those locations can
@@ -147,43 +148,33 @@ PAYLOAD_ROOT="$APP_BUNDLE/Contents/Resources/EnginePayload"
 rm -rf "$PAYLOAD_ROOT"
 mkdir -p "$PAYLOAD_ROOT"
 
-for directory in src bin examples docs tools; do
-  if [[ -d "$ROOT_DIR/$directory" ]]; then
-    ditto --norsrc "$ROOT_DIR/$directory" "$PAYLOAD_ROOT/$directory"
+if [[ ! -f "$PAYLOAD_ALLOWLIST" ]]; then
+  print -r -- "missing engine payload allowlist: $PAYLOAD_ALLOWLIST" >&2
+  exit 1
+fi
+while IFS= read -r relative_path || [[ -n "$relative_path" ]]; do
+  [[ -n "$relative_path" ]] || continue
+  case "$relative_path" in
+    /*|../*|*/../*|*/..|*//* )
+      print -r -- "invalid engine payload allowlist path: $relative_path" >&2
+      exit 1
+      ;;
+  esac
+  source_path="$ROOT_DIR/$relative_path"
+  if [[ ! -f "$source_path" || -L "$source_path" ]]; then
+    print -r -- "missing or non-regular engine payload file: $relative_path" >&2
+    exit 1
   fi
-done
+  mkdir -p "$PAYLOAD_ROOT/${relative_path:h}"
+  cp -X "$source_path" "$PAYLOAD_ROOT/$relative_path"
+done < "$PAYLOAD_ALLOWLIST"
+
 VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"
 if [[ ! -d "$VENDORED_PYTHON_PACKAGES/bs4" || ! -d "$VENDORED_PYTHON_PACKAGES/soupsieve" ]]; then
   print -r -- "missing tracked Python runtime packages: $VENDORED_PYTHON_PACKAGES" >&2
   exit 1
 fi
 ditto --norsrc "$VENDORED_PYTHON_PACKAGES" "$PAYLOAD_ROOT/python-packages"
-
-root_files=(
-  klms_login_assist.sh
-  sync_klms_core.sh
-  sync_klms_notice.sh
-  sync_klms_all.sh
-  run_all.sh
-  run_all_full.sh
-  refresh_course_files.sh
-  verify_sync_state.sh
-  doctor.sh
-  sync_report.sh
-  process_klms_assignments.sh
-  klms_v2_build_state.sh
-  README.md
-  LICENSE
-  SECURITY.md
-  THIRD_PARTY_NOTICES.md
-)
-
-for file in "${root_files[@]}"; do
-  if [[ -f "$ROOT_DIR/$file" ]]; then
-    mkdir -p "$PAYLOAD_ROOT/${file:h}"
-    cp -X "$ROOT_DIR/$file" "$PAYLOAD_ROOT/$file"
-  fi
-done
 
 find "$PAYLOAD_ROOT" -name '__pycache__' -type d -prune -exec rm -rf {} +
 find "$PAYLOAD_ROOT" -name '*.pyc' -type f -delete
@@ -198,17 +189,80 @@ if git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   if [[ -n "$git_head" ]]; then
     if [[ -n "$(git -C "$ROOT_DIR" status --porcelain 2>/dev/null || true)" ]]; then
       dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
+      payload_dirty="true"
     else
       dirty_suffix=""
+      payload_dirty="false"
     fi
     payload_version="$git_head$dirty_suffix"
+    source_revision="$git_head"
   else
     payload_version="local-$(date +%Y%m%d%H%M%S)"
+    source_revision="$payload_version"
+    payload_dirty="true"
   fi
 else
   payload_version="local-$(date +%Y%m%d%H%M%S)"
+  source_revision="$payload_version"
+  payload_dirty="true"
 fi
 print -r -- "$payload_version" > "$PAYLOAD_ROOT/EnginePayloadVersion.txt"
+
+python3 - "$PAYLOAD_ROOT" "$PAYLOAD_ALLOWLIST" "$payload_version" "$source_revision" "$payload_dirty" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+payload_root = pathlib.Path(sys.argv[1]).resolve()
+allowlist_path = pathlib.Path(sys.argv[2]).resolve()
+payload_version = sys.argv[3]
+source_revision = sys.argv[4]
+dirty = sys.argv[5] == "true"
+manifest_path = payload_root / "EnginePayloadManifest.json"
+
+files = []
+for candidate in sorted(payload_root.rglob("*")):
+    if candidate == manifest_path:
+        continue
+    if candidate.is_symlink():
+        raise SystemExit(f"engine payload must not contain symlinks: {candidate}")
+    if not candidate.is_file():
+        continue
+    relative = candidate.relative_to(payload_root).as_posix()
+    data = candidate.read_bytes()
+    files.append({
+        "path": relative,
+        "bytes": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    })
+
+manifest = {
+    "schemaVersion": 1,
+    "payloadVersion": payload_version,
+    "sourceRevision": source_revision,
+    "dirty": dirty,
+    "allowlistSHA256": hashlib.sha256(allowlist_path.read_bytes()).hexdigest(),
+    "fileCount": len(files),
+    "totalBytes": sum(item["bytes"] for item in files),
+    "files": files,
+}
+manifest_path.write_text(
+    json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+    encoding="utf-8",
+)
+PY
+
+payload_verify_args=(
+  "$ROOT_DIR/tools/verify_klms_engine_payload.py"
+  "$PAYLOAD_ROOT"
+  --allowlist "$PAYLOAD_ALLOWLIST"
+  --expected-revision "$source_revision"
+)
+if [[ "${KLMS_PAYLOAD_REQUIRE_CLEAN:-0}" == "1" ]]; then
+  payload_verify_args+=(--require-clean)
+fi
+python3 "${payload_verify_args[@]}"
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>

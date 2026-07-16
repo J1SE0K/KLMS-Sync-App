@@ -19,6 +19,13 @@ else
 fi
 MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-2}"
 ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"
+REQUIRE_CLEAN_WORKTREE="${KLMS_READINESS_REQUIRE_CLEAN:-0}"
+CANDIDATE_REVISION="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || print -r -- unknown)"
+if [[ -n "$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null || true)" ]]; then
+  WORKTREE_STATE="dirty"
+else
+  WORKTREE_STATE="clean"
+fi
 
 cleanup_readiness() {
   if [[ -n "$READINESS_TEMP_DIR" ]]; then
@@ -68,6 +75,14 @@ run_step() {
 }
 
 failed_steps=()
+
+verify_clean_worktree() {
+  [[ "$WORKTREE_STATE" == "clean" ]]
+}
+
+if [[ "$REQUIRE_CLEAN_WORKTREE" == "1" ]]; then
+  record_step "clean-worktree" verify_clean_worktree
+fi
 
 record_step() {
   local name="$1"
@@ -179,7 +194,7 @@ for failed_step in "${failed_steps[@]}"; do
 done
 
 if (( ${#failed_steps[@]} == 0 )); then
-  print -r -- "readiness-summary status=ok swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"
+  print -r -- "readiness-summary status=ok candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state}"
   exit 0
 fi
 
@@ -187,5 +202,5 @@ for failed_step in "${failed_steps[@]}"; do
   print_failure_hint "$failed_step"
 done
 
-print -ru2 -- "readiness-summary status=fail swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state} failed=${(j:,:)failed_steps}"
+print -ru2 -- "readiness-summary status=fail candidate=${CANDIDATE_REVISION} worktree=${WORKTREE_STATE} swift_tests=${swift_state} mac=${mac_state} ios_build=${ios_build_state} ios_launch=${ios_launch_state} failed=${(j:,:)failed_steps}"
 exit 1

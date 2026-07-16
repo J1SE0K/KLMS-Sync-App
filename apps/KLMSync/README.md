@@ -17,7 +17,7 @@ swift test
 swift run KLMSMac
 ```
 
-When run from source, `KLMSMac` locates the repository checkout and installs code into `~/Library/Application Support/KLMSNotesSync`. A packaged app can include a full `EnginePayload` resource with the same top-level layout as the repository.
+When run from source, `KLMSMac` locates the repository checkout and installs code into `~/Library/Application Support/KLMSNotesSync`. A packaged app includes only the runtime files named in `EnginePayloadAllowlist.txt`; development tools, tests, and design documents stay outside the app bundle.
 
 To build a local `.app` bundle from the repository root:
 
@@ -25,7 +25,7 @@ To build a local `.app` bundle from the repository root:
 tools/build_klms_mac_app.sh
 ```
 
-The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the current engine code into the app resource bundle as `EnginePayload`; private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
+The bundle is written to `~/Applications/KLMS Sync.app` by default. The build script injects the allowlisted engine runtime as `EnginePayload` and writes a SHA-256 inventory bound to the source commit. Private runtime data stays in `~/Library/Application Support/KLMSNotesSync` and is preserved by the installer. Set `DIST_DIR=/path/to/output` when a different output directory is needed.
 
 ## iPhone/iPad companion
 

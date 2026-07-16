@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "scoreModel": {
+    "areas": {
+      "functionAndDataIntegrity": 20,
+      "responsiveUI": 20,
+      "uxAndAccessibility": 15,
+      "webSocketLatencyAndPerformance": 15,
+      "securityAndPrivacy": 15,
+      "reliabilityAndRecovery": 10,
+      "testAndReleaseReadiness": 5
+    },
+    "caps": {
+      "openP0": 39,
+      "openP1": 79,
+      "openP2": 89,
+      "missingMandatoryExternalEvidence": 94
+    }
+  },
+  "candidateBinding": {
+    "cleanWorktreeRequired": true,
+    "fullCommitSHARequired": true,
+    "appPayloadManifest": "Contents/Resources/EnginePayload/EnginePayloadManifest.json",
+    "reviewEvidenceExpiresOnSourceChange": true
+  },
+  "automatedGates": [
+    {
+      "id": "python-core",
+      "command": "PYTHONPATH=vendor/python-packages python3 -B -m unittest discover -s tests"
+    },
+    {
+      "id": "swift-clients",
+      "command": "swift test --package-path apps/KLMSync --scratch-path <isolated-path> --jobs 1"
+    },
+    {
+      "id": "mac-runtime",
+      "command": "KLMS_READINESS_REQUIRE_CLEAN=1 KLMS_PAYLOAD_REQUIRE_CLEAN=1 tools/verify_klms_app_readiness.sh"
+    },
+    {
+      "id": "mac-payload",
+      "command": "tools/build_klms_mac_app.sh"
+    },
+    {
+      "id": "ios-simulator-matrix",
+      "command": "tools/test_klms_ios_ui_matrix.sh"
+    },
+    {
+      "id": "windows-unit",
+      "command": "npm test",
+      "workingDirectory": "apps/KLMSyncWindows"
+    },
+    {
+      "id": "windows-electron-e2e",
+      "command": "npm run test:e2e",
+      "workingDirectory": "apps/KLMSyncWindows"
+    },
+    {
+      "id": "relay-self-hosted",
+      "command": "node --test deploy/relay/test_relay.mjs && node --test deploy/relay/test_restore_db.mjs"
+    },
+    {
+      "id": "relay-cloudflare",
+      "command": "npm run check && npm test && npm run test:integration",
+      "workingDirectory": "deploy/cloudflare-worker"
+    },
+    {
+      "id": "security-evidence",
+      "command": "KLMS_SECURITY_REQUIRE_CLEAN=1 tools/security/run_security_evidence.sh <private-evidence-dir> <scanner-root>"
+    }
+  ],
+  "independentReviewGates": [
+    "goal-and-constraint",
+    "code-quality",
+    "security-and-privacy",
+    "hands-on-runtime",
+    "visual-and-accessibility"
+  ],
+  "mandatoryExternalEvidence": [
+    "physical-iphone-and-ipad-matrix",
+    "controlled-impaired-wan-and-reconnect",
+    "voiceover-switch-control-and-hardware-keyboard",
+    "usable-object-level-memgraph-and-leaks",
+    "multi-hour-reconnect-sync-cancel-transfer-soak"
+  ]
+}

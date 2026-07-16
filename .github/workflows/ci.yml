@@ -70,6 +70,12 @@ jobs:
           persist-credentials: false
       - name: Run Swift package tests
         run: swift test --scratch-path "$RUNNER_TEMP/klmsync-swiftpm-build" --jobs 1
+      - name: Build and verify the SHA-bound Mac runtime payload
+        env:
+          OUTPUT_APP: ${{ runner.temp }}/KLMS Sync.app
+          SWIFT_SCRATCH_PATH: ${{ runner.temp }}/klmsync-mac-package-build
+          KLMS_PAYLOAD_REQUIRE_CLEAN: "1"
+        run: ../../tools/build_klms_mac_app.sh
       - name: Build the iPhone and iPad simulator app
         env:
           SYMROOT: ${{ runner.temp }}/klms-ios-build

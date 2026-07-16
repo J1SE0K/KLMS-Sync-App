@@ -244,7 +244,7 @@ public struct EngineInstaller {
         try fileManager.createDirectory(at: versionURL.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         var copied: [String] = []
-        for directory in ["src", "bin", "examples", "docs", "tools"] {
+        for directory in Self.installedCodeDirectories {
             let source = payload.rootURL.appendingPathComponent(directory, isDirectory: true)
             guard fileManager.fileExists(atPath: source.path) else { continue }
             let target = destination.appendingPathComponent(directory, isDirectory: true)
@@ -377,7 +377,15 @@ public struct EngineInstaller {
         "klms_v2_build_state.sh",
     ]
 
+    public static let installedCodeDirectories: [String] = [
+        "src",
+        "bin",
+        "examples",
+        "tools",
+    ]
+
     public static let retiredCodePaths: [String] = [
+        "docs",
         "legacy",
         "launchd",
         "run_all_parallel.sh",

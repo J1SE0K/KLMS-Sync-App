@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -1603,6 +1604,15 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         build_script = (PROJECT_DIR / "tools" / "build_klms_mac_app.sh").read_text(
             encoding="utf-8"
         )
+        payload_allowlist = (
+            PROJECT_DIR / "apps" / "KLMSync" / "EnginePayloadAllowlist.txt"
+        ).read_text(encoding="utf-8").splitlines()
+        relay_installer = (
+            PROJECT_DIR / "tools" / "install_klms_relay_agent.sh"
+        ).read_text(encoding="utf-8")
+        relay_dockerfile = (
+            PROJECT_DIR / "deploy" / "relay" / "Dockerfile"
+        ).read_text(encoding="utf-8")
 
         self.assertIn('TARGET_APP_BUNDLE="${OUTPUT_APP:-$DIST_DIR/$APP_NAME.app}"', build_script)
         self.assertIn('mktemp -d "$TARGET_APP_PARENT/.klms-sync-app-build.XXXXXX"', build_script)
@@ -1618,6 +1628,34 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             build_script,
         )
         self.assertNotIn("  manual_assignment_overrides.json\n", build_script)
+        self.assertIn('PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePayloadAllowlist.txt"', build_script)
+        self.assertIn('done < "$PAYLOAD_ALLOWLIST"', build_script)
+        self.assertIn('"schemaVersion": 1', build_script)
+        self.assertIn('"sourceRevision": source_revision', build_script)
+        self.assertIn('verify_klms_engine_payload.py', build_script)
+        self.assertNotIn('for directory in src bin examples docs tools', build_script)
+        self.assertIn("tools/klms_relay_server.mjs", payload_allowlist)
+        self.assertIn("tools/klms_bounded_rate_window.mjs", payload_allowlist)
+        self.assertIn("tools/klms_public_log_redactor.mjs", payload_allowlist)
+        self.assertIn("tools/install_klms_relay_agent.sh", payload_allowlist)
+        self.assertNotIn("docs", {path.split("/", 1)[0] for path in payload_allowlist})
+        self.assertNotIn("src/swift/capture_notice_native_state.swift", payload_allowlist)
+        self.assertNotIn("src/swift/decode_qr_image.swift", payload_allowlist)
+        for relative_path in payload_allowlist:
+            self.assertTrue((PROJECT_DIR / relative_path).is_file(), relative_path)
+        for relay_runtime_file in (
+            "klms_relay_server.mjs",
+            "klms_bounded_rate_window.mjs",
+            "klms_public_log_redactor.mjs",
+            "run_klms_relay_agent.sh",
+        ):
+            self.assertIn(relay_runtime_file, relay_installer)
+        for relay_module in (
+            "klms_relay_server.mjs",
+            "klms_bounded_rate_window.mjs",
+            "klms_public_log_redactor.mjs",
+        ):
+            self.assertIn(relay_module, relay_dockerfile)
 
     def test_private_readiness_builds_an_isolated_app_copy(self) -> None:
         readiness = (PROJECT_DIR / "tools" / "verify_klms_app_readiness.sh").read_text(
@@ -1628,6 +1666,35 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('OUTPUT_APP="$MAC_APP_PATH"', readiness)
         self.assertIn('rm -rf "$READINESS_TEMP_DIR"', readiness)
         self.assertGreaterEqual(readiness.count('KLMS_MAC_APP_PATH="$MAC_APP_PATH"'), 4)
+
+    def test_quality_gate_inventory_is_complete_and_sha_bound(self) -> None:
+        inventory = json.loads(
+            (PROJECT_DIR / "docs" / "quality-gate-inventory.json").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        self.assertEqual(inventory["schemaVersion"], 1)
+        self.assertEqual(sum(inventory["scoreModel"]["areas"].values()), 100)
+        self.assertEqual(
+            inventory["scoreModel"]["caps"]["missingMandatoryExternalEvidence"],
+            94,
+        )
+        self.assertTrue(inventory["candidateBinding"]["cleanWorktreeRequired"])
+        self.assertTrue(inventory["candidateBinding"]["fullCommitSHARequired"])
+        gate_ids = [gate["id"] for gate in inventory["automatedGates"]]
+        self.assertEqual(len(gate_ids), len(set(gate_ids)))
+        self.assertEqual(
+            set(inventory["independentReviewGates"]),
+            {
+                "goal-and-constraint",
+                "code-quality",
+                "security-and-privacy",
+                "hands-on-runtime",
+                "visual-and-accessibility",
+            },
+        )
+        self.assertEqual(len(inventory["mandatoryExternalEvidence"]), 5)
 
     def test_github_workflows_pin_actions_and_run_restore_recovery_tests(self) -> None:
         workflows = "\n".join(
