@@ -167,7 +167,15 @@ def main() -> int:
             max_age_seconds=complete_reuse_seconds,
         )
         if recent_empty_fetch is not None:
-            reusable_pages = [previous_lookup[url] for url in urls if url in previous_lookup]
+            url_state = context_state.get("urls", {})
+            reusable_pages = [
+                page_with_canonical_fetch_evidence(
+                    previous_lookup[url],
+                    url_state.get(url, {}),
+                )
+                for url in urls
+                if url in previous_lookup
+            ]
             missing_final_urls = [url for url in urls if url not in previous_lookup]
             if args.require_all and missing_final_urls:
                 recent_empty_fetch = None
@@ -542,7 +550,7 @@ def complete_recent_cached_pages(
             return None
         if metadata.get("fingerprint") and metadata.get("fingerprint") != page_fingerprint(page):
             return None
-        pages.append(page)
+        pages.append(page_with_canonical_fetch_evidence(page, metadata))
     return pages
 
 
@@ -661,7 +669,6 @@ def seed_context_state_from_fallback(
 ) -> None:
     if not fallback_lookup:
         return
-    fetched_at = now_utc_iso()
     url_state = context_state.setdefault("urls", {})
     for url, page in fallback_lookup.items():
         html = str(page.get("html") or "")
@@ -672,11 +679,24 @@ def seed_context_state_from_fallback(
             "fingerprint": fingerprint,
             "title": title,
             "html_length": len(html),
-            "last_fetched_at": str(previous_entry.get("last_fetched_at") or fetched_at),
-            "last_changed_at": str(previous_entry.get("last_changed_at") or fetched_at),
+            "last_fetched_at": str(previous_entry.get("last_fetched_at") or ""),
+            "last_changed_at": str(previous_entry.get("last_changed_at") or ""),
             "backend": str(previous_entry.get("backend") or backend),
             "login_page": looks_like_login_page_payload(page),
         }
+
+
+def page_with_canonical_fetch_evidence(
+    page: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    canonical_page = dict(page)
+    fetched_at = str(metadata.get("last_fetched_at") or "")
+    if fetched_at:
+        canonical_page["_klms_sync_fetched_at"] = fetched_at
+    else:
+        canonical_page.pop("_klms_sync_fetched_at", None)
+    return canonical_page
 
 
 def dedupe_preserving_order(urls: list[str]) -> list[str]:
@@ -918,9 +938,15 @@ def update_context_state(
         title = str(page.get("title") or "")
         fingerprint = page_fingerprint(page)
         previous_entry = url_state.get(requested_url, {})
-        was_fetched = requested_url in fetched_urls or not previous_entry
+        was_fetched = requested_url in fetched_urls
         previous_last_fetched_at = str(previous_entry.get("last_fetched_at") or "")
         previous_last_changed_at = str(previous_entry.get("last_changed_at") or "")
+        if was_fetched:
+            page["_klms_sync_fetched_at"] = fetched_at
+        elif previous_last_fetched_at:
+            page["_klms_sync_fetched_at"] = previous_last_fetched_at
+        else:
+            page.pop("_klms_sync_fetched_at", None)
         url_state[requested_url] = {
             "fingerprint": fingerprint,
             "title": title,

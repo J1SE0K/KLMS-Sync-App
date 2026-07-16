@@ -979,6 +979,7 @@ class CoursePageSemanticCertificate:
     course_id: str = ""
     module_urls: tuple[str, ...] = ()
     explicit_empty: bool = False
+    fetch_evidence_at: str = ""
     reason: str = ""
 
 
@@ -2766,6 +2767,9 @@ def course_page_semantic_certificate(
     page: dict[str, Any],
 ) -> CoursePageSemanticCertificate:
     requested_url = page_requested_url(page)
+    fetch_evidence_at = normalize_whitespace(
+        str(page.get("_klms_sync_fetched_at") or "")
+    )
     html = str(page.get("html") or "")
     if not html.strip():
         return CoursePageSemanticCertificate(
@@ -2791,8 +2795,20 @@ def course_page_semantic_certificate(
     soup = BeautifulSoup(html, "html.parser")
 
     def is_hidden(node: Any) -> bool:
+        original = node
+
+        def is_in_visible_details_summary(details: Any) -> bool:
+            current = original
+            while current is not None and current is not details:
+                parent = getattr(current, "parent", None)
+                if parent is details:
+                    return str(getattr(current, "name", "") or "").casefold() == "summary"
+                current = parent
+            return False
+
         current = node
         while current is not None:
+            tag_name = str(getattr(current, "name", "") or "").casefold()
             attributes = getattr(current, "attrs", None)
             if isinstance(attributes, dict):
                 raw_classes = current.get("class", [])
@@ -2802,12 +2818,23 @@ def course_page_semantic_certificate(
                 style = re.sub(r"\s+", "", str(current.get("style") or "")).casefold()
                 if (
                     current.has_attr("hidden")
+                    or current.has_attr("inert")
                     or str(current.get("aria-hidden") or "").casefold() == "true"
                     or classes.intersection(
                         {"hidden", "d-none", "sr-only", "visually-hidden", "accesshide"}
                     )
                     or "display:none" in style
                     or "visibility:hidden" in style
+                ):
+                    return True
+                if tag_name in {"head", "script", "style", "template", "noscript"}:
+                    return True
+                if tag_name == "dialog" and not current.has_attr("open"):
+                    return True
+                if (
+                    tag_name == "details"
+                    and not current.has_attr("open")
+                    and not is_in_visible_details_summary(current)
                 ):
                     return True
             current = getattr(current, "parent", None)
@@ -2825,10 +2852,18 @@ def course_page_semantic_certificate(
         for activity in soup.select("li.activity")
         if not is_hidden(activity)
     ]
+    activity_module_links = [
+        [
+            link
+            for link in activity.select("a[href*='/mod/']")
+            if not is_hidden(link)
+        ]
+        for activity in activity_nodes
+    ]
     module_urls = {
         normalize_url(str(link.get("href") or ""))
-        for link in soup.select("a[href*='/mod/']")
-        if not is_hidden(link)
+        for links in activity_module_links
+        for link in links
         if normalize_url(str(link.get("href") or ""))
     }
     parsed_urls = {
@@ -2838,10 +2873,7 @@ def course_page_semantic_certificate(
         if not is_hidden(link)
         if normalize_url(str(link.get("href") or ""))
     }
-    linked_activity_node_count = sum(
-        any(not is_hidden(link) for link in activity.select("a[href]"))
-        for activity in activity_nodes
-    )
+    linked_activity_node_count = sum(bool(links) for links in activity_module_links)
 
     module_link_count = len(module_urls)
     parsed_activity_count = len(parsed_urls)
@@ -2883,6 +2915,7 @@ def course_page_semantic_certificate(
     if module_link_count:
         authoritative = (
             module_urls == parsed_urls
+            and len(activity_nodes) == linked_activity_node_count
             and linked_activity_node_count == parsed_activity_count
         )
         if not authoritative:
@@ -2894,7 +2927,7 @@ def course_page_semantic_certificate(
         authoritative = True
     elif recognized_shell:
         reason = (
-            "KLMS 과목 화면에서 활동 목록이나 명시적인 빈 상태를 확인하지 못해 "
+            "KLMS 과목 화면 구조에서 활동 목록이나 명시적인 빈 상태를 확인하지 못해 "
             "기존 동기화 상태를 유지했어. 과목 화면을 다시 확인해 줘."
         )
     else:
@@ -2914,6 +2947,7 @@ def course_page_semantic_certificate(
         course_id=course_id,
         module_urls=tuple(sorted(module_urls)),
         explicit_empty=explicit_empty,
+        fetch_evidence_at=fetch_evidence_at,
         reason=reason,
     )
 
@@ -5069,6 +5103,7 @@ def build_success_payload(
     return {
         "status": "ok",
         "generated_at": generated_at,
+        "_klms_sync_commit_at": generated_at,
         "content": content,
         "html": html,
     }
@@ -5194,26 +5229,29 @@ def has_exam_semantics(values: dict[str, set[str]]) -> bool:
     return "exam" in (values.get("type", set()) | values.get("category", set()))
 
 
-def explicit_empty_course_ids(course_pages: list[dict[str, Any]]) -> set[str]:
-    certificates_by_course_id: dict[str, list[CoursePageSemanticCertificate]] = {}
-    for page in course_pages:
-        certificate = course_page_semantic_certificate(page)
-        if certificate.course_id:
-            certificates_by_course_id.setdefault(certificate.course_id, []).append(certificate)
-    return {
-        course_id
-        for course_id, certificates in certificates_by_course_id.items()
-        if certificates
-        and all(
-            certificate.authoritative and certificate.explicit_empty
-            for certificate in certificates
-        )
-    }
-
-
 def authoritative_course_module_urls(
     course_pages: list[dict[str, Any]],
+    *,
+    latest_fetch_evidence_after: datetime | None = None,
 ) -> dict[str, set[str]]:
+    def evidence_role(requested_url: str, course_id: str) -> str:
+        parsed = urlparse(requested_url)
+        query_items = parse_qsl(parsed.query, keep_blank_values=True)
+        query = {key: value for key, value in query_items}
+        if len(query_items) != len(query):
+            return ""
+        if (
+            parsed.hostname != "klms.kaist.ac.kr"
+            or parsed.path != "/course/view.php"
+            or query.get("id") != course_id
+            or query.get("section") != "0"
+        ):
+            return ""
+        verification_value = query.get("klms_sync_verify")
+        if verification_value == "1" and set(query) == {"id", "section", "klms_sync_verify"}:
+            return "verification"
+        return "primary" if verification_value is None and set(query) == {"id", "section"} else ""
+
     certificates_by_course_id: dict[str, list[CoursePageSemanticCertificate]] = {}
     for page in course_pages:
         certificate = course_page_semantic_certificate(page)
@@ -5222,13 +5260,55 @@ def authoritative_course_module_urls(
 
     authoritative: dict[str, set[str]] = {}
     for course_id, certificates in certificates_by_course_id.items():
-        module_sets = {certificate.module_urls for certificate in certificates}
-        if (
-            certificates
-            and all(certificate.authoritative for certificate in certificates)
-            and len(module_sets) == 1
-        ):
-            authoritative[course_id] = set(certificates[0].module_urls)
+        certificates_by_module_set: dict[
+            tuple[str, ...], list[CoursePageSemanticCertificate]
+        ] = {}
+        for certificate in certificates:
+            if certificate.authoritative:
+                certificates_by_module_set.setdefault(
+                    certificate.module_urls, []
+                ).append(certificate)
+        independently_confirmed_sets: list[tuple[str, ...]] = []
+        for module_set, matching_certificates in certificates_by_module_set.items():
+            fetch_evidence: list[tuple[str, datetime]] = []
+            for certificate in matching_certificates:
+                requested_url = normalize_url(certificate.requested_url)
+                role = evidence_role(requested_url, course_id)
+                raw_fetch_time = certificate.fetch_evidence_at
+                if not role or not raw_fetch_time:
+                    continue
+                try:
+                    parsed_fetch_time = datetime.fromisoformat(
+                        raw_fetch_time.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    continue
+                if parsed_fetch_time.tzinfo is None:
+                    continue
+                normalized_fetch_time = parsed_fetch_time.astimezone(timezone.utc)
+                fetch_evidence.append((role, normalized_fetch_time))
+            newest_fetch_time = max(
+                (fetched_at for _, fetched_at in fetch_evidence),
+                default=None,
+            )
+            has_temporally_independent_pair = any(
+                first_role != second_role
+                and abs((first_time - second_time).total_seconds()) >= 60
+                for index, (first_role, first_time) in enumerate(fetch_evidence)
+                for second_role, second_time in fetch_evidence[index + 1 :]
+            )
+            if (
+                has_temporally_independent_pair
+                and newest_fetch_time is not None
+                and (
+                    latest_fetch_evidence_after is None
+                    or newest_fetch_time
+                    > latest_fetch_evidence_after.astimezone(timezone.utc)
+                )
+            ):
+                independently_confirmed_sets.append(module_set)
+        if len(independently_confirmed_sets) == 1:
+            authoritative[course_id] = set(independently_confirmed_sets[0])
     return authoritative
 
 
@@ -5252,6 +5332,24 @@ def tracked_state_module_course_ids(state: dict[str, Any]) -> dict[str, str]:
             if course_id:
                 course_ids[url] = course_id
     return course_ids
+
+
+def state_generated_at(value: Any) -> datetime | None:
+    text = normalize_whitespace(str(value or ""))
+    if not text:
+        return None
+    if text.endswith(" KST"):
+        try:
+            return datetime.strptime(text, "%Y-%m-%d %H:%M KST").replace(
+                tzinfo=SEOUL
+            )
+        except ValueError:
+            return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
 
 
 def destructive_state_delta_error(
@@ -5291,7 +5389,17 @@ def destructive_state_delta_error(
     removed_urls = previous_urls - next_urls
     if not removed_urls:
         return ""
-    authoritative_modules = authoritative_course_module_urls(course_pages or [])
+    previous_generated_at = state_generated_at(
+        previous_state.get("_klms_sync_commit_at")
+    )
+    authoritative_modules = (
+        authoritative_course_module_urls(
+            course_pages or [],
+            latest_fetch_evidence_after=previous_generated_at + timedelta(minutes=1),
+        )
+        if previous_generated_at is not None
+        else {}
+    )
     explicitly_removed_urls = {
         url
         for url in removed_urls

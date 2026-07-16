@@ -205,6 +205,18 @@ function run(argv) {
       0,
       Math.round(Number(config.SYNC_ALL_WEEK_COURSE_PAGE_STALE_SECONDS || "43200"))
     );
+    const destructiveChangeVerificationIntervalSeconds = Math.max(
+      60,
+      Math.round(
+        Number(config.SYNC_DESTRUCTIVE_CHANGE_VERIFICATION_INTERVAL_SECONDS || "60")
+      )
+    );
+    const destructiveChangePrimaryStaleSeconds = Math.max(
+      60,
+      Math.round(
+        Number(config.SYNC_DESTRUCTIVE_CHANGE_PRIMARY_STALE_SECONDS || "300")
+      )
+    );
     const detailQuickLimit = Math.max(
       0,
       resolveIntegerConfig(
@@ -617,7 +629,12 @@ function run(argv) {
     assertAuthoritativePageCoverage("sync-course-pages", coursePages, courseUrls);
     debugStderr("after course-fetch");
 
-    const allWeekCourseUrls = uniqueStrings(courseUrls.map(toAllWeekCourseUrl).filter(Boolean));
+    const allWeekCourseUrls = uniqueStrings(
+      courseUrls.flatMap((url) => [
+        toAllWeekCourseUrl(url),
+        toAllWeekCourseVerificationUrl(url),
+      ]).filter(Boolean)
+    );
     writeText(allWeekCourseUrlsTxt, allWeekCourseUrls.join("\n"));
 
     beginStage(steps, stageTelemetry, "all-week-course-fetch");
@@ -627,7 +644,14 @@ function run(argv) {
         ? fetchPages(allWeekCourseUrls, waitSeconds, scriptDir, {
             ...baseFetchOptions,
             context: "sync-all-week-course-pages",
-            staleSeconds: allWeekCoursePageStaleSeconds,
+            staleSeconds: Math.min(
+              allWeekCoursePageStaleSeconds,
+              destructiveChangePrimaryStaleSeconds
+            ),
+            completeReuseSeconds: 0,
+            alwaysFetchMinIntervalSeconds:
+              destructiveChangeVerificationIntervalSeconds,
+            alwaysFetchPatterns: ["klms_sync_verify=1"],
             outputPath: allWeekCoursePagesJson,
             summaryPath: allWeekCourseFetchSummaryJson,
             requireAll: true,
@@ -1715,6 +1739,11 @@ function toAllWeekCourseUrl(courseViewUrl) {
     return "";
   }
   return `https://klms.kaist.ac.kr/course/view.php?id=${match[1]}&section=0`;
+}
+
+function toAllWeekCourseVerificationUrl(courseViewUrl) {
+  const allWeekUrl = toAllWeekCourseUrl(courseViewUrl);
+  return allWeekUrl ? `${allWeekUrl}&klms_sync_verify=1` : "";
 }
 
 function fetchPages(urls, waitSeconds, scriptDir, options) {

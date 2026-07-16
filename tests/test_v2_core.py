@@ -1241,6 +1241,60 @@ class V2CoreTests(unittest.TestCase):
             status = json.loads(output_status.read_text(encoding="utf-8"))
             self.assertTrue(status["changed"])
 
+    def test_cli_build_note_does_not_reuse_stale_notice_digest_timestamp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_dir = Path(tmp)
+            details = tmp_dir / "details.json"
+            notice_digest = tmp_dir / "notice_digest.json"
+            state = tmp_dir / "state.json"
+            output_state = tmp_dir / "next_state.json"
+            output_status = tmp_dir / "status.json"
+            output_html = tmp_dir / "section.html"
+            dashboard = self.write_authoritative_dashboard(tmp_dir)
+            details.write_text("[]", encoding="utf-8")
+            state.write_text("{}", encoding="utf-8")
+            notice_digest.write_text(
+                json.dumps(
+                    {
+                        "generated_at": "2001-01-01 00:00 KST",
+                        "courses": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "klms_sync_v2.cli",
+                    "build-note",
+                    "--dashboard-json",
+                    str(dashboard),
+                    "--details-json",
+                    str(details),
+                    "--notice-digest-json",
+                    str(notice_digest),
+                    "--state-json",
+                    str(state),
+                    "--output-html",
+                    str(output_html),
+                    "--output-state",
+                    str(output_state),
+                    "--output-status",
+                    str(output_status),
+                ],
+                cwd=PROJECT_DIR,
+                env=PYTHON_SUBPROCESS_ENV,
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+            rendered = json.loads(output_state.read_text(encoding="utf-8"))
+            self.assertNotEqual(rendered["generated_at"], "2001-01-01 00:00 KST")
+            self.assertRegex(rendered["generated_at"], r"^20\d{2}-\d{2}-\d{2} \d{2}:\d{2} KST$")
+
     def test_cli_build_note_rejects_authenticated_course_parser_drift(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_dir = Path(tmp)
@@ -1438,6 +1492,59 @@ class V2CoreTests(unittest.TestCase):
         self.assertFalse(certificate.authoritative)
         self.assertFalse(certificate.explicit_empty)
 
+    def test_course_semantic_certificate_ignores_empty_marker_inside_template(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main id="region-main">
+              <template><ul class="topics"><li>등록된 활동이 없습니다.</li></ul></template>
+              <ul class="topics"><li class="section">1주차</li></ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+
+    def test_course_semantic_certificate_ignores_closed_details_except_summary(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main id="region-main">
+              <details>
+                <summary>접힌 이전 주차</summary>
+                <ul class="topics"><li>등록된 활동이 없습니다.</li></ul>
+              </details>
+              <ul class="topics"><li class="section">1주차</li></ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertFalse(certificate.authoritative)
+        self.assertFalse(certificate.explicit_empty)
+
+    def test_course_semantic_certificate_reads_open_details(self) -> None:
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": """
+            <main id="region-main">
+              <details open>
+                <summary>현재 주차</summary>
+                <ul class="topics"><li>등록된 활동이 없습니다.</li></ul>
+              </details>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertTrue(certificate.authoritative)
+        self.assertTrue(certificate.explicit_empty)
+
     def test_course_semantic_certificate_rejects_button_activity_with_empty_marker(self) -> None:
         page = {
             "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
@@ -1485,9 +1592,310 @@ class V2CoreTests(unittest.TestCase):
         self.assertEqual(certificate.parsed_activity_count, 1)
         self.assertIn("화면 구조", certificate.reason)
 
+    def test_course_semantic_certificate_ignores_module_links_outside_activities(self) -> None:
+        activity_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        page = {
+            "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+            "html": f"""
+            <nav class="mobile-menu">
+              <a href="https://klms.kaist.ac.kr/mod/page/view.php?id=999">도움말</a>
+            </nav>
+            <main data-region="course-content">
+              <ul class="topics">
+                <li class="activity assign">
+                  <div class="activityinstance">
+                    <a href="{activity_url}">Homework 1</a>
+                  </div>
+                </li>
+              </ul>
+            </main>
+            """,
+        }
+
+        certificate = klms_sync.course_page_semantic_certificate(page)
+
+        self.assertTrue(certificate.authoritative)
+        self.assertEqual(certificate.module_urls, (activity_url,))
+        self.assertEqual(certificate.module_link_count, 1)
+
+    def test_authoritative_modules_accept_temporally_independent_all_week_pages(self) -> None:
+        first_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        second_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=2"
+
+        def page(requested_url: str, fetched_at: str, module_urls: tuple[str, ...]) -> dict:
+            activities = "".join(
+                f"""
+                <li class="activity assign">
+                  <div class="activityinstance"><a href="{url}">과제</a></div>
+                </li>
+                """
+                for url in module_urls
+            )
+            return {
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": f'<main data-region="course-content"><ul class="topics">{activities}</ul></main>',
+            }
+
+        pages = [
+            page(
+                "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "2026-07-16T00:00:00Z",
+                (first_url,),
+            ),
+            page(
+                "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                "2026-07-16T00:00:00Z",
+                (first_url, second_url),
+            ),
+            page(
+                "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                "2026-07-16T00:01:00Z",
+                (first_url, second_url),
+            ),
+        ]
+
+        self.assertEqual(
+            klms_sync.authoritative_course_module_urls(pages),
+            {"43": {first_url, second_url}},
+        )
+
+    def test_authoritative_modules_reject_conflicting_confirmed_sets(self) -> None:
+        first_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        second_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=2"
+
+        def page(suffix: str, fetched_at: str, module_url: str) -> dict:
+            return {
+                "requestedUrl": f"https://klms.kaist.ac.kr/course/view.php?id=43&{suffix}",
+                "_klms_sync_fetched_at": fetched_at,
+                "html": f"""
+                <main data-region="course-content"><ul class="topics">
+                  <li class="activity assign"><div class="activityinstance">
+                    <a href="{module_url}">과제</a>
+                  </div></li>
+                </ul></main>
+                """,
+            }
+
+        pages = [
+            page("section=0", "2026-07-16T00:00:00Z", first_url),
+            page("section=0&klms_sync_verify=1", "2026-07-16T00:01:00Z", first_url),
+            page("section=0", "2026-07-16T00:02:00Z", second_url),
+            page("section=0&klms_sync_verify=1", "2026-07-16T00:03:00Z", second_url),
+        ]
+
+        self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
+
+    def test_authoritative_modules_reject_regular_page_as_verification_evidence(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+
+        def page(requested_url: str, fetched_at: str) -> dict:
+            return {
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": f"""
+                <main data-region="course-content"><ul class="topics">
+                  <li class="activity assign"><div class="activityinstance">
+                    <a href="{module_url}">과제</a>
+                  </div></li>
+                </ul></main>
+                """,
+            }
+
+        pages = [
+            page(
+                "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "2026-07-16T00:00:00Z",
+            ),
+            page(
+                "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                "2026-07-16T00:01:00Z",
+            ),
+        ]
+
+        self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
+
+    def test_authoritative_modules_reject_noncanonical_verification_urls(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        html = f"""
+        <main data-region="course-content"><ul class="topics">
+          <li class="activity assign"><div class="activityinstance">
+            <a href="{module_url}">과제</a>
+          </div></li>
+        </ul></main>
+        """
+        pages = [
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&source=cache",
+                "_klms_sync_fetched_at": "2026-07-16T00:00:00Z",
+                "html": html,
+            },
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43&id=43&section=0&klms_sync_verify=1",
+                "_klms_sync_fetched_at": "2026-07-16T00:01:00Z",
+                "html": html,
+            },
+        ]
+
+        self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
+
+    def test_authoritative_modules_reject_same_run_duplicate_fetches(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        html = f"""
+        <main data-region="course-content"><ul class="topics">
+          <li class="activity assign"><div class="activityinstance">
+            <a href="{module_url}">과제</a>
+          </div></li>
+        </ul></main>
+        """
+        pages = [
+            {
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": "2026-07-16T00:00:00Z",
+                "html": html,
+            }
+            for requested_url in (
+                "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+            )
+        ]
+
+        self.assertEqual(klms_sync.authoritative_course_module_urls(pages), {})
+
+    def test_destructive_state_delta_rejects_evidence_from_before_previous_state(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        previous_state = {
+            "status": "ok",
+            "generated_at": "2026-07-16 09:00 KST",
+            "_klms_sync_commit_at": "2026-07-16 09:00 KST",
+            "content": {
+                "assignments": [
+                    {"url": module_url, "course": "알고리즘", "course_id": "43"}
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+        empty_html = """
+        <main data-region="course-content">
+          <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+        </main>
+        """
+        course_pages = [
+            {
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": empty_html,
+            }
+            for requested_url, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "2026-07-15T23:59:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    "2026-07-16T00:01:00Z",
+                ),
+            )
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            next_state,
+            course_pages=course_pages,
+        )
+
+        self.assertIn("갑자기 모두 사라져", error)
+
+    def test_destructive_state_delta_accepts_second_confirmation_after_previous_state(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        previous_state = {
+            "status": "ok",
+            "generated_at": "2026-07-16 09:00 KST",
+            "_klms_sync_commit_at": "2026-07-16 09:00 KST",
+            "content": {
+                "assignments": [
+                    {"url": module_url, "course": "알고리즘", "course_id": "43"}
+                ]
+            },
+        }
+        next_state = {"status": "ok", "content": {"assignments": []}}
+        empty_html = """
+        <main data-region="course-content">
+          <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+        </main>
+        """
+        course_pages = [
+            {
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": empty_html,
+            }
+            for requested_url, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "2026-07-16T00:00:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    "2026-07-16T00:02:00Z",
+                ),
+            )
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            next_state,
+            course_pages=course_pages,
+        )
+
+        self.assertEqual(error, "")
+
+    def test_destructive_state_delta_requires_post_upgrade_commit_baseline(self) -> None:
+        module_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"
+        previous_state = {
+            "status": "ok",
+            "generated_at": "2001-01-01 00:00 KST",
+            "content": {
+                "assignments": [
+                    {"url": module_url, "course": "알고리즘", "course_id": "43"}
+                ]
+            },
+        }
+        empty_html = """
+        <main data-region="course-content">
+          <ul class="topics"><li class="section">등록된 활동이 없습니다.</li></ul>
+        </main>
+        """
+        course_pages = [
+            {
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
+                "html": empty_html,
+            }
+            for requested_url, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "2026-07-16T00:00:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    "2026-07-16T00:02:00Z",
+                ),
+            )
+        ]
+
+        error = klms_sync.destructive_state_delta_error(
+            previous_state,
+            {"status": "ok", "content": {"assignments": []}},
+            course_pages=course_pages,
+        )
+
+        self.assertIn("갑자기 모두 사라져", error)
+
     def test_destructive_state_delta_rejects_sudden_all_zero_result(self) -> None:
         previous_state = {
             "status": "ok",
+            "generated_at": "2026-07-15 08:59 KST",
             "content": {
                 "assignments": [
                     {"url": "https://klms.kaist.ac.kr/mod/assign/view.php?id=1"},
@@ -1504,6 +1912,7 @@ class V2CoreTests(unittest.TestCase):
     def test_destructive_state_delta_rejects_partial_course_loss(self) -> None:
         previous_state = {
             "status": "ok",
+            "generated_at": "2026-07-15 08:59 KST",
             "content": {
                 "assignments": [
                     {
@@ -1767,6 +2176,8 @@ class V2CoreTests(unittest.TestCase):
     def test_destructive_state_delta_accepts_matching_explicit_empty_course(self) -> None:
         previous_state = {
             "status": "ok",
+            "generated_at": "2026-07-16 08:58 KST",
+            "_klms_sync_commit_at": "2026-07-16 08:58 KST",
             "content": {
                 "assignments": [
                     {
@@ -1780,7 +2191,8 @@ class V2CoreTests(unittest.TestCase):
         next_state = {"status": "ok", "content": {"assignments": []}}
         course_pages = [
             {
-                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
                 "title": "강좌: 알고리즘",
                 "html": """
                 <main data-region="course-content">
@@ -1788,6 +2200,16 @@ class V2CoreTests(unittest.TestCase):
                 </main>
                 """,
             }
+            for requested_url, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "2026-07-16T00:00:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    "2026-07-16T00:01:00Z",
+                ),
+            )
         ]
 
         error = klms_sync.destructive_state_delta_error(
@@ -1803,6 +2225,8 @@ class V2CoreTests(unittest.TestCase):
         removed_url = "https://klms.kaist.ac.kr/mod/assign/view.php?id=2"
         previous_state = {
             "status": "ok",
+            "generated_at": "2026-07-16 08:58 KST",
+            "_klms_sync_commit_at": "2026-07-16 08:58 KST",
             "content": {
                 "assignments": [
                     {"url": retained_url, "course": "알고리즘", "course_id": "43"},
@@ -1820,7 +2244,8 @@ class V2CoreTests(unittest.TestCase):
         }
         course_pages = [
             {
-                "requestedUrl": "https://klms.kaist.ac.kr/course/view.php?id=43",
+                "requestedUrl": requested_url,
+                "_klms_sync_fetched_at": fetched_at,
                 "html": f"""
                 <main data-region="course-content">
                   <ul class="topics">
@@ -1831,6 +2256,16 @@ class V2CoreTests(unittest.TestCase):
                 </main>
                 """,
             }
+            for requested_url, fetched_at in (
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0",
+                    "2026-07-16T00:00:00Z",
+                ),
+                (
+                    "https://klms.kaist.ac.kr/course/view.php?id=43&section=0&klms_sync_verify=1",
+                    "2026-07-16T00:01:00Z",
+                ),
+            )
         ]
 
         error = klms_sync.destructive_state_delta_error(
@@ -1889,6 +2324,7 @@ class V2CoreTests(unittest.TestCase):
                                 {
                                     "url": f"https://klms.kaist.ac.kr/mod/assign/view.php?id={item_id}",
                                     "course": "알고리즘",
+                                    "course_id": "43",
                                     "title": f"Homework {item_id}",
                                 }
                                 for item_id in (1, 2, 3)

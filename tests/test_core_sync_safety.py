@@ -80,6 +80,45 @@ console.log(JSON.stringify({{
         self.assertLess(gate_index, course_fetch_index)
         self.assertLess(gate_index, reminder_import_index)
 
+    def test_all_week_course_pages_use_independent_verification_urls(self) -> None:
+        source = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
+            encoding="utf-8"
+        )
+        helpers = "\n\n".join(
+            extract_function(source, name)
+            for name in ("toAllWeekCourseUrl", "toAllWeekCourseVerificationUrl")
+        )
+        script = f"""
+{helpers}
+const sourceUrl = "https://klms.kaist.ac.kr/course/view.php?id=42";
+console.log(JSON.stringify({{
+  primary: toAllWeekCourseUrl(sourceUrl),
+  verification: toAllWeekCourseVerificationUrl(sourceUrl),
+  invalid: toAllWeekCourseVerificationUrl("https://klms.kaist.ac.kr/course/view.php")
+}}));
+"""
+        result = subprocess.run(
+            ["node", "-e", script],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=PROJECT_DIR,
+        )
+
+        self.assertEqual(
+            json.loads(result.stdout),
+            {
+                "primary": "https://klms.kaist.ac.kr/course/view.php?id=42&section=0",
+                "verification": "https://klms.kaist.ac.kr/course/view.php?id=42&section=0&klms_sync_verify=1",
+                "invalid": "",
+            },
+        )
+        self.assertIn("courseUrls.flatMap((url) => [", source)
+        self.assertIn("toAllWeekCourseVerificationUrl(url)", source)
+        self.assertIn('alwaysFetchPatterns: ["klms_sync_verify=1"]', source)
+        self.assertIn("completeReuseSeconds: 0", source)
+        self.assertIn("destructiveChangePrimaryStaleSeconds", source)
+
     def test_authoritative_coverage_rejects_missing_empty_and_login_pages(self) -> None:
         source = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
             encoding="utf-8"

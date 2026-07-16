@@ -136,7 +136,11 @@ class FetchPagesBackendTests(unittest.TestCase):
             max_age_seconds=900,
         )
 
-        self.assertEqual(reused, [page])
+        self.assertEqual(
+            reused,
+            [{**page, "_klms_sync_fetched_at": now}],
+        )
+        self.assertIsNot(reused[0], page)
 
     def test_complete_recent_cached_pages_requires_each_url_to_be_fresh(self) -> None:
         url = "https://klms.kaist.ac.kr/mod/courseboard/view.php?id=1"
@@ -411,7 +415,10 @@ class FetchPagesBackendTests(unittest.TestCase):
 
             self.assertEqual(status, 0)
             self.assertFalse(fetch_mock.called)
-            self.assertEqual(json.loads(out_path.read_text(encoding="utf-8")), [fallback_page])
+            self.assertEqual(
+                json.loads(out_path.read_text(encoding="utf-8")),
+                [{**fallback_page, "_klms_sync_fetched_at": "2026-04-01T00:00:00Z"}],
+            )
 
     def test_require_all_missing_pages_fails_without_overwriting_previous_output(self) -> None:
         url = "https://klms.kaist.ac.kr/my/"
@@ -458,7 +465,12 @@ class FetchPagesBackendTests(unittest.TestCase):
         url = "https://klms.kaist.ac.kr/course/view.php?id=1"
         old_fetched_at = "2026-04-01T00:00:00Z"
         old_changed_at = "2026-04-01T00:00:00Z"
-        page = {"requestedUrl": url, "title": "Course", "html": "<html>cached</html>"}
+        page = {
+            "requestedUrl": url,
+            "title": "Course",
+            "html": "<html>cached</html>",
+            "_klms_sync_fetched_at": "2099-01-01T00:00:00Z",
+        }
         context_state = {
             "urls": {
                 url: {
@@ -480,6 +492,7 @@ class FetchPagesBackendTests(unittest.TestCase):
 
         self.assertEqual(context_state["urls"][url]["last_fetched_at"], old_fetched_at)
         self.assertEqual(context_state["urls"][url]["last_changed_at"], old_changed_at)
+        self.assertEqual(page["_klms_sync_fetched_at"], old_fetched_at)
 
     def test_update_context_state_advances_fetched_timestamp(self) -> None:
         url = "https://klms.kaist.ac.kr/course/view.php?id=1"
@@ -506,6 +519,31 @@ class FetchPagesBackendTests(unittest.TestCase):
 
         self.assertNotEqual(context_state["urls"][url]["last_fetched_at"], old_fetched_at)
         self.assertNotEqual(context_state["urls"][url]["last_changed_at"], old_fetched_at)
+        self.assertEqual(
+            page["_klms_sync_fetched_at"],
+            context_state["urls"][url]["last_fetched_at"],
+        )
+
+    def test_reused_page_without_cache_metadata_cannot_invent_fetch_evidence(self) -> None:
+        url = "https://klms.kaist.ac.kr/course/view.php?id=1"
+        page = {
+            "requestedUrl": url,
+            "title": "Course",
+            "html": "<html>cached</html>",
+            "_klms_sync_fetched_at": "2099-01-01T00:00:00Z",
+        }
+        context_state = {"urls": {}}
+
+        fetch_pages_backend.update_context_state(
+            context_state,
+            pages=[page],
+            backend="safari",
+            effective_mode="full",
+            fetched_urls=set(),
+        )
+
+        self.assertNotIn("_klms_sync_fetched_at", page)
+        self.assertEqual(context_state["urls"][url]["last_fetched_at"], "")
 
 
 if __name__ == "__main__":

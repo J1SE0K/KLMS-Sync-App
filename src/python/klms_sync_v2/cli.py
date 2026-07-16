@@ -566,9 +566,9 @@ def command_build_note(args: argparse.Namespace) -> int:
             "html": render_error_html(validation_error, previous_state),
         }
     else:
-        digest_generated_at, digest_notices = load_optional_notices(args.notice_digest_json)
+        _, digest_notices = load_optional_notices(args.notice_digest_json)
         page_notices = notices_from_article_pages(supplemental_detail_pages)
-        generated_at = args.generated_at or digest_generated_at or now_kst_label()
+        generated_at = args.generated_at or now_kst_label()
         overrides = load_optional_json(args.overrides_json, None)
         if source_payload is None:
             raise RuntimeError("validated source payload is missing")
@@ -592,6 +592,7 @@ def command_build_note(args: argparse.Namespace) -> int:
             include_past=args.include_past,
         )
         payload = state.to_legacy_state()
+        payload["_klms_sync_commit_at"] = generated_at
         payload["html"] = render_success_html(payload)
         destructive_delta_error = legacy().legacy.destructive_state_delta_error(
             previous_state,
