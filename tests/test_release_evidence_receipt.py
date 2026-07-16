@@ -63,6 +63,20 @@ class ReleaseEvidenceReceiptTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 receipt_module.verify_gate_logs(Path(tmp), ["python-core"], candidate)
 
+    def test_gate_logs_reject_noncanonical_gate_ids_without_nested_regex(self) -> None:
+        candidate = "a" * 40
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp) / "python--core.log"
+            log.write_text(
+                f"gate-evidence schema=1 gate=python--core candidate={candidate} "
+                "started_at=2026-07-16T00:00:00Z\n"
+                f"gate-evidence-summary status=pass gate=python--core candidate={candidate} exit=0\n",
+                encoding="utf-8",
+            )
+            log.chmod(0o600)
+            with self.assertRaises(SystemExit):
+                receipt_module.verify_gate_logs(Path(tmp), ["python--core"], candidate)
+
     def test_review_evidence_binds_report_and_candidate(self) -> None:
         candidate = "a" * 40
         review_id = "code-quality"

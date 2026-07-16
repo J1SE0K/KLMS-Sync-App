@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
-    "expectedFindings": 33,
-    "coordinatesSha256": "07518fa14e2841cb37872eb1cdfc061f978093ff3aced3ce403b2452d6e824ba",
+    "expectedFindings": 35,
+    "coordinatesSha256": "fabcbad598e05f73699fdce4c7e9250e75ed9e5acfb3932cdc6eae0f383bac6c",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -48,6 +48,18 @@
         "reason": "The optional iconutil invocation uses a fixed executable and fixed argv array without a shell."
       },
       {
+        "rule": "python.lang.security.audit.dangerous-subprocess-use-audit",
+        "path": "tools/generate_release_evidence_receipt.py",
+        "expectedCount": 1,
+        "reason": "The current Python interpreter invokes a repository-owned payload verifier through an argv array without a shell; every payload path and expected revision is subsequently validated as data by that verifier."
+      },
+      {
+        "rule": "python.lang.security.audit.insecure-file-permissions",
+        "path": "tools/record_release_review.py",
+        "expectedCount": 1,
+        "reason": "Mode 0700 intentionally grants access only to the current user for the private review-evidence directory, which is stricter than the scanner's generic 0644 recommendation; evidence files are separately written with mode 0600."
+      },
+      {
         "rule": "python.lang.security.insecure-hash-algorithm-sha1",
         "path": "src/python/build_course_file_manifest.py",
         "expectedCount": 1,
@@ -84,8 +96,8 @@
         "reason": "This policy intentionally contains only scanner-coordinate SHA-256 digests and false-positive rationale."
       }
     ],
-    "expectedFindings": 22,
-    "coordinatesSha256": "320249e823d8466c88969d04f3d1e8671a3702d69dc4f6aebcd7765476d5c7e3",
+    "expectedFindings": 23,
+    "coordinatesSha256": "23d2d1acd7521ede0cfdaae5fd8d83f3e4b14ee93259bb07c98a77f4a8b74626",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
@@ -116,6 +128,12 @@
         "path": "deploy/cloudflare-worker/test/smoke.mjs",
         "expectedCount": 2,
         "reason": "The matches are fixed synthetic client and worker tokens for an in-memory smoke relay."
+      },
+      {
+        "type": "Secret Keyword",
+        "path": "deploy/relay/test_relay.mjs",
+        "expectedCount": 1,
+        "reason": "The match is a fixed synthetic trusted-proxy credential used only by the isolated loopback relay integration test."
       },
       {
         "type": "Private Key",

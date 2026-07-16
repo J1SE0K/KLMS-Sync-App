@@ -18,11 +18,11 @@ from typing import Any
 
 SHA40 = re.compile(r"[0-9a-f]{40}")
 GATE_SUMMARY = re.compile(
-    r"gate-evidence-summary status=pass gate=([a-z0-9]+(?:-[a-z0-9]+)*) "
+    r"gate-evidence-summary status=pass gate=([a-z0-9-]+) "
     r"candidate=([0-9a-f]{40}) exit=0"
 )
 GATE_HEADER = re.compile(
-    r"gate-evidence schema=1 gate=([a-z0-9]+(?:-[a-z0-9]+)*) "
+    r"gate-evidence schema=1 gate=([a-z0-9-]+) "
     r"candidate=([0-9a-f]{40}) started_at=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
 )
 
@@ -96,6 +96,15 @@ def parse_external_evidence(
     ]
 
 
+def valid_gate_id(value: str) -> bool:
+    return (
+        bool(value)
+        and not value.startswith("-")
+        and not value.endswith("-")
+        and "--" not in value
+    )
+
+
 def verify_gate_logs(evidence_dir: Path, gate_ids: list[str], candidate: str) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     for gate_id in gate_ids:
@@ -117,6 +126,8 @@ def verify_gate_logs(evidence_dir: Path, gate_ids: list[str], candidate: str) ->
         header = headers[0]
         if (
             summary is None
+            or not valid_gate_id(header.group(1))
+            or not valid_gate_id(summary.group(1))
             or header.group(1) != gate_id
             or header.group(2) != candidate
             or summary.group(1) != gate_id
