@@ -239,6 +239,16 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn("IOS_DEVICE_LAUNCH_RETRIES", readme)
         self.assertIn("IOS_DEVICE_LAUNCH_RETRY_DELAY_SECONDS", readme)
 
+    def test_ios_device_build_log_is_private_and_redacts_credential_records(self) -> None:
+        script = (PROJECT_DIR / "tools" / "build_klms_ios_device.sh").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("umask 077", script)
+        self.assertIn('[[ -L "$BUILD_LOG" || -d "$BUILD_LOG" ]]', script)
+        self.assertIn('chmod 600 "$BUILD_LOG"', script)
+        self.assertIn("<credential-record-id>", script)
+
     def test_serial_run_scripts_share_common_job_runner(self) -> None:
         for script_name in ["run_all.sh", "run_all_full.sh"]:
             with self.subTest(script=script_name):
@@ -1635,6 +1645,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('restore_previous_app', build_script)
         self.assertIn('if ! restore_previous_app; then', build_script)
         self.assertIn('Previous app preserved at: $BACKUP_APP_BUNDLE', build_script)
+        self.assertIn("__klms_prov", build_script)
+        self.assertIn("KLMSAppBuildProvenance.json", build_script)
+        self.assertIn("verify_klms_app_provenance.py", build_script)
+        self.assertIn("final_git_head", build_script)
+        self.assertIn("final_git_tree", build_script)
+        self.assertIn("final_git_status", build_script)
         self.assertIn('VENDORED_PYTHON_PACKAGES="$ROOT_DIR/vendor/python-packages"', build_script)
         self.assertIn('PYTHON_PAYLOAD_ALLOWLIST="$APP_PACKAGE_DIR/EnginePythonPayloadAllowlist.txt"', build_script)
         self.assertIn('done < "$PYTHON_PAYLOAD_ALLOWLIST"', build_script)
@@ -1650,7 +1666,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn('"sourceRevision": source_revision', build_script)
         self.assertIn('"pythonAllowlistSHA256"', build_script)
         self.assertIn("rev-parse --verify 'HEAD^{commit}'", build_script)
-        self.assertIn("unable to determine the engine payload worktree state", build_script)
+        self.assertIn("unable to determine the app worktree state", build_script)
         self.assertIn('verify_klms_engine_payload.py', build_script)
         self.assertNotIn('for directory in src bin examples docs tools', build_script)
         self.assertIn("tools/klms_relay_server.mjs", payload_allowlist)
@@ -1743,6 +1759,24 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         )
         self.assertIn("--enable-xctest", swift_gate["command"])
         self.assertIn("--disable-swift-testing", swift_gate["command"])
+        self.assertEqual(swift_gate["execution"]["workingDirectory"], ".")
+        self.assertEqual(swift_gate["execution"]["environment"], {})
+        self.assertIn("<isolated-path>", swift_gate["execution"]["steps"][0]["argv"])
+        mac_runtime_gate = next(
+            gate for gate in inventory["automatedGates"] if gate["id"] == "mac-runtime"
+        )
+        self.assertEqual(
+            mac_runtime_gate["execution"]["environment"]["KLMS_READINESS_IOS_BUILD"],
+            "0",
+        )
+        self.assertEqual(
+            mac_runtime_gate["execution"]["environment"]["KLMS_READINESS_IOS_LAUNCH"],
+            "0",
+        )
+        self.assertEqual(
+            inventory["releaseEvidenceReceipt"]["gateRunner"],
+            "tools/run_release_gate.sh <gate-id>",
+        )
         receipt = inventory["releaseEvidenceReceipt"]
         self.assertEqual(receipt["reviewRecorder"], "tools/record_release_review.py")
         self.assertTrue(receipt["exactCommitRequired"])

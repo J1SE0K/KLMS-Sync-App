@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_PACKAGE_DIR="$ROOT_DIR/apps/KLMSync"
@@ -15,19 +16,60 @@ ICLOUD_CONTAINER_IDENTIFIER="${ICLOUD_CONTAINER_IDENTIFIER:-}"
 # Keep the default outside Documents/iCloud-backed workspaces. Those locations can
 # attach File Provider metadata to .app directories and make codesign reject them.
 DIST_DIR="${DIST_DIR:-$HOME/Applications}"
-SWIFT_SCRATCH_PATH="${SWIFT_SCRATCH_PATH:-/private/tmp/klmsync-swiftpm-app-build}"
 TARGET_APP_BUNDLE="${OUTPUT_APP:-$DIST_DIR/$APP_NAME.app}"
 TARGET_APP_PARENT="$(dirname "$TARGET_APP_BUNDLE")"
 TARGET_APP_NAME="$(basename "$TARGET_APP_BUNDLE")"
 
-mkdir -p "$TARGET_APP_PARENT"
-STAGING_DIR="$(mktemp -d "$TARGET_APP_PARENT/.klms-sync-app-build.XXXXXX")"
-APP_BUNDLE="$STAGING_DIR/$TARGET_APP_NAME"
-BACKUP_APP_BUNDLE="$STAGING_DIR/previous.app"
+if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  print -r -- "app build requires a readable Git worktree" >&2
+  exit 1
+fi
+if ! git_head="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+    || [[ ! "$git_head" =~ '^[0-9a-f]{40}$' ]]; then
+  print -r -- "unable to resolve a full app source revision" >&2
+  exit 1
+fi
+if ! git_tree="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{tree}' 2>/dev/null)" \
+    || [[ ! "$git_tree" =~ '^[0-9a-f]{40}$' ]]; then
+  print -r -- "unable to resolve a full app source tree" >&2
+  exit 1
+fi
+if ! git_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null)"; then
+  print -r -- "unable to determine the app worktree state" >&2
+  exit 1
+fi
+if [[ -n "$git_status" ]]; then
+  dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
+  payload_dirty="true"
+else
+  dirty_suffix=""
+  payload_dirty="false"
+fi
+if [[ "${KLMS_PAYLOAD_REQUIRE_CLEAN:-0}" == "1" && "$payload_dirty" != "false" ]]; then
+  print -r -- "clean app build requested from a dirty worktree" >&2
+  exit 1
+fi
+payload_version="$git_head$dirty_suffix"
+source_revision="$git_head"
+
+REMOVE_SWIFT_SCRATCH=0
+if [[ -n "${SWIFT_SCRATCH_PATH:-}" ]]; then
+  SWIFT_SCRATCH_PATH="$(mkdir -p "$SWIFT_SCRATCH_PATH" && cd "$SWIFT_SCRATCH_PATH" && pwd -P)"
+else
+  SWIFT_SCRATCH_PATH="$(mktemp -d "${TMPDIR:-/private/tmp}/klmsync-swiftpm-app-build.XXXXXX")"
+  REMOVE_SWIFT_SCRATCH=1
+fi
+
+STAGING_DIR=""
+APP_BUNDLE=""
+BACKUP_APP_BUNDLE=""
+BUILD_PROVENANCE_FILE=""
 target_app_moved=0
 
 restore_previous_app() {
-  if (( target_app_moved == 1 )) && [[ -e "$BACKUP_APP_BUNDLE" || -L "$BACKUP_APP_BUNDLE" ]]; then
+  if (( target_app_moved == 1 )) \
+      && [[ -n "$BACKUP_APP_BUNDLE" ]] \
+      && [[ -e "$BACKUP_APP_BUNDLE" || -L "$BACKUP_APP_BUNDLE" ]]; then
     if [[ ! -e "$TARGET_APP_BUNDLE" && ! -L "$TARGET_APP_BUNDLE" ]]; then
       mv "$BACKUP_APP_BUNDLE" "$TARGET_APP_BUNDLE"
     else
@@ -47,15 +89,45 @@ cleanup_build() {
       exit "$exit_status"
     fi
   fi
-  rm -rf "$STAGING_DIR"
+  if [[ -n "$STAGING_DIR" ]]; then
+    rm -rf "$STAGING_DIR"
+  fi
+  if (( REMOVE_SWIFT_SCRATCH == 1 )); then
+    rm -rf "$SWIFT_SCRATCH_PATH"
+  fi
   exit "$exit_status"
 }
 
 trap cleanup_build EXIT
 
+mkdir -p "$TARGET_APP_PARENT"
+STAGING_DIR="$(mktemp -d "$TARGET_APP_PARENT/.klms-sync-app-build.XXXXXX")"
+APP_BUNDLE="$STAGING_DIR/$TARGET_APP_NAME"
+BACKUP_APP_BUNDLE="$STAGING_DIR/previous.app"
+BUILD_PROVENANCE_FILE="$STAGING_DIR/KLMSAppBuildProvenance.json"
+
+python3 - "$BUILD_PROVENANCE_FILE" "$source_revision" "$git_tree" "$payload_dirty" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+payload = {
+    "schemaVersion": 1,
+    "sourceRevision": sys.argv[2],
+    "sourceTree": sys.argv[3],
+    "dirty": sys.argv[4] == "true",
+}
+path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+PY
+
 swift build \
   --package-path "$APP_PACKAGE_DIR" \
   --scratch-path "$SWIFT_SCRATCH_PATH" \
+  -Xlinker -sectcreate \
+  -Xlinker __TEXT \
+  -Xlinker __klms_prov \
+  -Xlinker "$BUILD_PROVENANCE_FILE" \
   -c "$CONFIGURATION" \
   --product KLMSMac
 
@@ -77,6 +149,7 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources" "$APP_BUN
 
 cp -X "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/KLMSMac"
 chmod +x "$APP_BUNDLE/Contents/MacOS/KLMSMac"
+cp -X "$BUILD_PROVENANCE_FILE" "$APP_BUNDLE/Contents/Resources/KLMSAppBuildProvenance.json"
 ditto --norsrc "$RESOURCE_BUNDLE_SOURCE" "$APP_BUNDLE/Contents/Resources/KLMSync_KLMSMac.bundle"
 if [[ -f "$APP_ICON_SOURCE" ]]; then
   cp -X "$APP_ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
@@ -207,31 +280,6 @@ find "$PAYLOAD_ROOT" -type f \
   \( -name '*.sh' -o -name '*.js' -o -name '*.mjs' -o -name '*.py' \) \
   -exec chmod +x {} +
 
-if ! git -C "$ROOT_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  print -r -- "engine payload build requires a readable Git worktree" >&2
-  exit 1
-fi
-if ! git_head="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)"; then
-  print -r -- "unable to resolve the engine payload Git revision" >&2
-  exit 1
-fi
-if [[ ! "$git_head" =~ '^[0-9a-f]{40}$' ]]; then
-  print -r -- "engine payload Git revision must be a full 40-character SHA" >&2
-  exit 1
-fi
-if ! git_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null)"; then
-  print -r -- "unable to determine the engine payload worktree state" >&2
-  exit 1
-fi
-if [[ -n "$git_status" ]]; then
-  dirty_suffix="-dirty-$(date +%Y%m%d%H%M%S)"
-  payload_dirty="true"
-else
-  dirty_suffix=""
-  payload_dirty="false"
-fi
-payload_version="$git_head$dirty_suffix"
-source_revision="$git_head"
 print -r -- "$payload_version" > "$PAYLOAD_ROOT/EnginePayloadVersion.txt"
 
 python3 - "$PAYLOAD_ROOT" "$PAYLOAD_ALLOWLIST" "$PYTHON_PAYLOAD_ALLOWLIST" "$payload_version" "$source_revision" "$payload_dirty" <<'PY'
@@ -403,6 +451,27 @@ EOF
   fi
 fi
 
+provenance_verify_args=(
+  "$ROOT_DIR/tools/verify_klms_app_provenance.py"
+  "$APP_BUNDLE"
+  --expected-revision "$source_revision"
+  --expected-tree "$git_tree"
+)
+if [[ "${KLMS_PAYLOAD_REQUIRE_CLEAN:-0}" == "1" ]]; then
+  provenance_verify_args+=(--require-clean)
+fi
+python3 "${provenance_verify_args[@]}"
+
+if ! final_git_head="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
+    || ! final_git_tree="$(git -C "$ROOT_DIR" rev-parse --verify 'HEAD^{tree}' 2>/dev/null)" \
+    || ! final_git_status="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=all 2>/dev/null)" \
+    || [[ "$final_git_head" != "$source_revision" ]] \
+    || [[ "$final_git_tree" != "$git_tree" ]] \
+    || [[ "$final_git_status" != "$git_status" ]]; then
+  print -u2 -- "Source changed while the app was building; the target app was not replaced."
+  exit 1
+fi
+
 if [[ -e "$TARGET_APP_BUNDLE" || -L "$TARGET_APP_BUNDLE" ]]; then
   mv "$TARGET_APP_BUNDLE" "$BACKUP_APP_BUNDLE"
   target_app_moved=1
@@ -417,4 +486,7 @@ target_app_moved=0
 
 trap - EXIT
 rm -rf "$STAGING_DIR"
+if (( REMOVE_SWIFT_SCRATCH == 1 )); then
+  rm -rf "$SWIFT_SCRATCH_PATH"
+fi
 print -r -- "$TARGET_APP_BUNDLE"

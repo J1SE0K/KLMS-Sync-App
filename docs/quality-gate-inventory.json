@@ -26,46 +26,131 @@
   "automatedGates": [
     {
       "id": "python-core",
-      "command": "PYTHONPATH=vendor/python-packages python3 -B -m unittest discover -s tests"
+      "command": "PYTHONPATH=vendor/python-packages python3 -B -m unittest discover -s tests",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {"PYTHONPATH": "vendor/python-packages"},
+        "steps": [
+          {"argv": ["python3", "-B", "-m", "unittest", "discover", "-s", "tests"]}
+        ]
+      }
     },
     {
       "id": "swift-clients",
-      "command": "swift test --enable-xctest --disable-swift-testing --package-path apps/KLMSync --scratch-path <isolated-path> --jobs 1"
+      "command": "swift test --enable-xctest --disable-swift-testing --package-path apps/KLMSync --scratch-path <isolated-path> --jobs 1",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {},
+        "steps": [
+          {"argv": ["swift", "test", "--enable-xctest", "--disable-swift-testing", "--package-path", "apps/KLMSync", "--scratch-path", "<isolated-path>", "--jobs", "1"]}
+        ]
+      }
     },
     {
       "id": "mac-runtime",
-      "command": "KLMS_READINESS_REQUIRE_CLEAN=1 KLMS_PAYLOAD_REQUIRE_CLEAN=1 tools/verify_klms_app_readiness.sh"
+      "command": "KLMS_READINESS_REQUIRE_CLEAN=1 KLMS_PAYLOAD_REQUIRE_CLEAN=1 KLMS_READINESS_SWIFT_TESTS=0 KLMS_READINESS_IOS_BUILD=0 KLMS_READINESS_IOS_LAUNCH=0 tools/verify_klms_app_readiness.sh",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {
+          "KLMS_READINESS_REQUIRE_CLEAN": "1",
+          "KLMS_PAYLOAD_REQUIRE_CLEAN": "1",
+          "KLMS_READINESS_SWIFT_TESTS": "0",
+          "KLMS_READINESS_IOS_BUILD": "0",
+          "KLMS_READINESS_IOS_LAUNCH": "0"
+        },
+        "steps": [
+          {"argv": ["tools/verify_klms_app_readiness.sh"]}
+        ]
+      }
     },
     {
       "id": "mac-payload",
-      "command": "tools/build_klms_mac_app.sh"
+      "command": "OUTPUT_APP=<candidate-app> KLMS_PAYLOAD_REQUIRE_CLEAN=1 tools/build_klms_mac_app.sh",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {
+          "OUTPUT_APP": "<candidate-app>",
+          "KLMS_PAYLOAD_REQUIRE_CLEAN": "1"
+        },
+        "steps": [
+          {"argv": ["tools/build_klms_mac_app.sh"]}
+        ]
+      }
     },
     {
       "id": "ios-simulator-matrix",
-      "command": "tools/test_klms_ios_ui_matrix.sh"
+      "command": "tools/test_klms_ios_ui_matrix.sh",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {
+          "DERIVED_DATA_PATH": "<isolated-path>",
+          "MODULE_CACHE_DIR": "<isolated-module-cache>"
+        },
+        "steps": [
+          {"argv": ["tools/test_klms_ios_ui_matrix.sh"]}
+        ]
+      }
     },
     {
       "id": "windows-unit",
       "command": "npm test",
-      "workingDirectory": "apps/KLMSyncWindows"
+      "workingDirectory": "apps/KLMSyncWindows",
+      "execution": {
+        "workingDirectory": "apps/KLMSyncWindows",
+        "environment": {},
+        "steps": [
+          {"argv": ["npm", "test"]}
+        ]
+      }
     },
     {
       "id": "windows-electron-e2e",
       "command": "npm run test:e2e",
-      "workingDirectory": "apps/KLMSyncWindows"
+      "workingDirectory": "apps/KLMSyncWindows",
+      "execution": {
+        "workingDirectory": "apps/KLMSyncWindows",
+        "environment": {},
+        "steps": [
+          {"argv": ["npm", "run", "test:e2e"]}
+        ]
+      }
     },
     {
       "id": "relay-self-hosted",
-      "command": "node --test deploy/relay/test_relay.mjs && node --test deploy/relay/test_restore_db.mjs"
+      "command": "node --test deploy/relay/test_relay.mjs && node --test deploy/relay/test_restore_db.mjs",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {},
+        "steps": [
+          {"argv": ["node", "--test", "deploy/relay/test_relay.mjs"]},
+          {"argv": ["node", "--test", "deploy/relay/test_restore_db.mjs"]}
+        ]
+      }
     },
     {
       "id": "relay-cloudflare",
       "command": "npm run check && npm test && npm run test:integration",
-      "workingDirectory": "deploy/cloudflare-worker"
+      "workingDirectory": "deploy/cloudflare-worker",
+      "execution": {
+        "workingDirectory": "deploy/cloudflare-worker",
+        "environment": {},
+        "steps": [
+          {"argv": ["npm", "run", "check"]},
+          {"argv": ["npm", "test"]},
+          {"argv": ["npm", "run", "test:integration"]}
+        ]
+      }
     },
     {
       "id": "security-evidence",
-      "command": "KLMS_SECURITY_REQUIRE_CLEAN=1 tools/security/run_security_evidence.sh <private-evidence-dir> <scanner-root>"
+      "command": "KLMS_SECURITY_REQUIRE_CLEAN=1 tools/security/run_security_evidence.sh <private-evidence-dir> <scanner-root>",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {"KLMS_SECURITY_REQUIRE_CLEAN": "1"},
+        "steps": [
+          {"argv": ["tools/security/run_security_evidence.sh", "<private-evidence-dir>", "<scanner-root>"]}
+        ]
+      }
     }
   ],
   "independentReviewGates": [
@@ -76,7 +161,7 @@
     "visual-and-accessibility"
   ],
   "releaseEvidenceReceipt": {
-    "gateRunner": "tools/run_release_gate.sh <gate-id> -- <command>",
+    "gateRunner": "tools/run_release_gate.sh <gate-id>",
     "reviewRecorder": "tools/record_release_review.py",
     "generator": "tools/generate_release_evidence_receipt.py",
     "exactCommitRequired": true,

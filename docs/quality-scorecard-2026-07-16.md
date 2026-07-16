@@ -1,95 +1,91 @@
-# KLMS Sync quality scorecard — updated 2026-07-17
+# KLMS Sync quality scorecard policy — 2026-07-16
 
-## Result
+## Current score
 
-**Current evidence-certified score: 94/100**
+This tracked document deliberately does not hard-code a score for the current source tree.
+A score is valid only when `tools/generate_release_evidence_receipt.py` produces a private
+receipt for one exact, clean commit and the matching built app. Any source change expires
+that receipt and every independent review attached to it.
 
-The candidate earns an implementation-and-automated-evidence score of **100/100** from code review, automated tests, macOS runtime probes, Electron testing, iPhone/iPad Simulator testing, an object-level memgraph, ETTrace, and security evidence. The externally certified score is capped at 94 because evidence that requires physical devices, a real impaired WAN, a real assistive-technology session, and a multi-hour soak has not been produced. This is an evidence boundary, not a known open product defect, and it prevents the scorecard from presenting an unverifiable literal guarantee.
+The receipt is the single source of truth. Until it exists, the candidate is **not yet
+evidence-certified**. Passing automated checks alone is not described as a literal 100/100.
+The generated `evidenceCertifiedScore` is calculated from the committed 100-point rubric
+and its active caps; the generator rejects a malformed or non-100-point score model.
 
-Scoring rules:
+## Scoring model
 
-- Function and data integrity: 20
-- Responsive UI: 20
-- UX and accessibility: 15
-- WebSocket, latency, and performance: 15
-- Security and privacy: 15
-- Reliability and recovery: 10
-- Test and release readiness: 5
-- Caps: open P0 → 39, open P1 → 79, open P2 → 89, missing mandatory external evidence → 94
+| Area | Points |
+|---|---:|
+| Function and data integrity | 20 |
+| Responsive UI | 20 |
+| UX and accessibility | 15 |
+| WebSocket, latency, and performance | 15 |
+| Security and privacy | 15 |
+| Reliability and recovery | 10 |
+| Test and release readiness | 5 |
+| Total | 100 |
 
-| Area | Score | Evidence |
-|---|---:|---|
-| Function and data integrity | 20/20 | Authoritative parser certificate, destructive-delta guard, atomic file replacement, shared state lock, scoped completion overrides, durable terminal-result outbox, and per-record relay decoding |
-| Responsive UI | 20/20 | macOS 640/900/1200 containment and resize-hit testing; Windows responsive Electron flow; iPhone and iPad portrait/landscape matrices including 1040/1046/1048-point boundaries |
-| UX and accessibility | 15/15 | Three-stage fixed-width sidebar, compact destructive controls, confirmation dialogs, semantic labels, keyboard focus retention, Dynamic Type and accessibility-size tests; real assistive traversal is handled by the external-evidence cap |
-| WebSocket, latency, and performance | 15/15 | WebSocket-only live state, bounded connections/messages, reconnect recovery, path-aware off-main refresh, 2,000-item Windows/iOS tests, macOS tab-response average 20 ms |
-| Security and privacy | 15/15 | Auth precedes protected readiness/maintenance, exact origins and UUID routes, 32-byte tokens, traversal containment, quota reservations, private readiness reports, native PDF rendering, and ten-scanner evidence with scanner-environment self-audit |
-| Reliability and recovery | 10/10 | Atomic state/file updates, verified SQLite backup/restore, versioned salvageable result replay, stale claim recovery, deletion retry preservation, stable repeated-navigation footprint, and an object-level memgraph with zero detected leaks; the multi-hour soak remains under the external-evidence cap |
-| Test and release readiness | 5/5 | Python, Swift, iOS UI, macOS readiness, Windows unit/E2E, both relays, restore faults, packaging, dependency audits, and private security evidence are wired into reproducible gates |
-| Implementation and automated evidence | **100/100** | No known P0/P1/P2 defect remains in the reviewed candidate |
-| Active cap | **94/100** | Mandatory external evidence is incomplete |
+Quality caps are fail-closed:
 
-## Confirmed verification ledger
+- Open P0 finding: at most 39
+- Open P1 finding: at most 79
+- Open P2 finding: at most 89
+- Missing mandatory external evidence: at most 94
 
-| Surface | Confirmed result |
-|---|---|
-| Python/core | **312 passed**, 0 failed |
-| Swift package | **269 passed**, 0 failed, isolated scratch path |
-| macOS responsive runtime | All primary screens and settings contained at 640/900/1200; native edge resize and expanded 10-point inner hit target passed |
-| macOS interaction latency | Combined tab-probe average **20 ms**; worst run average 22 ms; slowest single dashboard observation 65 ms |
-| Windows unit | **29 passed**, 0 failed |
-| Windows Electron E2E | **8 passed**, including responsive breakpoints, contrast contracts, WebSocket flow, focus retention, and 2,000-item data |
-| iPhone Simulator | Full UI matrix passed on iPhone 17 Pro Max, including all tabs, compact-width containment, history deletion UX, accessibility size, and 2,000-item flow |
-| iPad Simulator | Full portrait/landscape matrix passed on iPad Pro 13-inch M5, including all tabs, fixed sidebar, boundary widths, and 2,000-item flow |
-| iOS independent build/run | XcodeBuildMCP built and launched the current iPhone target successfully |
-| ETTrace | 16.917-second focused launch-to-dashboard trace: 16.092 seconds idle and 0.821 seconds active; ETTrace itself was the largest active self-cost, while app work was dominated by initial SwiftUI layout and accessibility initialization with no abnormal application loop visible |
-| Memory | Object-level Simulator memgraph captured and parsed successfully: **0 leaks, 0 leaked bytes**; earlier repeated 21-tab traversals also showed no repeated linear gross-footprint growth |
-| Self-host relay | Syntax, auth boundary, WebSocket, traversal, streamed body limit, malformed JSON, isolated auth/file-ticket request limits, quota contention, deletion retry, SQLite backup, and restore fault tests passed |
-| Cloudflare relay | Check, smoke, D1 integration, atomic command contention, streamed body limit, malformed JSON, isolated auth/file-ticket request limits, quota, migration, hostile-title, exact-route, and WebSocket tests passed |
-| Security evidence | Semgrep, Bandit, detect-secrets, Gitleaks, ShellCheck, pip-audit, Trivy, OSV-Scanner, Syft/Grype, and both npm audits passed their gates |
+## Evidence required for a candidate receipt
 
-Security reports are created mode 0700 under a private temporary directory and are not uploaded. Native scanner archives are version-pinned and SHA-256 verified. The Python scanner environment pins pip 26.1.2 and replaces Semgrep's stale `click~=8.1.8` dependency with Click 8.4.2 because the declared range is affected by PYSEC-2026-2132. The installer accepts only that exact metadata mismatch, executes a real Semgrep finding smoke test, and audits the installed scanner environment for known vulnerabilities.
+The committed inventory in `docs/quality-gate-inventory.json` defines the exact commands
+and is hashed into every gate log. A release candidate must have all of the following:
 
-## Original review closure
+- Clean, full 40-character commit SHA and a matching clean app payload/provenance manifest
+- Python/core, Swift, macOS runtime and payload, iOS Simulator, Windows, both relay, and
+  security gates executed through `tools/run_release_gate.sh`
+- Five exact-SHA independent reviews: goal/constraints, code quality, security/privacy,
+  hands-on runtime, and visual/accessibility
+- Private mode-0600 logs and reports outside the repository, with byte counts and SHA-256
+  digests verified again immediately before the receipt is atomically published
 
-| # | Original risk | Current closure |
-|---:|---|---|
-| 1 | Incomplete KLMS input could become an authoritative empty state and trigger deletions | Semantic parser certificates and destructive-delta guards fail closed before state commit or downstream deletion |
-| 2 | `--dry-run` could mutate Calendar | Calendar and Reminders side effects require a non-dry run and have regression coverage |
-| 3 | Course-file refresh could delete a valid destination before a failed copy | Verified sibling staging plus atomic replace; incomplete refresh blocks prune and returns failure |
-| 4 | Core and notice jobs could race on shared notice state | Both use one shared `core-notice` lock while keeping separate work caches |
-| 5 | Worker-controlled object keys could escape self-host storage | Server-owned keys, strict schema, canonical containment, and traversal tests |
-| 6 | Completed Reminder overrides could complete future same-title work | Overrides require URL identity or course/title/due identity |
-| 7 | One malformed relay command could block the whole Mac inbox | Server UUID/enum validation plus record-by-record tolerant Swift decoding |
-| 8 | Cloudflare pending-command check and insert were not atomic | Partial unique index and conflict mapping permit one pending/running winner |
-| 9 | Download quota and deletion paths could race or orphan files | Persistent reservation claims, idempotent finalization/release, stale recovery, and deletion retry rows |
-| 10 | User-cancelled remote commands were reported as failed | Cancellation now persists and reports `.cancelled` |
-| 11 | Relay/account changes retained stale sensitive state | Windows and iOS reset all server-derived histories, settings, requests, files, and status |
-| 12 | WAL-mode database backup copied only the main file | SQLite backup API, integrity/schema/revision verification, atomic mode-0600 publication |
-| 13 | Python regression was red and CI could not block it | Wording aligned and cross-platform test/security workflows cover the release surfaces |
+The generator rejects caller-supplied commands, dirty source, stale candidate SHAs,
+unbound app bundles, public/symlinked evidence files, duplicate summaries, altered reports,
+and a candidate or app that changes during receipt creation.
 
-## Additional closure from the final review
+## Mandatory external evidence
 
-- Authenticated-but-unparseable or all-zero data cannot silently replace an established dashboard.
-- Mac terminal results survive process termination and replay until acknowledged instead of stopping after three attempts.
-- Mac filesystem events are filtered by changed path and decoded away from the main actor before one coalesced UI refresh.
-- iOS optimistic command mutations roll back only the affected versioned item, so an older failure cannot overwrite newer state.
-- Public `/healthz` is deliberately shallow; protected `/readyz`, maintenance work, and detailed diagnostics require authentication.
-- Relay WebSocket connections, message sizes, HTTP bodies, request rates, origins, and route identifiers are bounded before expensive work.
-- Malformed JSON returns 400, streamed bodies above 1 MiB return 413, invalid credentials cannot consume authenticated-role buckets, and well-formed fake file tickets cannot consume a real link bucket.
-- Public run logs redact credentials, arbitrary URLs, email addresses, and Unix/macOS/Windows absolute paths at every relay publication boundary.
-- iOS rejects overlapping same-item optimistic mutations, serializes Keychain token writes off the main actor, clears credentials in order, and gives sensitive pasteboard values local-only expiry metadata.
-- The terminal-result outbox is versioned, bounds age and entry count, salvages valid records around corruption, quarantines malformed payloads, and accepts terminal states only.
-- Relay deletion claims are recoverable if the process stops after the storage object disappears but before the row is finalized.
-- PDF rendering uses the platform-native viewer, removing the stale bundled PDF.js dependency.
-- Windows light/dark border tokens meet the tested non-text contrast contract.
-- UI readiness artifacts are private, contain no live state, and are never uploaded by the workflow.
+These checks cannot be replaced by Simulator, static analysis, or a command-line assertion:
 
-## Evidence still required for a literal 100/100
+- Physical iPhone and iPad launch, rotation, background/foreground, file-transfer, and
+  interaction matrix
+- Controlled real-WAN latency, packet-loss, offline/reconnect, relay-restart, and failover
+  matrix
+- End-to-end VoiceOver, Switch Control, and hardware-keyboard traversal
+- Multi-hour reconnect, sync, cancel, transfer, memory, descriptor, and relay-restart soak
 
-- Launch, rotation, background/foreground, file transfer, and interaction matrices on physical iPhone and iPad hardware.
-- Real WAN tests with controlled latency, packet loss, offline/reconnect, relay restart, and failover.
-- End-to-end VoiceOver, hardware-keyboard, and Switch Control traversal with a real accessibility runtime.
-- A multi-hour soak covering repeated WebSocket reconnects, syncs, cancellations, file transfers, memory, descriptors, and relay restarts.
+Each external `pass` must be backed by a private `<id>.external.json` record and matching
+`<id>.report.txt`. The record must bind the exact candidate SHA, observation timestamp,
+report filename, byte count, and SHA-256 digest, and the observation must occur after the
+candidate commit and not in the future. A bare `--external-evidence <id>=pass`
+argument is rejected. Missing any item keeps `externalEvidenceComplete` false and
+`maximumDefensibleScore` at 94.
 
-**94 is the highest externally evidence-honest score** until those checks pass. The implementation and automated evidence reach 100/100 with no known P0/P1/P2 defect in the reviewed candidate; that score does not convert missing physical evidence into a claim of certainty.
+## Closed risks retained as regression contracts
+
+The test and review gates preserve the original closure criteria:
+
+- Incomplete or non-authoritative KLMS input cannot commit an empty dashboard or authorize
+  downstream deletion.
+- Dry runs cannot mutate Calendar or Reminders.
+- Course files use verified staging and atomic replacement; refresh failure blocks pruning.
+- Core and notice jobs share the lock required by their shared state.
+- Relay storage keys are server-owned and canonically contained; commands, UUIDs, origins,
+  message/body sizes, connections, quotas, and rates are validated or bounded.
+- Reminder completion overrides require stable item identity rather than title alone.
+- Malformed inbox records are isolated; command insertion and quota accounting are atomic.
+- Cancellation remains cancellation; account/relay reset clears server-derived history.
+- SQLite backup uses a consistent backup API and verified atomic publication.
+- Optimistic iOS actions distinguish definitive rejection from an unknown POST outcome and
+  reconcile by exact identifier before rollback.
+- Credentials, logs, release artifacts, and app payloads fail closed on provenance,
+  permissions, redaction, and integrity boundaries.
+
+This document defines how to earn and interpret the score. It is not itself evidence that a
+specific build earned one.

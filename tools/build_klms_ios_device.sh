@@ -1,6 +1,7 @@
 #!/bin/zsh
 
 set -euo pipefail
+umask 077
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT_PATH="$ROOT_DIR/apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodeproj"
@@ -22,6 +23,13 @@ local_bundle=""
 if [[ -z "${IOS_DEVICE_BUILD_LOG:-}" ]]; then
   REMOVE_BUILD_LOG=1
 fi
+if [[ -L "$BUILD_LOG" || -d "$BUILD_LOG" ]]; then
+  print -ru2 -- "iOS build log must be a regular non-symlink path."
+  exit 2
+fi
+mkdir -p "$(dirname "$BUILD_LOG")"
+: > "$BUILD_LOG"
+chmod 600 "$BUILD_LOG"
 
 if [[ "${IOS_ALLOW_PROVISIONING_UPDATES:-0}" == "1" ]]; then
   XCODEBUILD_PROVISIONING_ARGS=(-allowProvisioningUpdates)
@@ -60,6 +68,7 @@ sanitize_xcodebuild_output() {
     s/Provisioning Profile:\s+".*"/Provisioning Profile: "<redacted>"/g;
     s/[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}\.mobileprovision/<provisioning-profile>.mobileprovision/g;
     s/\([A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}\)/(<provisioning-profile-id>)/g;
+    s/\b[A-Fa-f0-9]{8}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{4}-[A-Fa-f0-9]{12}\b/<credential-record-id>/g;
     s/[A-Fa-f0-9]{40}/<signing-identity-hash>/g;
     s/[A-Z0-9]{10}\.com\.[A-Za-z0-9._-]+/<app-identifier>/g;
     s/\bcom\.[A-Za-z0-9._-]*KLMSync\.iOS\b/<bundle-id>/g;
@@ -117,6 +126,7 @@ xcodebuild \
   build 2>&1 | sanitize_xcodebuild_output | tee "$BUILD_LOG"
 xcodebuild_status=${pipestatus[1]}
 set -e
+chmod 600 "$BUILD_LOG"
 
 if (( xcodebuild_status != 0 )); then
   if [[ "$CODE_SIGNING_ALLOWED_VALUE" != "NO" ]] && grep -Eq "No Accounts|Invalid credentials in keychain|missing Xcode-Username" "$BUILD_LOG"; then

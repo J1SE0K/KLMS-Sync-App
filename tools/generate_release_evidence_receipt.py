@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -19,11 +19,14 @@ from typing import Any
 SHA40 = re.compile(r"[0-9a-f]{40}")
 GATE_SUMMARY = re.compile(
     r"gate-evidence-summary status=pass gate=([a-z0-9-]+) "
-    r"candidate=([0-9a-f]{40}) exit=0"
+    r"candidate=([0-9a-f]{40}) invocation_sha256=([0-9a-f]{64}) "
+    r"inventory_sha256=([0-9a-f]{64}) exit=0"
 )
 GATE_HEADER = re.compile(
-    r"gate-evidence schema=1 gate=([a-z0-9-]+) "
-    r"candidate=([0-9a-f]{40}) started_at=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
+    r"gate-evidence schema=2 gate=([a-z0-9-]+) "
+    r"candidate=([0-9a-f]{40}) invocation_sha256=([0-9a-f]{64}) "
+    r"inventory_sha256=([0-9a-f]{64}) "
+    r"started_at=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"
 )
 
 
@@ -78,6 +81,48 @@ def load_inventory(path: Path) -> dict[str, Any]:
     return value
 
 
+def verified_score_model(inventory: dict[str, Any]) -> tuple[int, dict[str, int]]:
+    model = inventory.get("scoreModel")
+    areas = model.get("areas") if isinstance(model, dict) else None
+    caps = model.get("caps") if isinstance(model, dict) else None
+    required_caps = {
+        "openP0",
+        "openP1",
+        "openP2",
+        "missingMandatoryExternalEvidence",
+    }
+    if (
+        not isinstance(areas, dict)
+        or not areas
+        or not all(
+            isinstance(key, str)
+            and key
+            and isinstance(value, int)
+            and not isinstance(value, bool)
+            and value > 0
+            for key, value in areas.items()
+        )
+        or not isinstance(caps, dict)
+        or set(caps) != required_caps
+        or not all(
+            isinstance(value, int)
+            and not isinstance(value, bool)
+            for value in caps.values()
+        )
+    ):
+        fail("invalid-score-model")
+    total = sum(areas.values())
+    if total != 100 or not (
+        0 <= caps["openP0"]
+        < caps["openP1"]
+        < caps["openP2"]
+        < caps["missingMandatoryExternalEvidence"]
+        < total
+    ):
+        fail("invalid-score-model")
+    return total, caps
+
+
 def parse_external_evidence(
     values: list[str],
     required_ids: list[str],
@@ -96,6 +141,82 @@ def parse_external_evidence(
     ]
 
 
+def verify_external_evidence(
+    evidence_dir: Path | None,
+    values: list[str],
+    required_ids: list[str],
+    candidate: str,
+    candidate_committed_at: datetime,
+) -> list[dict[str, Any]]:
+    declared = parse_external_evidence(values, required_ids)
+    results: list[dict[str, Any]] = []
+    for entry in declared:
+        evidence_id = entry["id"]
+        if entry["status"] == "missing":
+            results.append(entry)
+            continue
+        if evidence_dir is None:
+            fail("external-evidence-directory-required")
+
+        record_path = evidence_dir / f"{evidence_id}.external.json"
+        require_private_regular_file(
+            record_path,
+            f"external-evidence-{evidence_id}",
+            2 * 1024 * 1024,
+        )
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            fail(f"invalid-external-evidence-{evidence_id}")
+        if not isinstance(record, dict):
+            fail(f"invalid-external-evidence-{evidence_id}")
+
+        report_name = record.get("reportFileName")
+        observed_at = record.get("observedAt")
+        if (
+            record.get("schemaVersion") != 1
+            or record.get("id") != evidence_id
+            or record.get("candidate") != candidate
+            or record.get("status") != "pass"
+            or report_name != f"{evidence_id}.report.txt"
+            or not isinstance(observed_at, str)
+        ):
+            fail(f"external-evidence-candidate-or-status-mismatch-{evidence_id}")
+        try:
+            observed_time = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError:
+            fail(f"invalid-external-evidence-timestamp-{evidence_id}")
+        if observed_time.tzinfo is None:
+            fail(f"invalid-external-evidence-timestamp-{evidence_id}")
+        observed_time = observed_time.astimezone(timezone.utc)
+        if (
+            observed_time < candidate_committed_at.astimezone(timezone.utc)
+            or observed_time > datetime.now(timezone.utc) + timedelta(minutes=5)
+        ):
+            fail(f"external-evidence-timestamp-out-of-range-{evidence_id}")
+
+        report_path = evidence_dir / report_name
+        report_size = require_private_regular_file(
+            report_path,
+            f"external-evidence-report-{evidence_id}",
+            10 * 1024 * 1024,
+        )
+        report_digest = sha256(report_path)
+        if record.get("reportBytes") != report_size or record.get("reportSHA256") != report_digest:
+            fail(f"external-evidence-report-digest-mismatch-{evidence_id}")
+        results.append(
+            {
+                "id": evidence_id,
+                "status": "pass",
+                "observedAt": observed_at,
+                "reportBytes": report_size,
+                "reportSHA256": report_digest,
+                "recordSHA256": sha256(record_path),
+            }
+        )
+    return results
+
+
 def valid_gate_id(value: str) -> bool:
     return (
         bool(value)
@@ -105,9 +226,27 @@ def valid_gate_id(value: str) -> bool:
     )
 
 
-def verify_gate_logs(evidence_dir: Path, gate_ids: list[str], candidate: str) -> list[dict[str, Any]]:
+def gate_execution_digest(entry: dict[str, Any]) -> str:
+    payload = {"id": entry.get("id"), "execution": entry.get("execution")}
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def verify_gate_logs(
+    evidence_dir: Path,
+    gate_entries: list[dict[str, Any]],
+    candidate: str,
+    inventory_digest: str,
+) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    for gate_id in gate_ids:
+    for entry in gate_entries:
+        gate_id = str(entry["id"])
+        expected_invocation_digest = gate_execution_digest(entry)
         path = evidence_dir / f"{gate_id}.log"
         size = require_private_regular_file(
             path,
@@ -130,14 +269,19 @@ def verify_gate_logs(evidence_dir: Path, gate_ids: list[str], candidate: str) ->
             or not valid_gate_id(summary.group(1))
             or header.group(1) != gate_id
             or header.group(2) != candidate
+            or header.group(3) != expected_invocation_digest
+            or header.group(4) != inventory_digest
             or summary.group(1) != gate_id
             or summary.group(2) != candidate
+            or summary.group(3) != expected_invocation_digest
+            or summary.group(4) != inventory_digest
         ):
             fail(f"gate-candidate-mismatch-{gate_id}")
         results.append(
             {
                 "id": gate_id,
                 "status": "pass",
+                "invocationSHA256": expected_invocation_digest,
                 "logBytes": size,
                 "logSHA256": sha256(path),
             }
@@ -206,7 +350,14 @@ def verify_app(repo: Path, app: Path, candidate: str) -> dict[str, Any]:
     payload = app / "Contents" / "Resources" / "EnginePayload"
     manifest_path = payload / "EnginePayloadManifest.json"
     executable = app / "Contents" / "MacOS" / "KLMSMac"
-    if app.is_symlink() or not app.is_dir() or not manifest_path.is_file() or not executable.is_file():
+    provenance_path = app / "Contents" / "Resources" / "KLMSAppBuildProvenance.json"
+    if (
+        app.is_symlink()
+        or not app.is_dir()
+        or not manifest_path.is_file()
+        or not executable.is_file()
+        or not provenance_path.is_file()
+    ):
         fail("invalid-app-bundle")
     verifier = repo / "tools" / "verify_klms_engine_payload.py"
     result = subprocess.run(
@@ -247,17 +398,42 @@ def verify_app(repo: Path, app: Path, candidate: str) -> dict[str, Any]:
     )
     if signature.returncode != 0:
         fail("app-code-signature-invalid")
+    expected_tree = run_git(repo, "rev-parse", "--verify", f"{candidate}^{{tree}}")
+    provenance_verifier = repo / "tools" / "verify_klms_app_provenance.py"
+    provenance_result = subprocess.run(
+        [
+            sys.executable,
+            str(provenance_verifier),
+            str(app),
+            "--expected-revision",
+            candidate,
+            "--expected-tree",
+            expected_tree,
+            "--require-clean",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if provenance_result.returncode != 0:
+        fail("app-executable-provenance-mismatch")
     return {
         "bundleName": app.name,
         "payloadManifestSHA256": sha256(manifest_path),
+        "buildProvenanceSHA256": sha256(provenance_path),
         "executableSHA256": sha256(executable),
         "sourceRevision": candidate,
+        "sourceTree": expected_tree,
         "dirty": False,
         "codeSignatureVerified": True,
     }
 
 
-def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+def atomic_write_json(
+    path: Path,
+    payload: dict[str, Any],
+    before_replace: Any | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary = Path(temporary_name)
@@ -268,6 +444,8 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
             handle.flush()
             os.fsync(handle.fileno())
         os.chmod(temporary, 0o600)
+        if before_replace is not None:
+            before_replace()
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -280,22 +458,41 @@ def main() -> None:
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--external-evidence", action="append", default=[])
+    parser.add_argument("--external-evidence-dir", type=Path)
     arguments = parser.parse_args()
 
     repo = Path(__file__).resolve().parents[1]
     output = Path(os.path.abspath(arguments.output.expanduser()))
     evidence_dir = Path(os.path.abspath(arguments.evidence_dir.expanduser()))
     review_evidence_dir = Path(os.path.abspath(arguments.review_evidence_dir.expanduser()))
+    external_evidence_dir = (
+        Path(os.path.abspath(arguments.external_evidence_dir.expanduser()))
+        if arguments.external_evidence_dir is not None
+        else None
+    )
     app = Path(os.path.abspath(arguments.app.expanduser()))
     resolved_output = output.resolve(strict=False)
     resolved_evidence_dir = evidence_dir.resolve(strict=False)
     resolved_review_evidence_dir = review_evidence_dir.resolve(strict=False)
+    resolved_external_evidence_dir = (
+        external_evidence_dir.resolve(strict=False)
+        if external_evidence_dir is not None
+        else None
+    )
     if resolved_output == repo or repo in resolved_output.parents:
         fail("receipt-output-must-be-outside-repository")
     if resolved_evidence_dir == repo or repo in resolved_evidence_dir.parents:
         fail("evidence-directory-must-be-outside-repository")
     if resolved_review_evidence_dir == repo or repo in resolved_review_evidence_dir.parents:
         fail("review-evidence-directory-must-be-outside-repository")
+    if (
+        resolved_external_evidence_dir is not None
+        and (
+            resolved_external_evidence_dir == repo
+            or repo in resolved_external_evidence_dir.parents
+        )
+    ):
+        fail("external-evidence-directory-must-be-outside-repository")
     if output.is_symlink():
         fail("receipt-output-must-not-be-symlink")
     for directory, reason in (
@@ -313,14 +510,35 @@ def main() -> None:
             or metadata.st_mode & 0o077
         ):
             fail(f"invalid-{reason}")
+    if external_evidence_dir is not None:
+        try:
+            external_metadata = external_evidence_dir.lstat()
+        except OSError:
+            fail("missing-external-evidence-directory")
+        if (
+            not stat.S_ISDIR(external_metadata.st_mode)
+            or stat.S_ISLNK(external_metadata.st_mode)
+            or external_metadata.st_uid != os.getuid()
+            or external_metadata.st_mode & 0o077
+        ):
+            fail("invalid-external-evidence-directory")
 
     candidate = run_git(repo, "rev-parse", "--verify", "HEAD^{commit}")
     if not SHA40.fullmatch(candidate):
         fail("invalid-candidate")
+    try:
+        candidate_committed_at = datetime.fromisoformat(
+            run_git(repo, "show", "-s", "--format=%cI", candidate)
+        )
+    except ValueError:
+        fail("invalid-candidate-commit-timestamp")
+    if candidate_committed_at.tzinfo is None:
+        fail("invalid-candidate-commit-timestamp")
     if run_git(repo, "status", "--porcelain", "--untracked-files=all"):
         fail("dirty-worktree")
 
     inventory = load_inventory(repo / "docs" / "quality-gate-inventory.json")
+    rubric_base_score, score_caps = verified_score_model(inventory)
     automated_gates = inventory.get("automatedGates")
     if (
         not isinstance(automated_gates, list)
@@ -331,6 +549,11 @@ def main() -> None:
             and re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", entry["id"])
             and isinstance(entry.get("command"), str)
             and entry["command"]
+            and isinstance(entry.get("execution"), dict)
+            and isinstance(entry["execution"].get("workingDirectory"), str)
+            and isinstance(entry["execution"].get("environment"), dict)
+            and isinstance(entry["execution"].get("steps"), list)
+            and bool(entry["execution"]["steps"])
             for entry in automated_gates
         )
     ):
@@ -362,11 +585,29 @@ def main() -> None:
     ):
         fail("invalid-independent-review-inventory")
 
-    gates = verify_gate_logs(evidence_dir, gate_ids, candidate)
+    inventory_path = repo / "docs" / "quality-gate-inventory.json"
+    inventory_digest = sha256(inventory_path)
+    gates = verify_gate_logs(
+        evidence_dir,
+        automated_gates,
+        candidate,
+        inventory_digest,
+    )
     reviews = verify_review_evidence(review_evidence_dir, review_ids, candidate)
     app_evidence = verify_app(repo, app, candidate)
-    external = parse_external_evidence(arguments.external_evidence, external_ids)
+    external = verify_external_evidence(
+        external_evidence_dir,
+        arguments.external_evidence,
+        external_ids,
+        candidate,
+        candidate_committed_at,
+    )
     external_complete = all(entry["status"] == "pass" for entry in external)
+    evidence_certified_score = (
+        rubric_base_score
+        if external_complete
+        else min(rubric_base_score, score_caps["missingMandatoryExternalEvidence"])
+    )
     receipt = {
         "schemaVersion": 1,
         "candidate": candidate,
@@ -374,15 +615,26 @@ def main() -> None:
         "repositoryClean": True,
         "automatedGatesComplete": True,
         "independentReviewsComplete": True,
-        "qualityGateInventorySHA256": sha256(repo / "docs" / "quality-gate-inventory.json"),
+        "qualityGateInventorySHA256": inventory_digest,
         "app": app_evidence,
         "gates": gates,
         "reviews": reviews,
         "externalEvidence": external,
         "externalEvidenceComplete": external_complete,
-        "maximumDefensibleScore": 100 if external_complete else 94,
+        "rubricBaseScore": rubric_base_score,
+        "activeScoreCaps": [] if external_complete else ["missingMandatoryExternalEvidence"],
+        "evidenceCertifiedScore": evidence_certified_score,
+        "maximumDefensibleScore": evidence_certified_score,
     }
-    atomic_write_json(output, receipt)
+    def verify_final_candidate() -> None:
+        if run_git(repo, "rev-parse", "--verify", "HEAD^{commit}") != candidate:
+            fail("candidate-changed-before-receipt-commit")
+        if run_git(repo, "status", "--porcelain", "--untracked-files=all"):
+            fail("worktree-changed-before-receipt-commit")
+        if verify_app(repo, app, candidate) != app_evidence:
+            fail("app-changed-before-receipt-commit")
+
+    atomic_write_json(output, receipt, before_replace=verify_final_candidate)
     print(
         "release-evidence-summary"
         f" status=pass candidate={candidate} gates={len(gates)} reviews={len(reviews)}"

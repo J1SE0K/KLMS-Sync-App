@@ -56,9 +56,11 @@ through the exact-SHA wrapper and keep the private logs outside the repository:
 
 ```sh
 export KLMS_RELEASE_EVIDENCE_DIR=/private/tmp/klms-release-evidence
-tools/run_release_gate.sh python-core -- \
-  env PYTHONPATH=vendor/python-packages python3 -B -m unittest discover -s tests
+tools/run_release_gate.sh python-core
 ```
+
+The wrapper accepts only the gate ID and resolves the exact command, working directory,
+environment, and bounded dynamic paths from the committed inventory.
 
 After all automated gates pass, generate the private receipt outside the repository:
 
@@ -76,7 +78,9 @@ tools/generate_release_evidence_receipt.py \
 ```
 
 The receipt stays capped at 94 until every mandatory physical-device, impaired-WAN,
-assistive-input, and soak item is supplied explicitly as external pass evidence.
+assistive-input, and soak item has a private report and an exact-candidate JSON record
+in `--external-evidence-dir`. A bare `--external-evidence <id>=pass` assertion is rejected;
+the record must bind the candidate SHA, report filename, byte count, and SHA-256 digest.
 
 ## GitHub
 
