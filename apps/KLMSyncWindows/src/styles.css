@@ -321,7 +321,6 @@ body.viewport-resizing .sidebar {
   color: var(--inverse-text);
   font-size: 23px;
   font-weight: 900;
-  box-shadow: var(--shadow);
 }
 
 .brand h1,

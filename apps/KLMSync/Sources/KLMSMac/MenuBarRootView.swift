@@ -2276,7 +2276,6 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1.0 : 0.42)
             .saturation(isEnabled ? 1.0 : 0.30)
-            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 5 : 0, x: 0, y: isEnabled ? 1 : 0)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
     }
 
@@ -2337,20 +2336,6 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var activeShadowColor: Color {
-        switch tone {
-        case .soft:
-            Color.klmsMacCommandButtonBorder.opacity(0.12)
-        case .primary:
-            Color.klmsMacPrimaryCommandButtonBorder.opacity(0.18)
-        case .destructive:
-            Color.klmsMacDangerBorder.opacity(0.18)
-        case .success:
-            Color.klmsMacSuccessBorder.opacity(0.16)
-        case .accent(let color):
-            color.opacity(0.14)
-        }
-    }
 }
 
 private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
@@ -2371,9 +2356,9 @@ private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1.0 : 0.40)
             .saturation(isEnabled ? 1.0 : 0.22)
-            .shadow(color: isEnabled ? Color.klmsMacDangerBorder.opacity(0.14) : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
     }
 
     private var background: Color {

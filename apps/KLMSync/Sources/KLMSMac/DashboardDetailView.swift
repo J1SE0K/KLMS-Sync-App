@@ -3637,7 +3637,6 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1.0 : 0.40)
             .saturation(isEnabled ? 1.0 : 0.28)
-            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 5 : 0, x: 0, y: isEnabled ? 1 : 0)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
     }
 
@@ -3686,20 +3685,6 @@ private struct KLMSMacActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var activeShadowColor: Color {
-        switch tone {
-        case .soft:
-            return Color.klmsMacCommandButtonBorder.opacity(0.12)
-        case .primary:
-            return Color.klmsMacPrimaryCommandButtonBorder.opacity(0.18)
-        case .destructive:
-            return Color.klmsMacDangerBorder.opacity(0.16)
-        case .success:
-            return Color.klmsMacSuccessBorder.opacity(0.16)
-        case .accent(let color):
-            return color.opacity(0.14)
-        }
-    }
 }
 
 private struct KLMSMacCompactResetButtonStyle: ButtonStyle {

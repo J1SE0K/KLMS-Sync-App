@@ -33,6 +33,12 @@ final class KLMSiOSUITests: XCTestCase {
         XCTAssertTrue(initialPrimarySync.waitForExistence(timeout: 8), "The primary full-sync action is missing from the dashboard sync section.")
         XCTAssertTrue(initialSyncSection.waitForExistence(timeout: 8), "The dashboard sync section is missing.")
         assertPrimarySyncInsideSection(initialPrimarySync, section: initialSyncSection, in: app)
+        let yearScope = identifiedElement("dashboard-scope-year", in: app)
+        let semesterScope = identifiedElement("dashboard-scope-semester", in: app)
+        XCTAssertTrue(yearScope.waitForExistence(timeout: 8), "The dashboard year scope field is missing.")
+        XCTAssertTrue(semesterScope.waitForExistence(timeout: 8), "The dashboard semester scope field is missing.")
+        assertMinimumHitTarget(yearScope)
+        assertMinimumHitTarget(semesterScope)
         if !isPad {
             let initialScopeSection = identifiedElement("dashboard-scope-section", in: app)
             XCTAssertTrue(initialScopeSection.waitForExistence(timeout: 8), "The dashboard scope section is missing.")

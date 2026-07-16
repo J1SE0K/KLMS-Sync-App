@@ -37,18 +37,40 @@ public struct VersionedCredentialEnvelope: Codable, Equatable, Sendable {
         }
         return envelope.value
     }
+
+    public static func acceptedEnvelope(
+        from encoded: String,
+        minimumGeneration: UInt64
+    ) -> VersionedCredentialEnvelope? {
+        guard let envelope = decode(encoded), envelope.generation >= minimumGeneration else {
+            return nil
+        }
+        return envelope
+    }
+}
+
+public enum CredentialPersistenceResult: Sendable, Equatable {
+    case persisted(VersionedCredentialEnvelope)
+    case superseded
+    case failed(lastPersisted: VersionedCredentialEnvelope)
 }
 
 public final class CredentialPersistenceCoordinator: @unchecked Sendable {
     private let generationLock = NSLock()
     private let operationQueue: DispatchQueue
     private var generation: UInt64
+    private var lastPersistedEnvelope: VersionedCredentialEnvelope
 
     public init(
         initialGeneration: UInt64 = 0,
+        initialValue: String = "",
         queueLabel: String = "com.local.klmssync.credential-persistence"
     ) {
         generation = initialGeneration
+        lastPersistedEnvelope = VersionedCredentialEnvelope(
+            generation: initialGeneration,
+            value: initialValue
+        )
         operationQueue = DispatchQueue(label: queueLabel, qos: .utility)
     }
 
@@ -63,21 +85,27 @@ public final class CredentialPersistenceCoordinator: @unchecked Sendable {
     public func persist(
         _ value: String,
         generation expectedGeneration: UInt64,
-        operation: @escaping @Sendable (VersionedCredentialEnvelope) -> Void
-    ) async {
+        operation: @escaping @Sendable (VersionedCredentialEnvelope) -> Bool
+    ) async -> CredentialPersistenceResult {
         let envelope = VersionedCredentialEnvelope(
             generation: expectedGeneration,
             value: value
         )
-        await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { continuation in
             operationQueue.async { [self] in
                 generationLock.lock()
                 let shouldPersist = generation == expectedGeneration
                 generationLock.unlock()
                 if shouldPersist {
-                    operation(envelope)
+                    if operation(envelope) {
+                        lastPersistedEnvelope = envelope
+                        continuation.resume(returning: .persisted(envelope))
+                    } else {
+                        continuation.resume(returning: .failed(lastPersisted: lastPersistedEnvelope))
+                    }
+                } else {
+                    continuation.resume(returning: .superseded)
                 }
-                continuation.resume()
             }
         }
     }

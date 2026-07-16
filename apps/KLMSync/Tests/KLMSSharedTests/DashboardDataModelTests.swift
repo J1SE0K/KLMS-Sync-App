@@ -1802,6 +1802,19 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(view.contains(".disabled(!model.hasClearableLocalRelayLogs)"))
         XCTAssertTrue(view.contains("private struct KLMSMacCompactDangerIconButtonStyle"))
         XCTAssertTrue(view.contains(".buttonStyle(KLMSMacCompactDangerIconButtonStyle())"))
+        let compactDangerStyle = try sourceAnyStructBody(
+            named: "KLMSMacCompactDangerIconButtonStyle",
+            in: view
+        )
+        let visualFrame = try XCTUnwrap(
+            compactDangerStyle.range(of: ".frame(width: 32, height: 32)")?.lowerBound
+        )
+        let hitFrame = try XCTUnwrap(
+            compactDangerStyle.range(of: ".frame(width: 44, height: 44)")?.lowerBound
+        )
+        XCTAssertLessThan(visualFrame, hitFrame)
+        XCTAssertTrue(compactDangerStyle.contains(".contentShape(Rectangle())"))
+        XCTAssertFalse(compactDangerStyle.contains(".shadow("))
         XCTAssertTrue(view.contains("if isHistoryExpanded {\n                    let summary = RunLogArchiveSummary(records: records)"))
         XCTAssertTrue(view.contains("if isHistoryExpanded {\n                let filtered = filteredRecords"))
         XCTAssertTrue(view.contains("private let primaryVisibleIssueCount = 1"))
@@ -2019,9 +2032,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacCommandButtonBackground.opacity(isEnabled ? 0.94 : 0.22)"))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacPrimaryCommandButtonBackground"))
         XCTAssertTrue(rootActionButtonStyle.contains(".stroke(border, lineWidth: isEnabled ? 1.15 : 1)"))
-        XCTAssertTrue(rootActionButtonStyle.contains(".shadow(color: isEnabled ? activeShadowColor : .clear"))
+        XCTAssertFalse(rootActionButtonStyle.contains(".shadow("))
         XCTAssertTrue(rootActionButtonStyle.contains(".scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)"))
-        XCTAssertTrue(rootActionButtonStyle.contains("private var activeShadowColor: Color"))
+        XCTAssertFalse(rootActionButtonStyle.contains("private var activeShadowColor: Color"))
         XCTAssertTrue(rootActionButtonStyle.contains("AnyShapeStyle("))
         XCTAssertTrue(rootActionButtonStyle.contains("LinearGradient("))
         XCTAssertTrue(rootActionButtonStyle.contains("Color.klmsMacDangerCommandButtonForeground"))
@@ -2049,7 +2062,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains("RoundedRectangle(cornerRadius: 10)"))
         XCTAssertTrue(actionButtonStyle.contains(".padding(.vertical, 8)"))
         XCTAssertTrue(actionButtonStyle.contains(".stroke(border, lineWidth: isEnabled ? 1.15 : 1)"))
-        XCTAssertTrue(actionButtonStyle.contains(".shadow(color: isEnabled ? activeShadowColor : .clear"))
+        XCTAssertFalse(actionButtonStyle.contains(".shadow("))
         XCTAssertTrue(actionButtonStyle.contains(".scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)"))
         XCTAssertTrue(iconButtonStyle.contains(".shadow(color: isEnabled ? Color.klmsMacCommandButtonBorder.opacity(0.12) : .clear"))
         XCTAssertFalse(actionButtonStyle.contains("background(isPressed: configuration.isPressed)"))
@@ -2725,6 +2738,7 @@ final class DashboardDataModelTests: XCTestCase {
             in: ios
         )
         let dashboardPrimarySyncAction = try sourceStructBody(named: "RemoteDashboardPrimarySyncAction", in: ios)
+        let dashboardScopeBar = try sourceStructBody(named: "CompanionDashboardScopeBar", in: ios)
         let companionScreenHeader = try sourceStructBody(named: "CompanionScreenHeader", in: ios)
         let dashboardSyncSurface = dashboardSyncCard + "\n" + dashboardPrimarySyncAction
         let metricOverview = try sourceStructBody(named: "RemoteDashboardMetricOverview", in: ios)
@@ -3045,6 +3059,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(statusScreen.contains("ViewThatFits(in: .horizontal)"))
         XCTAssertTrue(statusScreen.contains("VStack(alignment: .leading, spacing: 12)"))
         XCTAssertTrue(statusScreen.contains("CompanionDashboardScopeBar("))
+        XCTAssertTrue(dashboardScopeBar.contains("minHeight: 44"))
+        XCTAssertFalse(dashboardScopeBar.contains("minHeight: 42"))
+        XCTAssertTrue(dashboardScopeBar.contains("dashboard-scope-year"))
+        XCTAssertTrue(dashboardScopeBar.contains("dashboard-scope-semester"))
+        XCTAssertFalse(actionButtonStyle.contains(".shadow("))
+        XCTAssertFalse(toolbarButtonStyle.contains(".shadow("))
         XCTAssertTrue(statusScreen.contains("DashboardCategoryInlineDetailPanel(\n                    category: category,\n                    model: model,\n                    initialSelectedYear: selectedYear,\n                    initialSelectedSemester: selectedSemester"))
         XCTAssertTrue(statusScreen.contains("if model.hasLoadedServerSyncData"))
         XCTAssertTrue(statusScreen.contains("WorkstationDashboardRunSummaryCard(status: model.dashboardStatus)"))
@@ -3669,7 +3689,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains(".stroke(border, lineWidth: isEnabled ? 1.15 : 1)"))
         XCTAssertTrue(actionButtonStyle.contains(".opacity(isEnabled ? 1.0 : 0.42)"))
         XCTAssertTrue(actionButtonStyle.contains(".saturation(isEnabled ? 1.0 : 0.30)"))
-        XCTAssertTrue(actionButtonStyle.contains(".shadow(color: isEnabled ? activeShadowColor : .clear"))
+        XCTAssertFalse(actionButtonStyle.contains(".shadow("))
         XCTAssertTrue(actionButtonStyle.contains("return AnyShapeStyle(Color.klmsCommandButtonBackground.opacity(isEnabled ? 0.94 : 0.22))"))
         XCTAssertTrue(actionButtonStyle.contains("return AnyShapeStyle(isEnabled ? Color.klmsPrimaryCommandButtonBackground : Color.klmsCommandButtonBackground.opacity(0.24))"))
         XCTAssertTrue(actionButtonStyle.contains("LinearGradient("))
@@ -3685,7 +3705,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(toolbarButtonStyle.contains("background(isPressed:"))
         XCTAssertTrue(toolbarButtonStyle.contains(".padding(.horizontal, 9)"))
         XCTAssertTrue(toolbarButtonStyle.contains(".stroke(border, lineWidth: isEnabled ? 1.15 : 1)"))
-        XCTAssertTrue(toolbarButtonStyle.contains(".shadow(color: isEnabled ? activeShadowColor : .clear"))
+        XCTAssertFalse(toolbarButtonStyle.contains(".shadow("))
         XCTAssertFalse(toolbarButtonStyle.contains("Color.klmsCommandButtonPressedBackground"))
         XCTAssertFalse(toolbarButtonStyle.contains("Color.klmsPrimaryCommandButtonPressedBackground"))
         XCTAssertTrue(mailCalendarCreateForm.contains(".buttonStyle(KLMSToolbarButtonStyle())"))
@@ -6580,9 +6600,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("이 기기 Calendar에 등록"))
         XCTAssertTrue(ios.contains("MailDashboardItemEditForm"))
         XCTAssertTrue(ios.contains("submitRemoveMailDashboardItem"))
-        XCTAssertTrue(ios.contains("action: .mailDashboardRemove"))
+        XCTAssertTrue(ios.contains("submitMailDashboardAction(\n            .mailDashboardRemove"))
         XCTAssertTrue(ios.contains("let mutationKey = mailDashboardMutationKey(itemID:"))
-        XCTAssertTrue(ios.contains("rollbackMailDashboardMutation("))
+        XCTAssertTrue(ios.contains("mailDashboardItemSnapshot: mutationSnapshot"))
+        XCTAssertTrue(ios.contains("markItemActionSubmissionOutcomeUnknown(&overlay"))
+        XCTAssertTrue(ios.contains("rollbackItemActionMutation(overlay)"))
         XCTAssertFalse(ios.contains("mailDashboardItems = previousMailDashboardItems"))
         XCTAssertTrue(ios.contains("Label(\"등록\", systemImage: \"plus.circle\")"))
         XCTAssertTrue(ios.contains("Label(\"제거\", systemImage: \"minus.circle\")"))
@@ -7974,12 +7996,13 @@ final class DashboardDataModelTests: XCTestCase {
             description: "iOS server token persistence"
         )
         let loadMigratingToken = try sourceBody(
-            after: "nonisolated private static func loadServerRelayTokenMigratingUserDefaults() -> String",
+            after: "nonisolated private static func loadServerRelayCredentialMigratingUserDefaults() -> PersistedServerCredential",
             in: companionModel,
             description: "iOS server token migration"
         )
 
-        XCTAssertTrue(initializer.contains("Self.loadServerRelayTokenMigratingUserDefaults()"))
+        XCTAssertTrue(initializer.contains("Self.loadServerRelayCredentialMigratingUserDefaults()"))
+        XCTAssertTrue(initializer.contains("initialValue: persistedCredential.token"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertFalse(initializer.contains("Self.persistServerToken(storedServerToken)"))
         XCTAssertTrue(loadMigratingToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
@@ -7991,10 +8014,13 @@ final class DashboardDataModelTests: XCTestCase {
         )
         XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.save(encoded, account: \"server-relay-ios\")"))
         XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
-        XCTAssertTrue(persistToken.contains("if !saved"))
+        XCTAssertTrue(persistToken.contains("if saved"))
+        XCTAssertTrue(persistToken.contains("storeServerTokenPersistenceGeneration(envelope.generation)"))
+        XCTAssertFalse(persistToken.contains("LocalRemoteTokenStore.delete"))
         XCTAssertTrue(persistToken.contains("return saved"))
-        XCTAssertTrue(loadMigratingToken.contains("return migrated"))
-        XCTAssertTrue(loadMigratingToken.contains(": \"\""))
+        XCTAssertTrue(loadMigratingToken.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
+        XCTAssertTrue(loadMigratingToken.contains("minimumGeneration: minimumGeneration"))
+        XCTAssertTrue(loadMigratingToken.contains("generation: migrated ? migrationGeneration : 0"))
         XCTAssertFalse(persistToken.contains("UserDefaults.standard.set"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(serverToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(trimmedToken"))

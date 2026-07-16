@@ -631,10 +631,7 @@ public actor RemoteCommandTerminalOutboxStore {
 
     private func save(_ document: RemoteCommandTerminalOutboxDocument) throws {
         try preparePrivateDirectory()
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(document)
+        let data = try encodedDocumentData(document)
         guard data.count <= policy.maximumDocumentBytes else {
             throw RemoteCommandTerminalOutboxError.documentTooLarge
         }
@@ -766,9 +763,18 @@ public actor RemoteCommandTerminalOutboxStore {
     }
 
     private func encodedDocumentSize(entries: [RemoteCommandTerminalOutboxEntry]) throws -> Int {
+        try encodedDocumentData(
+            RemoteCommandTerminalOutboxDocument(entries: entries)
+        ).count
+    }
+
+    private func encodedDocumentData(
+        _ document: RemoteCommandTerminalOutboxDocument
+    ) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
-        return try encoder.encode(RemoteCommandTerminalOutboxDocument(entries: entries)).count
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(document)
     }
 
     private static func entryIsOlder(
@@ -1006,8 +1012,7 @@ public enum LocalRemoteTokenStore {
                 continue
             }
             guard save(token, account: account, service: service, backend: backend) else {
-                backend.delete(account: account, service: legacyService)
-                return nil
+                return token
             }
             backend.delete(account: account, service: legacyService)
             return token

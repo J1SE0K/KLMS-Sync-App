@@ -506,6 +506,45 @@ final class RemoteCommandTerminalOutboxTests: XCTestCase {
         }
     }
 
+    func testDocumentPruningUsesTheSameEncodingAsPersistence() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let referenceURL = directory.appendingPathComponent("reference.json")
+        let constrainedURL = directory.appendingPathComponent("constrained.json")
+        var status = SanitizedRemoteStatus()
+        status.phaseDetail = String(repeating: "near-limit-status-", count: 24)
+        let command = RemoteRunCommand(kind: .report, status: .failed, summary: status)
+
+        _ = try await RemoteCommandTerminalOutboxStore(url: referenceURL).enqueue(
+            command,
+            relayURL: "https://relay.example.test",
+            workerTokenFingerprint: "token-fingerprint"
+        )
+        let persistedBytes = try Data(contentsOf: referenceURL).count
+        let policy = RemoteCommandTerminalOutboxPolicy(
+            maximumDocumentBytes: persistedBytes - 1,
+            maximumEncodedEntryBytes: persistedBytes * 2
+        )
+        let constrainedStore = RemoteCommandTerminalOutboxStore(
+            url: constrainedURL,
+            policy: policy
+        )
+
+        do {
+            _ = try await constrainedStore.enqueue(
+                command,
+                relayURL: "https://relay.example.test",
+                workerTokenFingerprint: "token-fingerprint"
+            )
+            XCTFail("The newest entry must be rejected when its persisted document exceeds the limit")
+        } catch {
+            XCTAssertEqual(error as? RemoteCommandTerminalOutboxError, .entryCouldNotBeStored)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: constrainedURL.path))
+    }
+
     func testUnknownDocumentVersionIsQuarantined() async throws {
         try await withTemporaryStore { url in
             let data = try JSONSerialization.data(withJSONObject: ["version": 999, "entries": []])

@@ -192,7 +192,11 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("operationQueue.async"))
         XCTAssertFalse(source.contains("operationQueue.sync"))
         XCTAssertFalse(persistenceSource.contains("operationQueue.sync"))
-        XCTAssertTrue(source.contains("VersionedCredentialEnvelope.acceptedValue("))
+        XCTAssertTrue(source.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
+        XCTAssertTrue(source.contains("case let .failed(lastPersisted):"))
+        XCTAssertTrue(source.contains("serverToken = lastPersistedServerToken"))
+        XCTAssertTrue(source.contains("lastPersisted.generation >= lastPersistedServerTokenGeneration"))
+        XCTAssertFalse(schedule.contains("storeServerTokenPersistenceGeneration(persistenceGeneration)"))
         XCTAssertFalse(schedule.contains("Task.detached"))
     }
 
@@ -246,6 +250,11 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
             from: "func createItemAction(_ actionKind:",
             to: "func createCalendarAction("
         )
+        let mailActionSubmission = try sourceSlice(
+            source,
+            from: "private func submitMailDashboardAction(",
+            to: "private static func loadMailDashboardItems"
+        )
         let calendarSubmission = try sourceSlice(
             source,
             from: "func createCalendarAction(",
@@ -258,13 +267,36 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         )
 
         XCTAssertTrue(sharedSource.contains("public func fetchItemAction(id: UUID) async throws -> ServerRelayItemAction"))
-        XCTAssertTrue(source.contains("pendingItemActionIDs: Array(self.pendingItemActionOverlaysByID.keys)"))
+        XCTAssertTrue(source.contains("pendingItemActionLookups: self.eligiblePendingItemActionLookups()"))
         XCTAssertTrue(source.contains("store.fetchItemAction(id: id)"))
         XCTAssertTrue(reconciliation.contains("exactByID: [UUID: ExactItemActionLookup]"))
-        XCTAssertTrue(reconciliation.contains("case .missing:"))
+        XCTAssertTrue(reconciliation.contains("case let .missing(lookupVersion):"))
+        XCTAssertTrue(source.contains("var submissionPhase: ItemActionSubmissionPhase"))
+        XCTAssertGreaterThanOrEqual(
+            source.components(separatedBy: "submissionPhase: .submitting").count - 1,
+            2
+        )
+        XCTAssertGreaterThanOrEqual(
+            source.components(separatedBy: "overlay.submissionPhase = .submitted").count - 1,
+            2
+        )
+        XCTAssertTrue(source.contains("guard overlay.submissionPhase != .submitting"))
+        XCTAssertTrue(source.contains("case outcomeUnknown"))
+        XCTAssertTrue(reconciliation.contains("overlay.lookupVersion == lookupVersion"))
+        XCTAssertTrue(reconciliation.contains("if overlay.missingLookupCount == 0"))
+        XCTAssertTrue(source.contains("markItemActionSubmissionOutcomeUnknown(&overlay"))
+        XCTAssertTrue(source.contains("isDefinitiveItemActionSubmissionFailure(error)"))
         XCTAssertTrue(reconciliation.contains("rollbackItemActionMutation(overlay)"))
         XCTAssertTrue(itemActionSubmission.contains("guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else"))
+        XCTAssertTrue(itemActionSubmission.contains("if savedAction.status.isFailedLike"))
+        XCTAssertTrue(itemActionSubmission.contains("connectionSucceeded = false"))
         XCTAssertTrue(calendarSubmission.contains("guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else"))
+        XCTAssertTrue(calendarSubmission.contains("if savedAction.status.isFailedLike"))
+        XCTAssertTrue(calendarSubmission.contains("connectionSucceeded = false"))
+        XCTAssertTrue(mailActionSubmission.contains("submissionPhase: .submitting"))
+        XCTAssertTrue(mailActionSubmission.contains("markItemActionSubmissionOutcomeUnknown(&overlay"))
+        XCTAssertTrue(mailActionSubmission.contains("rollbackItemActionMutation(overlay)"))
+        XCTAssertTrue(mailActionSubmission.contains("if savedAction.status.isFailedLike"))
         XCTAssertTrue(itemActionSubmission.contains("removeRecentItemActions { $0.id == action.id }"))
         XCTAssertTrue(calendarSubmission.contains("removeRecentItemActions { $0.id == pendingActionID }"))
         XCTAssertFalse(itemActionSubmission.contains("$0.id == action.id || $0.itemID == item.id"))

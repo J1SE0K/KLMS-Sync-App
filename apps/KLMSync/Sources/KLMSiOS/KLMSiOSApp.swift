@@ -246,10 +246,12 @@ final class CompanionModel: ObservableObject {
     }
     @Published var serverToken: String {
         didSet {
-            if serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                clearPersistedServerToken()
-            } else {
-                schedulePersistServerToken(serverToken)
+            if !suppressServerTokenPersistence {
+                if serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    clearPersistedServerToken()
+                } else {
+                    schedulePersistServerToken(serverToken)
+                }
             }
             if oldValue != serverToken {
                 resetRemoteSessionForConnectionChange()
@@ -264,7 +266,12 @@ final class CompanionModel: ObservableObject {
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
     private var serverTokenPersistTask: Task<Void, Never>?
+    private var serverTokenPersistTaskGeneration: UInt64?
     private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator
+    private var lastPersistedServerToken = ""
+    private var lastPersistedServerTokenGeneration: UInt64 = 0
+    private var suppressServerTokenPersistence = false
+    private var itemActionResolutionTasksByID: [UUID: Task<Void, Never>] = [:]
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
@@ -317,13 +324,29 @@ final class CompanionModel: ObservableObject {
         var previous: Bool
         var optimistic: Bool
     }
+
+    private struct PersistedServerCredential: Sendable {
+        var token: String
+        var generation: UInt64
+    }
     private struct PendingItemActionOverlay {
         var action: ServerRelayItemAction
+        var submissionPhase: ItemActionSubmissionPhase
+        var lookupVersion: UUID
+        var exactLookupEligibleAt: Date
+        var missingLookupCount: Int
+        var resolutionAttemptCount: Int
         var mutationKey: String?
         var mutationVersion: UInt64?
         var syncItemSnapshot: PendingItemValueSnapshot?
         var mailDashboardItemSnapshot: PendingItemValueSnapshot?
         var calendarResolutionSnapshots: [PendingCalendarResolutionSnapshot]
+    }
+
+    private enum ItemActionSubmissionPhase: Equatable {
+        case submitting
+        case submitted
+        case outcomeUnknown
     }
     private var pendingItemActionOverlaysByID: [UUID: PendingItemActionOverlay] = [:]
     private var itemActionMutationVersions = KeyedMutationVersionTracker<String>()
@@ -547,9 +570,13 @@ final class CompanionModel: ObservableObject {
     }
 
     private enum ExactItemActionLookup: Sendable {
-        case found(ServerRelayItemAction)
-        case missing
-        case unavailable
+        case found(ServerRelayItemAction, lookupVersion: UUID)
+        case missing(lookupVersion: UUID)
+        case unavailable(lookupVersion: UUID)
+    }
+
+    private struct PendingItemActionLookupContext: Sendable {
+        var lookupVersion: UUID
     }
 
     private struct ItemActionRefreshResult: Sendable {
@@ -602,13 +629,26 @@ final class CompanionModel: ObservableObject {
     }
 
     init() {
+        let useCaptureFixture = Self.shouldUseUITestCaptureFixture
+        let useRunningFixture = Self.shouldUseUITestRunningFixture
+        let useLargeDatasetFixture = Self.shouldUseUITestLargeDatasetFixture
+        let persistedCredential: PersistedServerCredential
+        if useCaptureFixture || useRunningFixture || useLargeDatasetFixture {
+            persistedCredential = PersistedServerCredential(
+                token: "",
+                generation: Self.loadServerTokenPersistenceGeneration()
+            )
+        } else {
+            persistedCredential = Self.loadServerRelayCredentialMigratingUserDefaults()
+        }
         serverTokenPersistenceCoordinator = CredentialPersistenceCoordinator(
-            initialGeneration: Self.loadServerTokenPersistenceGeneration(),
+            initialGeneration: persistedCredential.generation,
+            initialValue: persistedCredential.token,
             queueLabel: "com.local.klmssync.server-token-persistence"
         )
-        usesUITestCaptureFixture = Self.shouldUseUITestCaptureFixture
-        usesUITestRunningFixture = Self.shouldUseUITestRunningFixture
-        usesUITestLargeDatasetFixture = Self.shouldUseUITestLargeDatasetFixture
+        usesUITestCaptureFixture = useCaptureFixture
+        usesUITestRunningFixture = useRunningFixture
+        usesUITestLargeDatasetFixture = useLargeDatasetFixture
         #if canImport(UserNotifications)
         UNUserNotificationCenter.current().delegate = KLMSCompanionNotificationDelegate.shared
         #endif
@@ -633,7 +673,7 @@ final class CompanionModel: ObservableObject {
             applyUITestCaptureFixture()
             return
         }
-        let storedServerToken = Self.loadServerRelayTokenMigratingUserDefaults()
+        let storedServerToken = persistedCredential.token
         let storedServerURL = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? ""
         if storedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             serverURL = ""
@@ -645,6 +685,8 @@ final class CompanionModel: ObservableObject {
             UserDefaults.standard.removeObject(forKey: Self.serverURLKey)
         }
         serverToken = storedServerToken
+        lastPersistedServerToken = storedServerToken
+        lastPersistedServerTokenGeneration = persistedCredential.generation
         shouldUpdateNoticeNotes = UserDefaults.standard.object(forKey: Self.shouldUpdateNoticeNotesKey) as? Bool ?? true
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
@@ -871,6 +913,12 @@ final class CompanionModel: ObservableObject {
 
     func submitMailDashboardItem(_ item: ServerRelaySyncItem) async {
         let normalizedItem = item.normalizedDashboardItem
+        guard let payload = try? JSONEncoder().encode(normalizedItem),
+              let message = String(data: payload, encoding: .utf8) else {
+            errorMessage = "메일 항목을 전송 형식으로 만들지 못했습니다."
+            connectionSucceeded = false
+            return
+        }
         let mutationKey = mailDashboardMutationKey(itemID: normalizedItem.id)
         guard let mutationVersion = beginItemActionMutation(for: mutationKey) else { return }
         let previousItem = mailDashboardItems.first { $0.id == normalizedItem.id }
@@ -884,28 +932,15 @@ final class CompanionModel: ObservableObject {
             _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
             return
         }
-        let generation = relaySessionGeneration
-        do {
-            let payload = try JSONEncoder().encode(normalizedItem)
-            let message = String(data: payload, encoding: .utf8) ?? ""
-            try await serverRelayStore.createItemAction(ServerRelayItemAction(
-                action: .mailDashboardAdd,
-                itemID: normalizedItem.id,
-                itemKind: normalizedItem.kind,
-                itemTitle: normalizedItem.title,
-                message: message
-            ))
-            guard isCurrentRelaySession(generation: generation) else { return }
-            _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
-        } catch {
-            guard isCurrentRelaySession(generation: generation) else { return }
-            rollbackMailDashboardMutation(
-                key: mutationKey,
-                version: mutationVersion,
-                snapshot: mutationSnapshot
-            )
-            errorMessage = userFacingMessage(for: error)
-        }
+        await submitMailDashboardAction(
+            .mailDashboardAdd,
+            item: normalizedItem,
+            message: message,
+            mutationKey: mutationKey,
+            mutationVersion: mutationVersion,
+            mutationSnapshot: mutationSnapshot,
+            store: serverRelayStore
+        )
     }
 
     func removeMailDashboardItem(_ item: ServerRelaySyncItem) {
@@ -916,6 +951,12 @@ final class CompanionModel: ObservableObject {
     }
 
     func submitRemoveMailDashboardItem(_ item: ServerRelaySyncItem) async {
+        guard let payload = try? JSONEncoder().encode(item),
+              let message = String(data: payload, encoding: .utf8) else {
+            errorMessage = "메일 항목을 전송 형식으로 만들지 못했습니다."
+            connectionSucceeded = false
+            return
+        }
         let mutationKey = mailDashboardMutationKey(itemID: item.id)
         guard let mutationVersion = beginItemActionMutation(for: mutationKey) else { return }
         let previousItem = mailDashboardItems.first { $0.id == item.id }
@@ -929,27 +970,95 @@ final class CompanionModel: ObservableObject {
             _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
             return
         }
+        await submitMailDashboardAction(
+            .mailDashboardRemove,
+            item: item,
+            message: message,
+            mutationKey: mutationKey,
+            mutationVersion: mutationVersion,
+            mutationSnapshot: mutationSnapshot,
+            store: serverRelayStore
+        )
+    }
+
+    private func submitMailDashboardAction(
+        _ actionKind: ServerRelayItemActionKind,
+        item: ServerRelaySyncItem,
+        message: String,
+        mutationKey: String,
+        mutationVersion: UInt64,
+        mutationSnapshot: PendingItemValueSnapshot,
+        store: ServerRelayCommandStore
+    ) async {
         let generation = relaySessionGeneration
+        let action = ServerRelayItemAction(
+            action: actionKind,
+            itemID: item.id,
+            itemKind: item.kind,
+            itemTitle: item.title,
+            message: message
+        )
+        let localAction = action.optimisticCompanionDisplayAction
+        pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
+            action: localAction,
+            submissionPhase: .submitting,
+            lookupVersion: UUID(),
+            exactLookupEligibleAt: .distantFuture,
+            missingLookupCount: 0,
+            resolutionAttemptCount: 0,
+            mutationKey: mutationKey,
+            mutationVersion: mutationVersion,
+            syncItemSnapshot: nil,
+            mailDashboardItemSnapshot: mutationSnapshot,
+            calendarResolutionSnapshots: []
+        )
+        replaceRecentItemAction(localAction) { $0.itemID == item.id }
         do {
-            let payload = try JSONEncoder().encode(item)
-            let message = String(data: payload, encoding: .utf8) ?? ""
-            try await serverRelayStore.createItemAction(ServerRelayItemAction(
-                action: .mailDashboardRemove,
-                itemID: item.id,
-                itemKind: item.kind,
-                itemTitle: item.title,
-                message: message
-            ))
+            let savedAction = try await store.createItemAction(action)
             guard isCurrentRelaySession(generation: generation) else { return }
-            _ = itemActionMutationVersions.end(key: mutationKey, version: mutationVersion)
+            guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else {
+                return
+            }
+            overlay.action = savedAction
+            overlay.submissionPhase = .submitted
+            overlay.lookupVersion = UUID()
+            overlay.exactLookupEligibleAt = .distantPast
+            if savedAction.status.isInFlight {
+                pendingItemActionOverlaysByID[savedAction.id] = overlay
+            } else if savedAction.status.isFailedLike {
+                rollbackItemActionMutation(overlay)
+            } else {
+                finishItemActionMutation(overlay)
+            }
+            replaceRecentItemAction(savedAction) { $0.id == action.id }
+            if savedAction.status.isFailedLike {
+                let failureMessage = savedAction.message.nilIfBlank
+                    ?? "\(actionKind.displayName) 요청을 처리하지 못했습니다."
+                connectionMessage = "\(actionKind.displayName) 요청 실패"
+                connectionSucceeded = false
+                errorMessage = failureMessage
+                userAlert = UserAlert(title: "요청 실패", message: failureMessage)
+            } else {
+                connectionMessage = savedAction.message.nilIfBlank
+                    ?? "\(actionKind.displayName) 요청을 보냈습니다."
+                connectionSucceeded = true
+                errorMessage = ""
+            }
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            rollbackMailDashboardMutation(
-                key: mutationKey,
-                version: mutationVersion,
-                snapshot: mutationSnapshot
-            )
-            errorMessage = userFacingMessage(for: error)
+            guard var overlay = pendingItemActionOverlaysByID[action.id] else { return }
+            if Self.isDefinitiveItemActionSubmissionFailure(error) {
+                pendingItemActionOverlaysByID.removeValue(forKey: action.id)
+                rollbackItemActionMutation(overlay)
+                removeRecentItemActions { $0.id == action.id }
+                let failureMessage = userFacingMessage(for: error)
+                connectionMessage = "\(actionKind.displayName) 요청 실패"
+                connectionSucceeded = false
+                errorMessage = failureMessage
+                userAlert = UserAlert(title: "요청 실패", message: failureMessage)
+            } else {
+                markItemActionSubmissionOutcomeUnknown(&overlay, id: action.id)
+            }
         }
     }
 
@@ -2261,6 +2370,63 @@ final class CompanionModel: ObservableObject {
         }
     }
 
+    private static func isDefinitiveItemActionSubmissionFailure(_ error: Error) -> Bool {
+        guard case let ServerRelayClientError.serverRejected(statusCode, _) = error else {
+            return false
+        }
+        return (400..<500).contains(statusCode)
+            && statusCode != 408
+            && statusCode != 425
+            && statusCode != 429
+    }
+
+    private func markItemActionSubmissionOutcomeUnknown(
+        _ overlay: inout PendingItemActionOverlay,
+        id: UUID
+    ) {
+        overlay.submissionPhase = .outcomeUnknown
+        overlay.lookupVersion = UUID()
+        overlay.exactLookupEligibleAt = Date().addingTimeInterval(0.5)
+        overlay.missingLookupCount = 0
+        overlay.action.message = "서버가 요청을 처리했는지 확인하고 있습니다. 화면 상태는 확인이 끝날 때까지 유지합니다."
+        overlay.action.updatedAt = Date()
+        pendingItemActionOverlaysByID[id] = overlay
+        replaceRecentItemAction(overlay.action) { $0.id == id }
+        syncDataNeedsRefresh = true
+        connectionMessage = overlay.action.message
+        connectionSucceeded = nil
+        errorMessage = ""
+        scheduleItemActionResolutionRefresh(for: id)
+    }
+
+    private func scheduleItemActionResolutionRefresh(for id: UUID) {
+        guard var overlay = pendingItemActionOverlaysByID[id],
+              overlay.submissionPhase != .submitting,
+              overlay.resolutionAttemptCount < 3 else {
+            return
+        }
+        overlay.resolutionAttemptCount += 1
+        pendingItemActionOverlaysByID[id] = overlay
+        let lookupVersion = overlay.lookupVersion
+        let delayNanoseconds = UInt64(overlay.resolutionAttemptCount) * 1_000_000_000
+        itemActionResolutionTasksByID[id]?.cancel()
+        itemActionResolutionTasksByID[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delayNanoseconds)
+            guard let self, !Task.isCancelled,
+                  self.pendingItemActionOverlaysByID[id]?.lookupVersion == lookupVersion else {
+                self?.itemActionResolutionTasksByID[id] = nil
+                return
+            }
+            self.itemActionResolutionTasksByID[id] = nil
+            await self.refreshRecent(
+                silentErrors: true,
+                includeSyncData: false,
+                showsActivity: false,
+                scope: .itemActions
+            )
+        }
+    }
+
     private func itemActionMutationKey(itemID: String) -> String {
         "item:\(itemID)"
     }
@@ -2380,24 +2546,6 @@ final class CompanionModel: ObservableObject {
         if syncItemsChanged || mailItemsChanged {
             persistCurrentServerSyncData()
         }
-    }
-
-    private func rollbackMailDashboardMutation(
-        key: String,
-        version: UInt64,
-        snapshot: PendingItemValueSnapshot
-    ) {
-        guard itemActionMutationVersions.owns(key: key, version: version) else { return }
-        if let restored = restoredItems(
-            from: mailDashboardItems,
-            snapshot: snapshot,
-            sortForDashboard: false
-        ), restored != mailDashboardItems {
-            mailDashboardItems = restored
-            persistMailDashboardItems()
-            persistCurrentServerSyncData()
-        }
-        _ = itemActionMutationVersions.end(key: key, version: version)
     }
 
     private func rollbackCalendarResolutionMutation(
@@ -2611,6 +2759,11 @@ final class CompanionModel: ObservableObject {
             let localAction = action.optimisticCompanionDisplayAction
             pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
                 action: localAction,
+                submissionPhase: .submitting,
+                lookupVersion: UUID(),
+                exactLookupEligibleAt: .distantFuture,
+                missingLookupCount: 0,
+                resolutionAttemptCount: 0,
                 mutationKey: mutationKey,
                 mutationVersion: mutationVersion,
                 syncItemSnapshot: updatesServerVisibleState
@@ -2639,6 +2792,9 @@ final class CompanionModel: ObservableObject {
                 return
             }
             overlay.action = savedAction
+            overlay.submissionPhase = .submitted
+            overlay.lookupVersion = UUID()
+            overlay.exactLookupEligibleAt = .distantPast
             if savedAction.status.isInFlight {
                 pendingItemActionOverlaysByID[savedAction.id] = overlay
             } else if savedAction.status.isFailedLike {
@@ -2646,26 +2802,41 @@ final class CompanionModel: ObservableObject {
             } else {
                 finishItemActionMutation(overlay)
             }
-            applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
             replaceRecentItemAction(savedAction) { $0.id == action.id }
-            if !suppressSuccessFeedback {
-                connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
-                connectionSucceeded = true
+            if savedAction.status.isFailedLike {
+                let message = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 처리하지 못했습니다."
+                connectionMessage = "\(actionKind.displayName) 요청 실패"
+                connectionSucceeded = false
+                errorMessage = message
+                userAlert = UserAlert(title: "요청 실패", message: message)
             } else {
-                connectionMessage = ""
-                connectionSucceeded = nil
+                applyServerVisibleItemActionLocally(savedAction.action, itemID: savedAction.itemID)
+                if !suppressSuccessFeedback {
+                    connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
+                    connectionSucceeded = true
+                } else {
+                    connectionMessage = ""
+                    connectionSucceeded = nil
+                }
+                errorMessage = ""
             }
-            errorMessage = ""
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
-            guard let overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else { return }
-            rollbackItemActionMutation(overlay)
-            removeRecentItemActions { $0.id == action.id }
-            syncDataNeedsRefresh = true
-            guard !isCancellationError(error) else { return }
-            let message = userFacingMessage(for: error)
-            errorMessage = message
-            userAlert = UserAlert(title: "요청 실패", message: message)
+            guard var overlay = pendingItemActionOverlaysByID[action.id] else { return }
+            if Self.isDefinitiveItemActionSubmissionFailure(error) {
+                pendingItemActionOverlaysByID.removeValue(forKey: action.id)
+                rollbackItemActionMutation(overlay)
+                removeRecentItemActions { $0.id == action.id }
+                syncDataNeedsRefresh = true
+                guard !isCancellationError(error) else { return }
+                let message = userFacingMessage(for: error)
+                connectionMessage = "\(actionKind.displayName) 요청 실패"
+                connectionSucceeded = false
+                errorMessage = message
+                userAlert = UserAlert(title: "요청 실패", message: message)
+            } else {
+                markItemActionSubmissionOutcomeUnknown(&overlay, id: action.id)
+            }
         }
     }
 
@@ -2719,6 +2890,11 @@ final class CompanionModel: ObservableObject {
             pendingActionID = action.id
             pendingItemActionOverlaysByID[action.id] = PendingItemActionOverlay(
                 action: action,
+                submissionPhase: .submitting,
+                lookupVersion: UUID(),
+                exactLookupEligibleAt: .distantFuture,
+                missingLookupCount: 0,
+                resolutionAttemptCount: 0,
                 mutationKey: mutationKey,
                 mutationVersion: mutationVersion,
                 syncItemSnapshot: nil,
@@ -2735,6 +2911,9 @@ final class CompanionModel: ObservableObject {
                 return
             }
             overlay.action = savedAction
+            overlay.submissionPhase = .submitted
+            overlay.lookupVersion = UUID()
+            overlay.exactLookupEligibleAt = .distantPast
             if savedAction.status.isInFlight {
                 pendingItemActionOverlaysByID[savedAction.id] = overlay
                 pendingActionID = savedAction.id
@@ -2749,21 +2928,36 @@ final class CompanionModel: ObservableObject {
                 markCalendarChangeResolvedLocally(change)
             }
             replaceRecentItemAction(savedAction) { $0.id == action.id }
-            connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
-            connectionSucceeded = true
-            errorMessage = ""
+            if savedAction.status.isFailedLike {
+                let message = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 처리하지 못했습니다."
+                connectionMessage = "\(actionKind.displayName) 요청 실패"
+                connectionSucceeded = false
+                errorMessage = message
+                userAlert = UserAlert(title: "요청 실패", message: message)
+            } else {
+                connectionMessage = savedAction.message.nilIfBlank ?? "\(actionKind.displayName) 요청을 보냈습니다."
+                connectionSucceeded = true
+                errorMessage = ""
+            }
         } catch {
             guard isCurrentRelaySession(generation: generation) else { return }
             guard let pendingActionID,
-                  let overlay = pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID) else {
+                  var overlay = pendingItemActionOverlaysByID[pendingActionID] else {
                 return
             }
-            rollbackItemActionMutation(overlay)
-            removeRecentItemActions { $0.id == pendingActionID }
-            guard !isCancellationError(error) else { return }
-            let message = userFacingMessage(for: error)
-            errorMessage = message
-            userAlert = UserAlert(title: "요청 실패", message: message)
+            if Self.isDefinitiveItemActionSubmissionFailure(error) {
+                pendingItemActionOverlaysByID.removeValue(forKey: pendingActionID)
+                rollbackItemActionMutation(overlay)
+                removeRecentItemActions { $0.id == pendingActionID }
+                guard !isCancellationError(error) else { return }
+                let message = userFacingMessage(for: error)
+                connectionMessage = "\(actionKind.displayName) 요청 실패"
+                connectionSucceeded = false
+                errorMessage = message
+                userAlert = UserAlert(title: "요청 실패", message: message)
+            } else {
+                markItemActionSubmissionOutcomeUnknown(&overlay, id: pendingActionID)
+            }
         }
     }
 
@@ -3222,6 +3416,7 @@ final class CompanionModel: ObservableObject {
         pasteboardClearTask?.cancel()
         cancelFollowUpTask?.cancel()
         serverTokenPersistTask?.cancel()
+        itemActionResolutionTasksByID.values.forEach { $0.cancel() }
         cachedSyncDataPersistTask?.cancel()
         Task { @MainActor [sharedSettingMutationQueue] in
             sharedSettingMutationQueue.cancelAll()
@@ -3555,7 +3750,7 @@ final class CompanionModel: ObservableObject {
         silentErrors: Bool,
         sessionGeneration: UInt64
     ) async -> [RelayRefreshEndpointApplication] {
-        let pendingItemActionIDs = Array(pendingItemActionOverlaysByID.keys)
+        let pendingItemActionLookups = eligiblePendingItemActionLookups()
         var endpoints = [RelayRefreshEndpointKind.status]
         if scope.fetchesCommands { endpoints.append(.commands) }
         if shouldLoadSyncData { endpoints.append(.syncData) }
@@ -3575,7 +3770,7 @@ final class CompanionModel: ObservableObject {
                         store: store,
                         scope: scope,
                         shouldLoadSyncData: shouldLoadSyncData,
-                        pendingItemActionIDs: pendingItemActionIDs
+                        pendingItemActionLookups: pendingItemActionLookups
                     )
                 )
             }
@@ -3601,6 +3796,20 @@ final class CompanionModel: ObservableObject {
             }
             return application
         }
+    }
+
+    private func eligiblePendingItemActionLookups() -> [UUID: PendingItemActionLookupContext] {
+        let currentDate = Date()
+        return Dictionary(uniqueKeysWithValues: pendingItemActionOverlaysByID.compactMap { id, overlay in
+            guard overlay.submissionPhase != .submitting,
+                  overlay.exactLookupEligibleAt <= currentDate else {
+                return nil
+            }
+            return (
+                id,
+                PendingItemActionLookupContext(lookupVersion: overlay.lookupVersion)
+            )
+        })
     }
 
     private func applyRelayRefreshEndpoint(
@@ -3692,7 +3901,16 @@ final class CompanionModel: ObservableObject {
             var application = RelayRefreshEndpointApplication(
                 refreshSucceeded: !scope.fetchesItemActions || itemActionResult.recent != nil
             )
-            guard let itemActions = itemActionResult.recent else { return application }
+            guard itemActionResult.recent != nil || !itemActionResult.exactByID.isEmpty else {
+                return application
+            }
+            let itemActions: [ServerRelayItemAction]
+            if let recent = itemActionResult.recent {
+                itemActions = recent
+            } else {
+                let pendingIDs = Set(pendingItemActionOverlaysByID.keys)
+                itemActions = recentItemActions.filter { !pendingIDs.contains($0.id) }
+            }
             let overlaidItemActions = itemActionsOverlayingPendingSubmissions(
                 itemActions,
                 exactByID: itemActionResult.exactByID
@@ -3751,7 +3969,7 @@ final class CompanionModel: ObservableObject {
         store: ServerRelayCommandStore,
         scope: RelayRefreshScope,
         shouldLoadSyncData: Bool,
-        pendingItemActionIDs: [UUID]
+        pendingItemActionLookups: [UUID: PendingItemActionLookupContext]
     ) async -> RelayRefreshEndpointResult {
         switch endpoint {
         case .status:
@@ -3778,7 +3996,7 @@ final class CompanionModel: ObservableObject {
                 scope.fetchesItemActions,
                 store: store,
                 limit: 40,
-                pendingItemActionIDs: pendingItemActionIDs
+                pendingItemActionLookups: pendingItemActionLookups
             ))
         case .requestLog:
             return .requestLog(await fetchRecentRequestLogIfNeeded(
@@ -3845,29 +4063,35 @@ final class CompanionModel: ObservableObject {
         _ shouldFetch: Bool,
         store: ServerRelayCommandStore,
         limit: Int,
-        pendingItemActionIDs: [UUID]
+        pendingItemActionLookups: [UUID: PendingItemActionLookupContext]
     ) async -> ItemActionRefreshResult {
         guard shouldFetch else {
             return ItemActionRefreshResult(recent: nil, exactByID: [:])
         }
         let recent = try? await store.fetchRecentItemActions(limit: limit)
         let recentIDs = Set((recent ?? []).map(\.id))
-        let missingIDs = pendingItemActionIDs.filter { !recentIDs.contains($0) }
+        let missingLookups = pendingItemActionLookups.filter { !recentIDs.contains($0.key) }
         let exactPairs = await withTaskGroup(
             of: (UUID, ExactItemActionLookup).self,
             returning: [(UUID, ExactItemActionLookup)].self
         ) { group in
-            for id in missingIDs {
+            for (id, context) in missingLookups {
                 group.addTask {
                     do {
-                        return (id, .found(try await store.fetchItemAction(id: id)))
+                        return (
+                            id,
+                            .found(
+                                try await store.fetchItemAction(id: id),
+                                lookupVersion: context.lookupVersion
+                            )
+                        )
                     } catch let error as ServerRelayClientError {
                         if case .serverRejected(404, _) = error {
-                            return (id, .missing)
+                            return (id, .missing(lookupVersion: context.lookupVersion))
                         }
-                        return (id, .unavailable)
+                        return (id, .unavailable(lookupVersion: context.lookupVersion))
                     } catch {
-                        return (id, .unavailable)
+                        return (id, .unavailable(lookupVersion: context.lookupVersion))
                     }
                 }
             }
@@ -4171,11 +4395,27 @@ final class CompanionModel: ObservableObject {
         }
         for (id, lookup) in exactByID where nextByID[id] == nil {
             switch lookup {
-            case let .found(action):
+            case let .found(action, lookupVersion):
+                guard pendingItemActionOverlaysByID[id]?.lookupVersion == lookupVersion else {
+                    continue
+                }
                 nextByID[id] = action
                 reconcilePendingItemAction(action)
-            case .missing:
-                guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: id) else { continue }
+            case let .missing(lookupVersion):
+                guard var overlay = pendingItemActionOverlaysByID[id],
+                      overlay.lookupVersion == lookupVersion else {
+                    continue
+                }
+                if overlay.missingLookupCount == 0 {
+                    overlay.missingLookupCount = 1
+                    overlay.lookupVersion = UUID()
+                    overlay.exactLookupEligibleAt = Date().addingTimeInterval(0.5)
+                    pendingItemActionOverlaysByID[id] = overlay
+                    scheduleItemActionResolutionRefresh(for: id)
+                    continue
+                }
+                pendingItemActionOverlaysByID.removeValue(forKey: id)
+                itemActionResolutionTasksByID.removeValue(forKey: id)?.cancel()
                 overlay.action.status = .failed
                 overlay.action.updatedAt = Date()
                 overlay.action.message = "서버에서 요청 기록을 찾지 못했습니다. 현재 화면을 되돌렸으니 다시 시도해 주세요."
@@ -4183,8 +4423,11 @@ final class CompanionModel: ObservableObject {
                 nextByID[id] = overlay.action
                 connectionMessage = overlay.action.message
                 connectionSucceeded = false
-            case .unavailable:
-                continue
+            case let .unavailable(lookupVersion):
+                guard pendingItemActionOverlaysByID[id]?.lookupVersion == lookupVersion else {
+                    continue
+                }
+                scheduleItemActionResolutionRefresh(for: id)
             }
         }
         for (id, overlay) in pendingItemActionOverlaysByID where nextByID[id] == nil {
@@ -4197,10 +4440,15 @@ final class CompanionModel: ObservableObject {
         guard var overlay = pendingItemActionOverlaysByID[action.id] else { return }
         if action.status.isInFlight {
             overlay.action = action
+            overlay.submissionPhase = .submitted
+            overlay.exactLookupEligibleAt = .distantPast
+            overlay.missingLookupCount = 0
             pendingItemActionOverlaysByID[action.id] = overlay
+            itemActionResolutionTasksByID.removeValue(forKey: action.id)?.cancel()
             return
         }
         pendingItemActionOverlaysByID.removeValue(forKey: action.id)
+        itemActionResolutionTasksByID.removeValue(forKey: action.id)?.cancel()
         if action.status.isFailedLike {
             rollbackItemActionMutation(overlay)
         } else {
@@ -4386,6 +4634,8 @@ final class CompanionModel: ObservableObject {
         lastAuthSuccessAlertAt = nil
         pendingRemoteSettingActionsByKey = [:]
         pendingSubmittedCommandsByID = [:]
+        itemActionResolutionTasksByID.values.forEach { $0.cancel() }
+        itemActionResolutionTasksByID = [:]
         pendingItemActionOverlaysByID = [:]
         itemActionMutationVersions.reset()
         pendingFileAccessRequestsByID = [:]
@@ -4730,7 +4980,7 @@ final class CompanionModel: ObservableObject {
                 store: store,
                 scope: scope,
                 shouldLoadSyncData: shouldLoadSyncData,
-                pendingItemActionIDs: Array(self.pendingItemActionOverlaysByID.keys)
+                pendingItemActionLookups: self.eligiblePendingItemActionLookups()
             )
             guard !Task.isCancelled, ownsPreview() else {
                 self.finishRelayRealtimePreview(
@@ -5858,17 +6108,19 @@ final class CompanionModel: ObservableObject {
         let persistenceGeneration = persistenceCoordinator.begin(
             after: Self.loadServerTokenPersistenceGeneration()
         )
-        Self.storeServerTokenPersistenceGeneration(persistenceGeneration)
+        serverTokenPersistTaskGeneration = persistenceGeneration
         serverTokenPersistTask = Task { [weak self, token, persistenceCoordinator] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard !Task.isCancelled else { return }
-            await persistenceCoordinator.persist(token, generation: persistenceGeneration) { envelope in
+            let result = await persistenceCoordinator.persist(token, generation: persistenceGeneration) { envelope in
                 Self.persistServerToken(envelope)
             }
             await MainActor.run {
-                if self?.serverToken == token {
-                    self?.serverTokenPersistTask = nil
-                }
+                self?.completeServerTokenPersistence(
+                    result,
+                    requestedToken: token,
+                    taskGeneration: persistenceGeneration
+                )
             }
         }
     }
@@ -5879,86 +6131,124 @@ final class CompanionModel: ObservableObject {
         let persistenceGeneration = persistenceCoordinator.begin(
             after: Self.loadServerTokenPersistenceGeneration()
         )
-        Self.storeServerTokenPersistenceGeneration(persistenceGeneration)
+        serverTokenPersistTaskGeneration = persistenceGeneration
         UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         serverTokenPersistTask = Task { [weak self, persistenceCoordinator] in
-            await persistenceCoordinator.persist("", generation: persistenceGeneration) { envelope in
+            let result = await persistenceCoordinator.persist("", generation: persistenceGeneration) { envelope in
                 Self.persistServerToken(envelope)
             }
             await MainActor.run {
-                if self?.serverToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
-                    self?.serverTokenPersistTask = nil
-                }
+                self?.completeServerTokenPersistence(
+                    result,
+                    requestedToken: "",
+                    taskGeneration: persistenceGeneration
+                )
             }
+        }
+    }
+
+    private func completeServerTokenPersistence(
+        _ result: CredentialPersistenceResult,
+        requestedToken: String,
+        taskGeneration: UInt64
+    ) {
+        let trimmedRequestedToken = requestedToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch result {
+        case let .persisted(envelope):
+            if envelope.generation >= lastPersistedServerTokenGeneration {
+                lastPersistedServerToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                lastPersistedServerTokenGeneration = envelope.generation
+            }
+        case .superseded:
+            break
+        case let .failed(lastPersisted):
+            if lastPersisted.generation >= lastPersistedServerTokenGeneration {
+                lastPersistedServerToken = lastPersisted.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                lastPersistedServerTokenGeneration = lastPersisted.generation
+            }
+            guard serverTokenPersistTaskGeneration == taskGeneration,
+                  serverToken.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedRequestedToken else {
+                return
+            }
+            suppressServerTokenPersistence = true
+            serverToken = lastPersistedServerToken
+            suppressServerTokenPersistence = false
+            let message = "클라이언트 토큰을 안전하게 저장하지 못해 마지막 저장값으로 되돌렸습니다. 잠시 후 다시 시도해 주세요."
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            userAlert = UserAlert(title: "토큰 저장 실패", message: message)
+        }
+        if serverTokenPersistTaskGeneration == taskGeneration {
+            serverTokenPersistTask = nil
+            serverTokenPersistTaskGeneration = nil
         }
     }
 
     @discardableResult
     nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope) -> Bool {
         let trimmedToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedToken.isEmpty {
-            LocalRemoteTokenStore.delete(account: "server-relay-ios")
-            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-            return true
-        }
         guard let encoded = try? VersionedCredentialEnvelope(
             generation: envelope.generation,
             value: trimmedToken
         ).encoded() else {
-            LocalRemoteTokenStore.delete(account: "server-relay-ios")
-            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
             return false
         }
         let saved = LocalRemoteTokenStore.save(encoded, account: "server-relay-ios")
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-        if !saved {
-            LocalRemoteTokenStore.delete(account: "server-relay-ios")
+        if saved {
+            storeServerTokenPersistenceGeneration(envelope.generation)
+            UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         }
         return saved
     }
 
-    nonisolated private static func loadServerRelayTokenMigratingUserDefaults() -> String {
-        let expectedGeneration = loadServerTokenPersistenceGeneration()
+    nonisolated private static func loadServerRelayCredentialMigratingUserDefaults() -> PersistedServerCredential {
+        let minimumGeneration = loadServerTokenPersistenceGeneration()
         if let storedCredential = LocalRemoteTokenStore.load(account: "server-relay-ios"),
            !storedCredential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if let token = VersionedCredentialEnvelope.acceptedValue(
+            if let envelope = VersionedCredentialEnvelope.acceptedEnvelope(
                 from: storedCredential,
-                expectedGeneration: expectedGeneration
-            )?.trimmingCharacters(in: .whitespacesAndNewlines),
-               !token.isEmpty {
+                minimumGeneration: minimumGeneration
+            ) {
+                let token = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                storeServerTokenPersistenceGeneration(envelope.generation)
                 UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-                return token
+                return PersistedServerCredential(token: token, generation: envelope.generation)
             }
-            if VersionedCredentialEnvelope.decode(storedCredential) == nil,
-               expectedGeneration == 0 {
+            if VersionedCredentialEnvelope.decode(storedCredential) != nil {
+                UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+                return PersistedServerCredential(token: "", generation: minimumGeneration)
+            }
+            if minimumGeneration == 0 {
                 let migrationGeneration: UInt64 = 1
-                storeServerTokenPersistenceGeneration(migrationGeneration)
                 let migrated = persistServerToken(VersionedCredentialEnvelope(
                     generation: migrationGeneration,
                     value: storedCredential
                 ))
-                return migrated
-                    ? storedCredential.trimmingCharacters(in: .whitespacesAndNewlines)
-                    : ""
+                let token = storedCredential.trimmingCharacters(in: .whitespacesAndNewlines)
+                return PersistedServerCredential(
+                    token: token,
+                    generation: migrated ? migrationGeneration : 0
+                )
             }
-            LocalRemoteTokenStore.delete(account: "server-relay-ios")
             UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-            return ""
+            return PersistedServerCredential(token: "", generation: minimumGeneration)
         }
         let legacyToken = UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey) ?? ""
-        guard expectedGeneration == 0,
+        guard minimumGeneration == 0,
               !legacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-            return ""
+            return PersistedServerCredential(token: "", generation: minimumGeneration)
         }
         let migrationGeneration: UInt64 = 1
-        storeServerTokenPersistenceGeneration(migrationGeneration)
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
         let migrated = persistServerToken(VersionedCredentialEnvelope(
             generation: migrationGeneration,
             value: legacyToken
         ))
-        return migrated ? legacyToken.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        return PersistedServerCredential(
+            token: legacyToken.trimmingCharacters(in: .whitespacesAndNewlines),
+            generation: migrated ? migrationGeneration : 0
+        )
     }
 
     nonisolated private static func loadServerTokenPersistenceGeneration() -> UInt64 {
@@ -6995,8 +7285,18 @@ private struct CompanionDashboardScopeBar: View {
                 }
             }
             HStack(spacing: 8) {
-                companionScopePicker("연도", selection: normalizedYearBinding, options: options.years)
-                companionScopePicker("학기", selection: normalizedSemesterBinding, options: options.semesters)
+                companionScopePicker(
+                    "연도",
+                    selection: normalizedYearBinding,
+                    options: options.years,
+                    accessibilityIdentifier: "dashboard-scope-year"
+                )
+                companionScopePicker(
+                    "학기",
+                    selection: normalizedSemesterBinding,
+                    options: options.semesters,
+                    accessibilityIdentifier: "dashboard-scope-semester"
+                )
             }
         }
         .padding(12)
@@ -7010,16 +7310,22 @@ private struct CompanionDashboardScopeBar: View {
         .accessibilityIdentifier("dashboard-scope-section")
     }
 
-    private func companionScopePicker(_ title: String, selection: Binding<String>, options: [String]) -> some View {
+    private func companionScopePicker(
+        _ title: String,
+        selection: Binding<String>,
+        options: [String],
+        accessibilityIdentifier: String
+    ) -> some View {
         CompanionNativeChoiceField(
             title: title,
             selection: selection,
             options: options,
             titleForOption: { $0 },
-            minHeight: 42,
+            minHeight: 44,
             cornerRadius: 11,
             usesSystemMenu: true,
-            showsPopupTitle: false
+            showsPopupTitle: false,
+            accessibilityIdentifier: accessibilityIdentifier
         )
     }
 
@@ -7052,6 +7358,7 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
     var cornerRadius: CGFloat
     var usesSystemMenu: Bool
     var showsPopupTitle: Bool
+    var accessibilityIdentifier: String?
 
     init(
         title: String,
@@ -7062,7 +7369,8 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
         minHeight: CGFloat = 44,
         cornerRadius: CGFloat = 11,
         usesSystemMenu: Bool = true,
-        showsPopupTitle: Bool = true
+        showsPopupTitle: Bool = true,
+        accessibilityIdentifier: String? = nil
     ) {
         self.title = title
         self.systemImage = systemImage
@@ -7073,6 +7381,7 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
         self.cornerRadius = cornerRadius
         self.usesSystemMenu = usesSystemMenu
         self.showsPopupTitle = showsPopupTitle
+        self.accessibilityIdentifier = accessibilityIdentifier
     }
 
     var body: some View {
@@ -7094,8 +7403,11 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
                 options: options,
                 titleForOption: titleForOption,
                 usesSystemMenu: usesSystemMenu,
-                showsPopupTitle: showsPopupTitle
+                showsPopupTitle: showsPopupTitle,
+                minHeight: minHeight,
+                accessibilityIdentifier: accessibilityIdentifier
             )
+            .frame(maxWidth: .infinity, minHeight: minHeight)
 #else
             Menu {
                 ForEach(options, id: \.self) { option in
@@ -7121,6 +7433,7 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
                     .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(accessibilityIdentifier ?? "")
 #endif
         }
         .frame(maxWidth: .infinity, minHeight: minHeight)
@@ -7183,6 +7496,8 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
     var titleForOption: (Option) -> String
     var usesSystemMenu: Bool
     var showsPopupTitle: Bool
+    var minHeight: CGFloat
+    var accessibilityIdentifier: String?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(selection: $selection, titleForOption: titleForOption)
@@ -7196,7 +7511,18 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         button.contentHorizontalAlignment = .fill
         button.contentVerticalAlignment = .fill
         button.accessibilityTraits.insert(.button)
+        button.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        button.setContentHuggingPriority(.defaultLow, for: .vertical)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        button.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
         return button
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UIButton, context: Context) -> CGSize? {
+        CGSize(
+            width: max(proposal.width ?? minHeight, minHeight),
+            height: max(proposal.height ?? minHeight, minHeight)
+        )
     }
 
     func updateUIView(_ button: UIButton, context: Context) {
@@ -7206,6 +7532,7 @@ private struct CompanionUIKitChoiceMenuButton<Option: Hashable>: UIViewRepresent
         context.coordinator.titleForOption = titleForOption
         context.coordinator.usesSystemMenu = usesSystemMenu
         context.coordinator.showsPopupTitle = showsPopupTitle
+        button.accessibilityIdentifier = accessibilityIdentifier
         button.isEnabled = options.count > 1
         button.accessibilityLabel = "\(title): \(titleForOption(selection))"
         button.removeTarget(context.coordinator, action: #selector(Coordinator.showActionSheet(_:)), for: .touchUpInside)
@@ -11153,6 +11480,7 @@ private extension View {
                     .accessibilityElement()
                     .accessibilityLabel(label ?? identifier)
                     .accessibilityIdentifier(identifier)
+                    .accessibilityRespondsToUserInteraction(false)
                     .allowsHitTesting(false)
             }
         }
@@ -12105,7 +12433,6 @@ private struct KLMSActionButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1.0 : 0.42)
             .saturation(isEnabled ? 1.0 : 0.30)
-            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 5 : 0, x: 0, y: isEnabled ? 1 : 0)
     }
 
     private var foreground: Color {
@@ -12165,20 +12492,6 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         }
     }
 
-    private var activeShadowColor: Color {
-        switch tone {
-        case .soft:
-            return Color.klmsCommandButtonBorder.opacity(0.12)
-        case .primary:
-            return Color.klmsPrimaryCommandButtonBorder.opacity(0.18)
-        case .destructive:
-            return Color.klmsDangerBorder.opacity(0.18)
-        case .success:
-            return Color.klmsSuccessBorder.opacity(0.16)
-        case .accent(let color):
-            return color.opacity(0.14)
-        }
-    }
 }
 
 private struct KLMSCompactResetButtonStyle: ButtonStyle {
@@ -12285,7 +12598,6 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
             }
             .opacity(isEnabled ? 1.0 : 0.42)
             .saturation(isEnabled ? 1.0 : 0.30)
-            .shadow(color: isEnabled ? activeShadowColor : .clear, radius: isEnabled ? 4 : 0, x: 0, y: isEnabled ? 1 : 0)
     }
 
     private var foreground: Color {
@@ -12343,20 +12655,6 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         }
     }
 
-    private var activeShadowColor: Color {
-        switch tone {
-        case .soft:
-            return Color.klmsCommandButtonBorder.opacity(0.12)
-        case .primary:
-            return Color.klmsPrimaryCommandButtonBorder.opacity(0.18)
-        case .destructive:
-            return Color.klmsDangerBorder.opacity(0.18)
-        case .success:
-            return Color.klmsSuccessBorder.opacity(0.16)
-        case .accent(let color):
-            return color.opacity(0.14)
-        }
-    }
 }
 
 private struct DashboardCategoryInlineDetailPanel: View {
