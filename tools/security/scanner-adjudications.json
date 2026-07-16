@@ -3,7 +3,7 @@
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
     "expectedFindings": 33,
-    "coordinatesSha256": "e52841920d541359ee9de4416461b401ca92b8ca6b6bee1e8d04148e6e814f3b",
+    "coordinatesSha256": "952003b379db66727c01bc23e733551fa04555a749820e9f97973c06efdffaa3",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -85,7 +85,7 @@
       }
     ],
     "expectedFindings": 21,
-    "coordinatesSha256": "c3549b501734a9c5bf5e4e8ac19c4f486cf3ed14bbd6ee19239fda788a8eed83",
+    "coordinatesSha256": "a5a2e189e9edc72f0f7324d87a5bd1211a29cc61a45c6faea151ca8c3f6bfd89",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
