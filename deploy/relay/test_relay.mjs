@@ -7,9 +7,45 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { consumeBoundedRateWindow } from "../../tools/klms_bounded_rate_window.mjs";
+import { redactPublicLogText } from "../../tools/klms_public_log_redactor.mjs";
+
+assertBoundedRateWindowContract(consumeBoundedRateWindow);
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
 const serverPath = path.join(projectRoot, "tools", "klms_relay_server.mjs");
+const publicLogRedactionFixture = JSON.parse(await fs.readFile(
+  path.join(projectRoot, "tests", "fixtures", "public_log_redaction_cases.json"),
+  "utf8",
+));
+assert.equal(publicLogRedactionFixture.version, 2);
+for (const testCase of publicLogRedactionFixture.cases) {
+  const output = redactPublicLogText(testCase.input);
+  assert.equal(output, testCase.expected, testCase.id);
+  assert.equal(redactPublicLogText(output), output, `${testCase.id} must be idempotent`);
+}
+assert.equal(
+  redactPublicLogText("가".repeat(10), { maximumUTF8Bytes: 10 }),
+  "...\n가가",
+  "public logs must be bounded by UTF-8 bytes without splitting a scalar",
+);
+assert.equal(
+  redactPublicLogText(Array.from({ length: 45 }, (_, index) => `line-${String(index).padStart(2, "0")}`).join("\n"))
+    .split("\n").length,
+  40,
+  "public logs must retain at most the newest 40 lines",
+);
+const deeplyNestedPublicLog = `${"[".repeat(2_000)}{"token":"deep-secret"}${"]".repeat(2_000)}`;
+assert.match(redactPublicLogText(deeplyNestedPublicLog), /\[credential\]/);
+assert.doesNotMatch(redactPublicLogText(deeplyNestedPublicLog), /deep-secret/);
+const publicLogRedactionCases = publicLogRedactionFixture.cases.filter((testCase) => [
+  "nested-json-credential",
+  "bare-credential-assignment",
+  "quoted-posix-path",
+  "json-windows-backslash-path",
+  "quoted-url",
+  "complete-pem-block",
+].includes(testCase.id));
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "klms-relay-test-"));
 const dbPath = path.join(root, "relay.sqlite");
 const fileDir = path.join(root, "files");
@@ -19,6 +55,7 @@ const port = 20_000 + Math.floor(Math.random() * 20_000);
 const baseURL = `http://127.0.0.1:${port}`;
 const clientToken = "client-test-token-with-enough-entropy";
 const workerToken = "worker-test-token-with-enough-entropy";
+const MAX_ITEM_ACTION_TEST_HISTORY = 205;
 const child = spawn(process.execPath, [serverPath], {
   cwd: projectRoot,
   env: {
@@ -33,6 +70,7 @@ const child = spawn(process.execPath, [serverPath], {
     KLMS_RELAY_TEST_FILE_DELETE_DELAY_MS: "300",
     KLMS_RELAY_TEST_FILE_READ_DELAY_MS: "200",
     KLMS_RELAY_TEST_TRACK_FILE_OBJECT_READS: "1",
+    KLMS_RELAY_REQUESTS_PER_MINUTE: "6000",
     KLMS_FILE_RELAY_DOWNLOADS_PER_LINK: "1",
     KLMS_FILE_RELAY_DAILY_DOWNLOADS: "2",
   },
@@ -201,10 +239,11 @@ try {
           startedAt: "2026-07-14T00:00:00.000Z",
           finishedAt: "2026-07-14T00:00:01.000Z",
           updatedAt: "2026-07-14T00:00:01.000Z",
+          duration: "{\"worker_token\":\"synthetic-duration-secret\",\"safe\":\"1초\"}",
           exitCode: 7,
           wasCancelled: false,
           needsAttention: false,
-          outputTail: "Authorization: Bearer synthetic-bearer-secret\nworker_token=synthetic-token-secret\n/private/tmp/relay secret/file\n/Volumes/External/User Data/file.pdf\n/home/student/private.txt\nC:\\Users\\student\\AppData\\Local\\secret.txt\nhttps://relay.example/v1/status?token=query-secret\nsafe failure summary",
+          outputTail: `${publicLogRedactionCases.map((item) => item.input).join("\n")}\nsafe failure summary`,
         }],
       },
     });
@@ -216,10 +255,12 @@ try {
     assert.equal(syncResponse.runLogs[0].commandTitle, "전체 동기화");
     assert.equal(syncResponse.runLogs[0].status, "실패 7");
     assert.equal(syncResponse.runLogs[0].needsAttention, true);
+    assert.doesNotMatch(syncResponse.runLogs[0].duration, /synthetic-duration-secret/);
+    assert.match(syncResponse.runLogs[0].duration, /\[credential\]/);
     assert.match(syncResponse.runLogs[0].outputTail, /\[credential\]/);
     assert.match(syncResponse.runLogs[0].outputTail, /\[local-path\]/);
     assert.match(syncResponse.runLogs[0].outputTail, /\[URL\]/);
-    assert.doesNotMatch(syncResponse.runLogs[0].outputTail, /synthetic-bearer-secret|synthetic-token-secret|query-secret/);
+    assert.doesNotMatch(syncResponse.runLogs[0].outputTail, /synthetic-json-secret|another-secret|query-secret/);
     assert.doesNotMatch(syncResponse.runLogs[0].outputTail, /\/private\/tmp|\/Volumes|\/home|C:\\Users/i);
     assert.match(syncResponse.runLogs[0].outputTail, /safe failure summary/);
     realtime.close();
@@ -240,6 +281,7 @@ try {
       body,
     });
     assert.equal(created.id, idempotentID);
+    assert.deepEqual(await jsonRequest(`/v1/item-actions/${created.id}`), created);
     const revisionAfterCreate = (await jsonRequest("/v1/status")).revision;
     const replayed = await jsonRequest("/v1/item-actions", { method: "POST", body });
     assert.equal(replayed.id, created.id);
@@ -1078,17 +1120,20 @@ try {
   {
     const rateLimitPort = await availablePort();
     const rateLimitBaseURL = `http://127.0.0.1:${rateLimitPort}`;
+    const rateLimitDBPath = path.join(root, "rate-limit.sqlite");
     const rateLimitChild = spawn(process.execPath, [serverPath], {
       cwd: projectRoot,
       env: {
         ...process.env,
         KLMS_RELAY_HOST: "127.0.0.1",
         KLMS_RELAY_PORT: String(rateLimitPort),
-        KLMS_RELAY_DB: path.join(root, "rate-limit.sqlite"),
+        KLMS_RELAY_DB: rateLimitDBPath,
         KLMS_RELAY_FILE_DIR: path.join(root, "rate-limit-files"),
         KLMS_RELAY_CLIENT_TOKEN: clientToken,
         KLMS_RELAY_WORKER_TOKEN: workerToken,
         KLMS_RELAY_REQUESTS_PER_MINUTE: "3",
+        KLMS_RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE: "3",
+        KLMS_RELAY_TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS: "1",
         NODE_ENV: "test",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -1133,12 +1178,21 @@ try {
       assert.equal((await fetch(fakeTicketURL)).status, 403);
       assert.equal((await fetch(fakeTicketURL)).status, 403);
       assert.equal((await fetch(fakeTicketURL)).status, 403);
-      assert.equal((await fetch(fakeTicketURL)).status, 429);
+      const lookupDB = new DatabaseSync(rateLimitDBPath, { readOnly: true });
+      const lookupCount = () => Number(
+        lookupDB.prepare("SELECT value FROM meta WHERE key = 'testPublicDownloadLookupCount'").get()?.value || 0,
+      );
+      assert.equal(lookupCount(), 3);
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        assert.equal((await fetch(fakeTicketURL)).status, 429);
+      }
+      assert.equal(lookupCount(), 3, "rate-limited fake tickets must not perform SQLite lookups");
       assert.equal(
         (await fetch(uploaded.downloadURL)).status,
-        200,
-        "well-formed fake tickets must not consume the real link rate-limit bucket",
+        429,
+        "the source ingress budget must protect valid links from an active fake-ticket flood",
       );
+      lookupDB.close();
 
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers })).status, 200);
       assert.equal((await fetch(`${rateLimitBaseURL}/v1/status`, { headers })).status, 200);
@@ -1151,6 +1205,63 @@ try {
         await onceExit(rateLimitChild);
       }
     }
+  }
+
+  {
+    const protectedPending = await jsonRequest("/v1/item-actions", {
+      method: "POST",
+      expectedStatus: 201,
+      body: {
+        action: "calendarVerify",
+        itemID: "trim-protected-pending",
+        itemKind: "calendar",
+        itemTitle: "trim protected pending",
+      },
+    });
+    assert.equal(protectedPending.status, "pending");
+    for (let index = 0; index < MAX_ITEM_ACTION_TEST_HISTORY; index += 1) {
+      await jsonRequest("/v1/item-actions", {
+        method: "POST",
+        expectedStatus: 201,
+        body: {
+          action: "noticeRead",
+          itemID: `trim-terminal-${index}`,
+          itemKind: "notice",
+          itemTitle: `trim terminal ${index}`,
+        },
+      });
+    }
+    assert.equal((await jsonRequest(`/v1/item-actions/${protectedPending.id}`)).status, "pending");
+    const pendingAfterTrim = await jsonRequest("/v1/item-actions/pending", { role: "worker" });
+    assert.equal(pendingAfterTrim.actions.some((item) => item.id === protectedPending.id), true);
+    const itemActionDB = new DatabaseSync(dbPath, { readOnly: true });
+    assert.equal(itemActionDB.prepare("SELECT COUNT(*) AS count FROM item_actions").get().count, 200);
+    itemActionDB.close();
+
+    const activeToCreate = 200 - pendingAfterTrim.actions.length;
+    for (let index = 0; index < activeToCreate; index += 1) {
+      const response = await request("/v1/item-actions", {
+        method: "POST",
+        body: {
+          action: "calendarVerify",
+          itemID: `active-cap-${index}`,
+          itemKind: "calendar",
+          itemTitle: `active cap ${index}`,
+        },
+      });
+      assert.equal(response.status, 201);
+    }
+    const rejected = await request("/v1/item-actions", {
+      method: "POST",
+      body: {
+        action: "calendarVerify",
+        itemID: "active-cap-overflow",
+        itemKind: "calendar",
+        itemTitle: "active cap overflow",
+      },
+    });
+    assert.equal(rejected.status, 409);
+    assert.equal((await jsonRequest(`/v1/item-actions/${protectedPending.id}`)).status, "pending");
   }
 
   {
@@ -1180,6 +1291,21 @@ try {
   await Promise.race([onceExit(child), new Promise((resolve) => setTimeout(resolve, 1_000))]);
   if (child.exitCode == null) child.kill("SIGKILL");
   await fs.rm(root, { recursive: true, force: true });
+}
+
+function assertBoundedRateWindowContract(consume) {
+  const windows = new Map();
+  const now = 1_000;
+  for (const key of ["A", "B", "C"]) {
+    assert.equal(consume(windows, key, 1, 3, now, 60_000), true);
+  }
+  assert.equal(windows.size, 3);
+  assert.equal(consume(windows, "D", 1, 3, now, 60_000), false);
+  assert.deepEqual([...windows.keys()], ["A", "B", "C"]);
+  assert.equal(windows.size, 3);
+  assert.equal(consume(windows, "D", 1, 3, now + 60_001, 60_000), true);
+  assert.deepEqual([...windows.keys()], ["D"]);
+  assert.ok(windows.size <= 3);
 }
 
 async function request(route, { method = "GET", role = "client", body, rawBody, headers = {} } = {}) {

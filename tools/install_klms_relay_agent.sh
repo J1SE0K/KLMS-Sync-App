@@ -95,9 +95,23 @@ EOF
 
 install_tool_files() {
   mkdir -p "$INSTALL_TOOLS_DIR"
-  cp -X "$SCRIPT_DIR/klms_relay_server.mjs" "$INSTALL_TOOLS_DIR/klms_relay_server.mjs"
-  cp -X "$SCRIPT_DIR/run_klms_relay_agent.sh" "$INSTALL_TOOLS_DIR/run_klms_relay_agent.sh"
-  chmod +x "$INSTALL_TOOLS_DIR/klms_relay_server.mjs" "$INSTALL_TOOLS_DIR/run_klms_relay_agent.sh"
+  local tool_file
+  for tool_file in \
+    klms_relay_server.mjs \
+    klms_bounded_rate_window.mjs \
+    klms_public_log_redactor.mjs \
+    run_klms_relay_agent.sh; do
+    if [[ ! -f "$SCRIPT_DIR/$tool_file" ]]; then
+      print -u2 -- "Missing relay runtime file: $SCRIPT_DIR/$tool_file"
+      exit 66
+    fi
+    if [[ "$SCRIPT_DIR/$tool_file" != "$INSTALL_TOOLS_DIR/$tool_file" ]]; then
+      cp -X "$SCRIPT_DIR/$tool_file" "$INSTALL_TOOLS_DIR/$tool_file"
+    fi
+  done
+  chmod +x \
+    "$INSTALL_TOOLS_DIR/klms_relay_server.mjs" \
+    "$INSTALL_TOOLS_DIR/run_klms_relay_agent.sh"
 }
 
 write_plist() {

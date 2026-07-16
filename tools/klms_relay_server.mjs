@@ -6,6 +6,8 @@ import fs from "node:fs/promises";
 import { DatabaseSync, backup as backupDatabase } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
+import { consumeBoundedRateWindow } from "./klms_bounded_rate_window.mjs";
+import { redactPublicLogText } from "./klms_public_log_redactor.mjs";
 
 const HOST = process.env.KLMS_RELAY_HOST || "127.0.0.1";
 const PORT = Number.parseInt(process.env.KLMS_RELAY_PORT || "18484", 10);
@@ -19,6 +21,17 @@ const MIN_RELAY_TOKEN_BYTES = 32;
 const MAX_REALTIME_CONNECTIONS = 32;
 const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
 const REQUESTS_PER_MINUTE = boundedInt(process.env.KLMS_RELAY_REQUESTS_PER_MINUTE, 600, 1, 6_000);
+const PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = Math.min(
+  REQUESTS_PER_MINUTE,
+  boundedInt(process.env.KLMS_RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE, 60, 1, 600),
+);
+const PUBLIC_DOWNLOAD_LINKS_PER_MINUTE = Math.min(
+  REQUESTS_PER_MINUTE,
+  boundedInt(process.env.KLMS_RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE, 60, 1, 600),
+);
+const MAX_REQUEST_RATE_WINDOWS = 512;
+const MAX_PUBLIC_DOWNLOAD_INGRESS_WINDOWS = 512;
+const MAX_PUBLIC_DOWNLOAD_LINK_WINDOWS = 128;
 const MAX_COMMANDS = 100;
 const MAX_ITEM_ACTIONS = 200;
 const MAX_SETTING_ACTIONS = 100;
@@ -56,6 +69,8 @@ const TEST_FILE_READ_DELAY_MS = process.env.NODE_ENV === "test"
   : 0;
 const TEST_TRACK_FILE_OBJECT_READS = process.env.NODE_ENV === "test"
   && process.env.KLMS_RELAY_TEST_TRACK_FILE_OBJECT_READS === "1";
+const TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS = process.env.NODE_ENV === "test"
+  && process.env.KLMS_RELAY_TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS === "1";
 const MAX_PUBLIC_TEXT_CHARS = 2_000;
 const MAX_IDENTIFIER_CHARS = 512;
 const COMMAND_KINDS = new Set([
@@ -229,6 +244,8 @@ await recoverInterruptedFileUploads({ recoverDeletionClaims: true });
 let state = loadState();
 const realtimeClients = new Set();
 const requestRateWindows = new Map();
+const publicDownloadIngressRateWindows = new Map();
+const publicDownloadLinkRateWindows = new Map();
 let expiredFileCleanupPromise = null;
 
 const server = http.createServer(async (request, response) => {
@@ -314,11 +331,11 @@ async function route(request, response) {
 
   const fileDownloadMatch = url.pathname.match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
   if (request.method === "GET" && fileDownloadMatch) {
+    if (!consumePublicDownloadIngressRateLimit(request)) {
+      sendRateLimitResponse(response);
+      return;
+    }
     if (!validDownloadTicket(url.searchParams.get("ticket"))) {
-      if (!consumeRequestRateLimit("public-download", `unauthorized:${requestRemoteAddress(request)}`)) {
-        sendRateLimitResponse(response);
-        return;
-      }
       sendFileAccessDownloadPage(response, url, {
         status: 403,
         title: "권한이 없는 링크입니다",
@@ -650,6 +667,19 @@ async function route(request, response) {
       sendJSON(response, 200, replayedAction);
       return;
     }
+    const remainsActive = !isServerDisplayOnlyItemAction(action.action)
+      && !isClientCompletedCalendarAction(action);
+    const activeItemActions = state.itemActions.filter(itemActionIsActive);
+    if (remainsActive && activeItemActions.length >= MAX_ITEM_ACTIONS) {
+      sendJSON(response, 409, { error: "too many active item actions; retry after existing work completes" });
+      return;
+    }
+    if (remainsActive && activeItemActions.some((candidate) => (
+      candidate.itemID === action.itemID && candidate.itemKind === action.itemKind
+    ))) {
+      sendJSON(response, 409, { error: "an active action already exists for this item" });
+      return;
+    }
     const syncPatch = applyItemActionToStoredSyncData(action);
     if (syncPatch.nextStatus) state.status = syncPatch.nextStatus;
     const serverApplied = isServerDisplayOnlyItemAction(action.action) || isClientCompletedCalendarAction(action);
@@ -722,6 +752,21 @@ async function route(request, response) {
   }
 
   const itemActionMatch = url.pathname.match(/^\/v1\/item-actions\/([0-9a-fA-F-]+)$/);
+  if (request.method === "GET" && itemActionMatch) {
+    if (!authorized(request, "client")) {
+      sendJSON(response, 401, { error: "unauthorized" });
+      return;
+    }
+    expireStalePendingItemActions();
+    const actionID = normalizeUUIDText(itemActionMatch[1]);
+    const action = state.itemActions.find((item) => item.id === actionID);
+    if (!action) {
+      sendJSON(response, 404, { error: "item action not found" });
+      return;
+    }
+    sendJSON(response, 200, action);
+    return;
+  }
   if (request.method === "PUT" && itemActionMatch) {
     if (!authorized(request, "worker")) {
       sendJSON(response, 401, { error: "unauthorized" });
@@ -1024,6 +1069,7 @@ function requiredRoleFor(method, pathname) {
   if (method === "POST" && pathname === "/v1/item-actions") return "client";
   if (method === "GET" && pathname === "/v1/item-actions/pending") return "worker";
   if (method === "GET" && pathname === "/v1/item-actions/recent") return "client";
+  if (method === "GET" && /^\/v1\/item-actions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pathname)) return "client";
   if (method === "PUT" && /^\/v1\/item-actions\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(pathname)) return "worker";
   if (method === "POST" && pathname === "/v1/setting-actions") return "client";
   if (method === "GET" && pathname === "/v1/setting-actions/pending") return "worker";
@@ -1999,9 +2045,35 @@ function upsertCommand(command) {
 function upsertItemAction(action) {
   state.itemActions = state.itemActions.filter((item) => item.id !== action.id);
   state.itemActions.unshift(action);
-  state.itemActions = state.itemActions
-    .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
-    .slice(0, MAX_ITEM_ACTIONS);
+  state.itemActions = boundedItemActions(state.itemActions);
+}
+
+function itemActionIsActive(action) {
+  return action?.status === "pending" || action?.status === "running";
+}
+
+function compareItemActionNewest(lhs, rhs) {
+  const timestampDifference = (Date.parse(rhs.updatedAt) || 0) - (Date.parse(lhs.updatedAt) || 0);
+  if (timestampDifference !== 0) return timestampDifference;
+  return String(rhs.id || "").localeCompare(String(lhs.id || ""));
+}
+
+function boundedItemActions(actions) {
+  const seen = new Set();
+  const unique = actions
+    .slice()
+    .sort(compareItemActionNewest)
+    .filter((action) => {
+      const id = String(action?.id || "").toLowerCase();
+      if (!id || seen.has(id)) return false;
+      action.id = id;
+      seen.add(id);
+      return true;
+    });
+  const active = unique.filter(itemActionIsActive);
+  const terminal = unique.filter((action) => !itemActionIsActive(action));
+  return [...active, ...terminal.slice(0, Math.max(0, MAX_ITEM_ACTIONS - active.length))]
+    .sort(compareItemActionNewest);
 }
 
 function upsertSettingAction(action) {
@@ -2186,23 +2258,30 @@ function rateLimitedAuthorization(request, role, scope) {
 
 function consumeRequestRateLimit(scope, identity) {
   const key = `${scope}:${identity}`;
-  const now = Date.now();
-  const current = requestRateWindows.get(key);
-  if (!current || current.expiresAt <= now) {
-    requestRateWindows.set(key, { count: 1, expiresAt: now + 60_000 });
-    pruneRequestRateWindows(now);
-    return true;
-  }
-  if (current.count >= REQUESTS_PER_MINUTE) return false;
-  current.count += 1;
-  return true;
+  return consumeBoundedRateWindow(
+    requestRateWindows,
+    key,
+    REQUESTS_PER_MINUTE,
+    MAX_REQUEST_RATE_WINDOWS,
+  );
 }
 
-function pruneRequestRateWindows(now) {
-  if (requestRateWindows.size <= 512) return;
-  for (const [key, value] of requestRateWindows) {
-    if (value.expiresAt <= now) requestRateWindows.delete(key);
-  }
+function consumePublicDownloadIngressRateLimit(request) {
+  return consumeBoundedRateWindow(
+    publicDownloadIngressRateWindows,
+    requestRemoteAddress(request),
+    PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE,
+    MAX_PUBLIC_DOWNLOAD_INGRESS_WINDOWS,
+  );
+}
+
+function consumePublicDownloadLinkRateLimit(id) {
+  return consumeBoundedRateWindow(
+    publicDownloadLinkRateWindows,
+    id.toLowerCase(),
+    PUBLIC_DOWNLOAD_LINKS_PER_MINUTE,
+    MAX_PUBLIC_DOWNLOAD_LINK_WINDOWS,
+  );
 }
 
 function handleWebSocketUpgrade(request, socket, head) {
@@ -2639,12 +2718,14 @@ function loadState() {
   const latestCommand = storedLatestCommand && isValidStoredCommand(storedLatestCommand)
     ? normalizeCommand(storedLatestCommand, storedLatestCommand.status || "pending")
     : commands[0] || null;
-  const itemActions = deduplicateByID(db.prepare(`
+  const itemActions = boundedItemActions(db.prepare(`
     SELECT id, idempotency_key, action, item_id, item_kind, item_title, status, created_at, updated_at, message
     FROM item_actions
-    ORDER BY updated_at DESC
+    ORDER BY CASE WHEN status IN ('pending', 'running') THEN 0 ELSE 1 END,
+             updated_at DESC,
+             id DESC
     LIMIT ?
-  `).all(MAX_ITEM_ACTIONS * 2).map(rowToItemAction).filter(Boolean), MAX_ITEM_ACTIONS);
+  `).all(MAX_ITEM_ACTIONS * 2).map(rowToItemAction).filter(Boolean));
   const storedSettingActions = parseJSON(getMeta("settingActions"), []);
   return {
     status: normalizeStatus(parseJSON(getMeta("status"), defaultStatus)),
@@ -2682,6 +2763,7 @@ function deduplicateByID(items, limit) {
 }
 
 function writeStateToDatabase(stateToPersist = state) {
+    stateToPersist.itemActions = boundedItemActions(stateToPersist.itemActions || []);
     setMeta("status", JSON.stringify(normalizeStatus(stateToPersist.status || defaultStatus)));
     setMeta("latestCommand", JSON.stringify(stateToPersist.latestCommand || null));
     setMeta("running", stateToPersist.running ? "true" : "false");
@@ -2712,7 +2794,7 @@ function writeStateToDatabase(stateToPersist = state) {
         id, idempotency_key, action, item_id, item_kind, item_title, status, created_at, updated_at, message
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    for (const action of stateToPersist.itemActions.slice(0, MAX_ITEM_ACTIONS)) {
+    for (const action of stateToPersist.itemActions) {
       insertItemAction.run(
         action.id,
         actionIdempotencyKey(action) || null,
@@ -3554,20 +3636,10 @@ async function downloadFileAccess(request, response, url, id) {
   const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
   const wantsRawPreview = wantsPreview && url.searchParams.has("raw");
   const ticket = url.searchParams.get("ticket") || "";
-  const fileRequest = getFileAccessRequest(id);
-  const ticketMatches = Boolean(
-    fileRequest?.status === "completed"
-    && fileRequest.objectKey
-    && fileRequest.downloadTicket
-    && fileRequest.downloadTicket === ticket
-  );
-  const rateLimitIdentity = ticketMatches
-    ? `ticket:${id.toLowerCase()}`
-    : `unauthorized:${requestRemoteAddress(request)}`;
-  if (!consumeRequestRateLimit("public-download", rateLimitIdentity)) {
-    sendRateLimitResponse(response);
-    return;
+  if (TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS) {
+    setMeta("testPublicDownloadLookupCount", Number(getMeta("testPublicDownloadLookupCount") || 0) + 1);
   }
+  const fileRequest = getFileAccessRequest(id);
   if (!fileRequest || fileRequest.status !== "completed" || !fileRequest.objectKey || !fileRequest.downloadTicket) {
     sendFileAccessDownloadPage(response, url, {
       status: 404,
@@ -3582,6 +3654,10 @@ async function downloadFileAccess(request, response, url, id) {
       title: "권한이 없는 링크입니다",
       message: "링크의 인증 정보가 맞지 않습니다. 앱에서 파일 링크를 다시 요청해 주세요.",
     });
+    return;
+  }
+  if (!consumePublicDownloadLinkRateLimit(id)) {
+    sendRateLimitResponse(response);
     return;
   }
   if (fileRequest.expiresAt && Date.parse(fileRequest.expiresAt) <= Date.now()) {
@@ -5230,48 +5306,11 @@ function sanitizePublicText(value) {
   if (looksPrivateText(text)) {
     return "";
   }
-  return text.replace(/\/Users\/[^\s"'<>]+/g, "[local-path]").slice(0, MAX_PUBLIC_TEXT_CHARS);
+  return sanitizeLogText(text).replace(/\s+/g, " ").slice(0, MAX_PUBLIC_TEXT_CHARS);
 }
 
 function sanitizeLogText(value) {
-  let text = String(value || "").trim();
-  if (!text) {
-    return "";
-  }
-  text = text
-    .replace(/KAIST 인증 번호:\s*\d{1,3}/g, "KAIST 인증 번호: --")
-    .replace(/digits=\d{1,3}/g, "digits=--")
-    .replace(/\b(?:authorization\s*:\s*)?(?:bearer|basic|digest)\s+[^\s"'<>]+/gi, "[credential]")
-    .replace(/\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s;&]+)/gi, "[credential]")
-    .replace(/https?:\/\/[^\s"'<>]+/gi, "[URL]")
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]")
-    .replace(/(^|[\s=(])(?:[A-Z]:\\|\\\\)[^\r\n]*/gim, "$1[local-path]")
-    .replace(/(^|[\s=(])(?:~|\/)[^\r\n]*/gm, "$1[local-path]");
-  const lines = text
-    .split(/\r?\n/)
-    .map((line) => line.trimEnd())
-    .filter((line) => !looksPrivateLogLine(line));
-  const joined = lines.join("\n");
-  if (joined.length <= MAX_SHARED_RUN_LOG_CHARS) {
-    return joined;
-  }
-  return `...\n${joined.slice(-MAX_SHARED_RUN_LOG_CHARS)}`;
-}
-
-function looksPrivateLogLine(text) {
-  if (/\b(?:bearer|basic|digest)\s+/i.test(text)
-      || /\b[a-z0-9_]*(?:token|secret|password|passwd|cookie|session|api[_-]?key)[a-z0-9_]*\s*[:=]/i.test(text)
-      || /(^|[\s=(])(?:~\/|\/|[A-Z]:\\|\\\\)/i.test(text)
-      || /BEGIN [A-Z ]*PRIVATE KEY/i.test(text)) {
-    return true;
-  }
-  if (/(주소|address)/i.test(text)) {
-    return true;
-  }
-  if (/[가-힣A-Za-z0-9_.-]+(로|길)\s*\d{1,4}(\s*-\s*\d{1,4})?/.test(text)) {
-    return true;
-  }
-  return false;
+  return redactPublicLogText(value, { maximumUTF8Bytes: MAX_SHARED_RUN_LOG_CHARS });
 }
 
 function looksPrivateText(text) {

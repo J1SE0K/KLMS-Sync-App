@@ -7,7 +7,10 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-COPY tools/klms_relay_server.mjs /app/tools/klms_relay_server.mjs
+COPY tools/klms_relay_server.mjs \
+     tools/klms_bounded_rate_window.mjs \
+     tools/klms_public_log_redactor.mjs \
+     /app/tools/
 
 RUN useradd --system --uid 10001 --create-home --home-dir /home/klms klms \
   && mkdir -p /data \

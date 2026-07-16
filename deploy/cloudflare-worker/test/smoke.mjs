@@ -1,17 +1,55 @@
 import assert from "node:assert/strict";
-import worker from "../src/worker.mjs";
+import fs from "node:fs/promises";
+import worker, { consumeBoundedRateWindow } from "../src/worker.mjs";
+import { redactPublicLogText } from "../../../tools/klms_public_log_redactor.mjs";
 
 const clientToken = "test-client-token-0123456789abcdef0123456789abcdef";
 const workerToken = "test-worker-token-fedcba9876543210fedcba9876543210";
+const publicLogRedactionFixture = JSON.parse(await fs.readFile(
+  new URL("../../../tests/fixtures/public_log_redaction_cases.json", import.meta.url),
+  "utf8",
+));
+assert.equal(publicLogRedactionFixture.version, 2);
+for (const testCase of publicLogRedactionFixture.cases) {
+  const output = redactPublicLogText(testCase.input);
+  assert.equal(output, testCase.expected, testCase.id);
+  assert.equal(redactPublicLogText(output), output, `${testCase.id} must be idempotent`);
+}
+assert.equal(
+  redactPublicLogText("가".repeat(10), { maximumUTF8Bytes: 10 }),
+  "...\n가가",
+  "public logs must be bounded by UTF-8 bytes without splitting a scalar",
+);
+assert.equal(
+  redactPublicLogText(Array.from({ length: 45 }, (_, index) => `line-${String(index).padStart(2, "0")}`).join("\n"))
+    .split("\n").length,
+  40,
+  "public logs must retain at most the newest 40 lines",
+);
+const deeplyNestedPublicLog = `${"[".repeat(2_000)}{"token":"deep-secret"}${"]".repeat(2_000)}`;
+assert.match(redactPublicLogText(deeplyNestedPublicLog), /\[credential\]/);
+assert.doesNotMatch(redactPublicLogText(deeplyNestedPublicLog), /deep-secret/);
+const publicLogRedactionCases = publicLogRedactionFixture.cases.filter((testCase) => [
+  "nested-json-credential",
+  "bare-credential-assignment",
+  "quoted-posix-path",
+  "json-windows-backslash-path",
+  "quoted-url",
+  "complete-pem-block",
+].includes(testCase.id));
 let env;
 
 async function runSmoke() {
+  assertBoundedRateWindowContract(consumeBoundedRateWindow);
   env = {
     RELAY_CLIENT_TOKEN: clientToken,
     RELAY_WORKER_TOKEN: workerToken,
     RELAY_DB: new FakeD1(),
     RELAY_FILES: new FakeR2(),
     RELAY_TEST_LOCAL_COORDINATOR: "1",
+    RELAY_REQUESTS_PER_MINUTE: "6000",
+    RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE: "600",
+    RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE: "600",
   };
 
   await expectJSON("/healthz", { ok: true, storage: "cloudflare-d1", configured: true }, { auth: false });
@@ -63,7 +101,7 @@ async function runSmoke() {
     const limited = await request("/v1/status", { headers });
     assert.equal(limited.status, 429);
     assert.equal(limited.headers.get("Retry-After"), "60");
-    delete env.RELAY_REQUESTS_PER_MINUTE;
+    env.RELAY_REQUESTS_PER_MINUTE = "6000";
   }
 
   {
@@ -71,7 +109,10 @@ async function runSmoke() {
     const malformedID = await request(`/v1/file-access/not-a-uuid/download?ticket=${"a".repeat(64)}`, { auth: false });
     assert.equal(malformedID.status, 404);
     assert.equal(env.RELAY_DB.prepareCount, prepareCount, "malformed download UUID must not touch D1");
-    const malformedTicket = await request("/v1/file-access/00000000-0000-4000-8000-000000000001/download?ticket=short", { auth: false });
+    const malformedTicket = await request("/v1/file-access/00000000-0000-4000-8000-000000000001/download?ticket=short", {
+      auth: false,
+      headers: { "CF-Connecting-IP": "192.0.2.10" },
+    });
     assert.equal(malformedTicket.status, 401);
     assert.equal(env.RELAY_DB.prepareCount, prepareCount, "malformed download ticket must not touch D1");
     for (const malformedPath of [
@@ -417,12 +458,12 @@ async function runSmoke() {
         startedAt: "2026-05-31T00:00:00Z",
         finishedAt: "2026-05-31T00:00:05Z",
         updatedAt: "2026-05-31T00:00:05Z",
-        duration: "5초",
+        duration: "{\"worker_token\":\"synthetic-duration-secret\",\"safe\":\"5초\"}",
         exitCode: 0,
         dryRun: false,
         wasCancelled: false,
         needsAttention: false,
-        outputTail: "KAIST 인증 번호: 57\n/Users/example/Library/Application Support/KLMSNotesSync/course_files/과목 폴더/자료.pdf\n/private/tmp/relay secret/file\n/Volumes/External/User Data/file.pdf\n/home/student/private.txt\nC:\\Users\\student\\AppData\\Local\\secret.txt\nAuthorization: Bearer synthetic-bearer-secret\nworker_token=synthetic-token-secret\nhttps://klms.kaist.ac.kr/mod/courseboard/article.php?id=123&token=query-secret\n정상 완료",
+        outputTail: `KAIST 인증 번호: 57\n${publicLogRedactionCases.map((item) => item.input).join("\n")}\n정상 완료`,
       },
     ],
   }, { method: "POST", role: "worker" });
@@ -457,6 +498,8 @@ async function runSmoke() {
     assert.equal(payload.runLogs[0].commandTitle, "전체 동기화");
     assert.equal(payload.runLogs[0].status, "성공");
     assert.equal(payload.runLogs[0].needsAttention, false);
+    assert.doesNotMatch(payload.runLogs[0].duration, /synthetic-duration-secret/);
+    assert.match(payload.runLogs[0].duration, /\[credential\]/);
     assert.match(payload.runLogs[0].outputTail, /KAIST 인증 번호: --/);
     assert.match(payload.runLogs[0].outputTail, /\[URL\]/);
     assert.match(payload.runLogs[0].outputTail, /\[credential\]/);
@@ -466,7 +509,7 @@ async function runSmoke() {
     assert.doesNotMatch(payload.runLogs[0].outputTail, /Application Support/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /과목 폴더/);
     assert.doesNotMatch(payload.runLogs[0].outputTail, /\/private\/tmp|\/Volumes|\/home|C:\\Users/i);
-    assert.doesNotMatch(payload.runLogs[0].outputTail, /synthetic-bearer-secret|synthetic-token-secret|query-secret/);
+    assert.doesNotMatch(payload.runLogs[0].outputTail, /synthetic-json-secret|another-secret|query-secret/);
   }
   {
     const payload = await expectJSON("/v1/status");
@@ -650,6 +693,7 @@ async function runSmoke() {
     };
     const created = await expectJSON("/v1/item-actions", body, { method: "POST", status: 201 });
     assert.equal(created.id, idempotentID);
+    assert.deepEqual(await expectJSON(`/v1/item-actions/${created.id}`), created);
     const revisionAfterCreate = (await expectJSON("/v1/status")).revision;
     const replayed = await expectJSON("/v1/item-actions", body, { method: "POST" });
     assert.equal(replayed.id, created.id);
@@ -1228,14 +1272,16 @@ async function runSmoke() {
   {
     const wrongTicketURL = new URL(uploaded.downloadURL);
     wrongTicketURL.searchParams.set("ticket", "wrong-ticket");
-    const wrongTicketResponse = await worker.fetch(new Request(wrongTicketURL.toString()), env);
+    const wrongTicketResponse = await worker.fetch(new Request(wrongTicketURL.toString(), {
+      headers: { "CF-Connecting-IP": "192.0.2.11" },
+    }), env);
     assert.equal(wrongTicketResponse.status, 401);
     const wrongTicketHTML = await wrongTicketResponse.text();
     assert.match(wrongTicketHTML, /권한이 없는 링크입니다/);
     assert.doesNotMatch(wrongTicketHTML, /기말 정리.txt/);
     assert.doesNotMatch(wrongTicketHTML, /data-download-count=/);
 
-    env.RELAY_REQUESTS_PER_MINUTE = "2";
+    env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "2";
     const rateLimitAddress = "198.51.100.77";
     const wellFormedWrongTicketURL = new URL(uploaded.downloadURL);
     wellFormedWrongTicketURL.searchParams.set("ticket", "a".repeat(64));
@@ -1244,16 +1290,63 @@ async function runSmoke() {
     }), env);
     assert.equal((await wrongTicketRequest()).status, 401);
     assert.equal((await wrongTicketRequest()).status, 401);
-    assert.equal((await wrongTicketRequest()).status, 429);
+    const prepareCountAfterAllowedLookups = env.RELAY_DB.prepareCount;
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      assert.equal((await wrongTicketRequest()).status, 429);
+    }
+    assert.equal(
+      env.RELAY_DB.prepareCount,
+      prepareCountAfterAllowedLookups,
+      "rate-limited fake tickets must not perform D1 work",
+    );
     const validTicketResponse = await worker.fetch(new Request(uploaded.downloadURL, {
       headers: { "CF-Connecting-IP": rateLimitAddress },
     }), env);
     assert.equal(
       validTicketResponse.status,
-      200,
-      "well-formed fake tickets must not consume the real link rate-limit bucket",
+      429,
+      "the source ingress budget must protect valid links from an active fake-ticket flood",
     );
-    delete env.RELAY_REQUESTS_PER_MINUTE;
+    env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "600";
+
+    const unknownTicketURL = new URL(uploaded.downloadURL);
+    unknownTicketURL.pathname = "/v1/file-access/00000000-0000-4000-8000-000000000099/download";
+    unknownTicketURL.searchParams.set("ticket", "b".repeat(64));
+    env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "2";
+    const unknownRequest = (forwardedFor) => worker.fetch(new Request(unknownTicketURL, {
+      headers: { "X-Forwarded-For": forwardedFor },
+    }), env);
+    assert.equal((await unknownRequest("203.0.113.1")).status, 404);
+    assert.equal((await unknownRequest("203.0.113.2")).status, 404);
+    const unknownPrepareCount = env.RELAY_DB.prepareCount;
+    assert.equal((await unknownRequest("203.0.113.3")).status, 429);
+    assert.equal(env.RELAY_DB.prepareCount, unknownPrepareCount, "X-Forwarded-For must not rotate ingress identity");
+    env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "600";
+
+    const linkLimited = await createUploadedFile({
+      itemID: "link-rate-limit-file",
+      itemTitle: "link-rate-limit.txt",
+      body: "link limit",
+      contentType: "text/plain",
+    });
+    env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "10";
+    env.RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE = "2";
+    const fakeLinkTicket = new URL(linkLimited.downloadURL);
+    fakeLinkTicket.searchParams.set("ticket", "c".repeat(64));
+    assert.equal((await worker.fetch(new Request(fakeLinkTicket, {
+      headers: { "CF-Connecting-IP": "203.0.113.20" },
+    }), env)).status, 401);
+    for (const [address, expectedStatus] of [
+      ["203.0.113.21", 200],
+      ["203.0.113.22", 200],
+      ["203.0.113.23", 429],
+    ]) {
+      assert.equal((await worker.fetch(new Request(linkLimited.downloadURL, {
+        headers: { "CF-Connecting-IP": address },
+      }), env)).status, expectedStatus);
+    }
+    env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "600";
+    env.RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE = "600";
 
     const pageResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
     assert.equal(pageResponse.status, 200);
@@ -1744,7 +1837,65 @@ async function runSmoke() {
     assert.equal(env.RELAY_DB.fileAccessRequests.has(slowClearFile.id), false);
   }
 
+  {
+    const protectedPending = await expectJSON("/v1/item-actions", {
+      action: "calendarVerify",
+      itemID: "trim-protected-pending",
+      itemKind: "calendar",
+      itemTitle: "trim protected pending",
+    }, { method: "POST", status: 201 });
+    assert.equal(protectedPending.status, "pending");
+    for (let index = 0; index < 205; index += 1) {
+      await expectJSON("/v1/item-actions", {
+        action: "noticeRead",
+        itemID: `trim-terminal-${index}`,
+        itemKind: "notice",
+        itemTitle: `trim terminal ${index}`,
+      }, { method: "POST", status: 201 });
+    }
+    assert.equal((await expectJSON(`/v1/item-actions/${protectedPending.id}`)).status, "pending");
+    const pendingAfterTrim = await expectJSON("/v1/item-actions/pending", undefined, { role: "worker" });
+    assert.equal(pendingAfterTrim.actions.some((item) => item.id === protectedPending.id), true);
+    assert.equal(env.RELAY_DB.itemActions.size, 200);
+
+    const activeToCreate = 200 - pendingAfterTrim.actions.length;
+    for (let index = 0; index < activeToCreate; index += 1) {
+      await expectJSON("/v1/item-actions", {
+        action: "calendarVerify",
+        itemID: `active-cap-${index}`,
+        itemKind: "calendar",
+        itemTitle: `active cap ${index}`,
+      }, { method: "POST", status: 201 });
+    }
+    const rejected = await request("/v1/item-actions", {
+      method: "POST",
+      body: {
+        action: "calendarVerify",
+        itemID: "active-cap-overflow",
+        itemKind: "calendar",
+        itemTitle: "active cap overflow",
+      },
+    });
+    assert.equal(rejected.status, 409);
+    assert.equal((await expectJSON(`/v1/item-actions/${protectedPending.id}`)).status, "pending");
+  }
+
   console.log("cloudflare worker smoke ok");
+}
+
+function assertBoundedRateWindowContract(consume) {
+  const windows = new Map();
+  const now = 1_000;
+  for (const key of ["A", "B", "C"]) {
+    assert.equal(consume(windows, key, 1, 3, now, 60_000), true);
+  }
+  assert.equal(windows.size, 3);
+  assert.equal(consume(windows, "D", 1, 3, now, 60_000), false);
+  assert.deepEqual([...windows.keys()], ["A", "B", "C"]);
+  assert.equal(windows.size, 3);
+  assert.equal(consume(windows, "D", 1, 3, now + 60_001, 60_000), true);
+  assert.deepEqual([...windows.keys()], ["D"]);
+  assert.ok(windows.size <= 3);
 }
 
 async function createUploadedFile({ itemID, itemTitle, body, contentType }) {
@@ -1911,7 +2062,7 @@ class FakeStatement {
       return { results: sortedRows(this.db.commands, this.args[0] || 200) };
     }
     if (this.sql.startsWith("SELECT") && this.sql.includes("FROM item_actions")) {
-      return { results: sortedRows(this.db.itemActions, this.args[0] || 400) };
+      return { results: sortedItemActionRows(this.db.itemActions, this.args[0] || 400) };
     }
     if (this.sql.startsWith("SELECT token") && this.sql.includes("FROM file_download_reservations")) {
       const [staleBefore, limit] = this.args;
@@ -1977,7 +2128,7 @@ class FakeStatement {
       return { success: true, meta: { changes: 0 }, results: sortedRows(this.db.commands, this.args[0] || 200) };
     }
     if (this.sql.startsWith("SELECT") && this.sql.includes("FROM item_actions")) {
-      return { success: true, meta: { changes: 0 }, results: sortedRows(this.db.itemActions, this.args[0] || 400) };
+      return { success: true, meta: { changes: 0 }, results: sortedItemActionRows(this.db.itemActions, this.args[0] || 400) };
     }
     if (this.sql.startsWith("INSERT INTO meta") && this.sql.includes("relay-integrity-guard")) {
       if (this.db.lastChanges !== 1) throw new Error("NOT NULL constraint failed: meta.value");
@@ -2063,7 +2214,9 @@ class FakeStatement {
       return { success: true };
     }
     if (this.sql.startsWith("DELETE FROM item_actions")) {
-      if (this.sql.includes("status NOT IN")) {
+      if (this.sql.includes("id NOT IN")) {
+        trimItemActionRows(this.db.itemActions, this.args[0]);
+      } else if (this.sql.includes("status NOT IN")) {
         deleteTerminalRows(this.db.itemActions);
       } else if (this.args.length === 0) {
         this.db.itemActions.clear();
@@ -2523,6 +2676,31 @@ function trimRows(map, limit) {
     if (!keep.has(id)) {
       map.delete(id);
     }
+  }
+}
+
+function sortedItemActionRows(map, limit) {
+  return Array.from(map.values())
+    .sort((lhs, rhs) => {
+      const lhsActive = ["pending", "running"].includes(lhs.status);
+      const rhsActive = ["pending", "running"].includes(rhs.status);
+      if (lhsActive !== rhsActive) return lhsActive ? -1 : 1;
+      const timestampDifference = Date.parse(rhs.updated_at) - Date.parse(lhs.updated_at);
+      if (timestampDifference !== 0) return timestampDifference;
+      return String(rhs.id).localeCompare(String(lhs.id));
+    })
+    .slice(0, limit);
+}
+
+function trimItemActionRows(map, limit) {
+  const active = sortedItemActionRows(map, map.size).filter((row) => ["pending", "running"].includes(row.status));
+  const terminal = sortedItemActionRows(map, map.size).filter((row) => !["pending", "running"].includes(row.status));
+  const keep = new Set([
+    ...active,
+    ...terminal.slice(0, Math.max(0, limit - active.length)),
+  ].map((row) => row.id));
+  for (const id of map.keys()) {
+    if (!keep.has(id)) map.delete(id);
   }
 }
 
