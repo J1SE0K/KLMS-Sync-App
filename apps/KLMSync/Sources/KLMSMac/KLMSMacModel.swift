@@ -627,6 +627,14 @@ final class KLMSMacModel: ObservableObject {
         clientToken rawClientToken: String,
         workerToken rawWorkerToken: String
     ) -> PersistedServerRelayConnection? {
+        let fragments = UnboundServerRelayCredentialFragments(
+            serverURL: rawURL,
+            clientToken: rawClientToken,
+            workerToken: rawWorkerToken
+        )
+        guard fragments.populationState != .partial else {
+            return nil
+        }
         let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedURL: String
         if trimmedURL.isEmpty {
@@ -1090,6 +1098,16 @@ final class KLMSMacModel: ObservableObject {
         clientToken rawClientToken: String,
         workerToken rawWorkerToken: String
     ) -> Bool {
+        let fragments = UnboundServerRelayCredentialFragments(
+            serverURL: rawURL,
+            clientToken: rawClientToken,
+            workerToken: rawWorkerToken
+        )
+        guard fragments.populationState != .partial else {
+            serverRelayStatusMessage = "서버 URL, 클라이언트 토큰, Mac 전용 토큰 세 항목을 모두 입력하거나 모두 비워 주세요. 기존 연결 정보는 유지했습니다."
+            errorMessage = serverRelayStatusMessage
+            return false
+        }
         guard let nextConnection = Self.normalizedServerRelayConnection(
             serverURL: rawURL,
             clientToken: rawClientToken,

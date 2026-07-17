@@ -714,7 +714,10 @@ struct SettingsView: View {
                         } label: {
                             Label("변경 저장", systemImage: "checkmark.circle")
                         }
-                        .disabled(!serverRelayDraftHasChanges)
+                        .disabled(
+                            !serverRelayDraftHasChanges
+                                || serverRelayDraftPopulationState == .partial
+                        )
                         Button {
                             resetServerRelayConnectionDraft()
                         } label: {
@@ -722,7 +725,9 @@ struct SettingsView: View {
                         }
                         .disabled(!serverRelayDraftHasChanges)
                     }
-                    if serverRelayDraftHasChanges {
+                    if serverRelayDraftPopulationState == .partial {
+                        SettingsHelpText("서버 URL, 클라이언트 토큰, Mac 전용 토큰을 모두 입력해야 안전하게 저장할 수 있습니다.")
+                    } else if serverRelayDraftHasChanges {
                         SettingsHelpText("입력한 값은 아직 적용되지 않았습니다. 세 항목을 확인한 뒤 변경 저장을 눌러 주세요.")
                     }
                 }
@@ -835,6 +840,14 @@ struct SettingsView: View {
         trimmedRelayDraft(serverRelayURLDraft) != model.serverRelayURL
             || trimmedRelayDraft(serverRelayClientTokenDraft) != model.serverRelayClientToken
             || trimmedRelayDraft(serverRelayWorkerTokenDraft) != model.serverRelayWorkerToken
+    }
+
+    private var serverRelayDraftPopulationState: UnboundServerRelayCredentialFragments.PopulationState {
+        UnboundServerRelayCredentialFragments(
+            serverURL: serverRelayURLDraft,
+            clientToken: serverRelayClientTokenDraft,
+            workerToken: serverRelayWorkerTokenDraft
+        ).populationState
     }
 
     private func relayDraftSummary(draft: String, committed: String) -> String {

@@ -112,6 +112,26 @@ final class CredentialPersistenceTests: XCTestCase {
         )
     }
 
+    func testRelayCredentialFragmentsClassifyOnlyEmptyOrCompleteTriplesAsSavable() {
+        for mask in 0 ..< 8 {
+            let fragments = UnboundServerRelayCredentialFragments(
+                serverURL: mask & 0b001 == 0 ? " \n " : "https://relay.example/",
+                clientToken: mask & 0b010 == 0 ? "" : " client-token ",
+                workerToken: mask & 0b100 == 0 ? "\t" : " worker-token "
+            )
+            let expected: UnboundServerRelayCredentialFragments.PopulationState
+            switch mask {
+            case 0:
+                expected = .empty
+            case 0b111:
+                expected = .complete
+            default:
+                expected = .partial
+            }
+            XCTAssertEqual(fragments.populationState, expected, "unexpected state for mask \(mask)")
+        }
+    }
+
     func testVersionedEnvelopeRejectsStaleCredential() throws {
         let encoded = try VersionedCredentialEnvelope(
             generation: 41,

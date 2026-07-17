@@ -93,6 +93,14 @@ public struct ServerRelayCredentialPair: Codable, Equatable, Sendable {
 /// transaction identifier that can prove they were saved as one connection. Any
 /// nonempty fragment therefore requires the user to re-enter the complete tuple.
 public struct UnboundServerRelayCredentialFragments: Equatable, Sendable {
+    /// Whether independently supplied relay fields form no connection, a complete
+    /// connection, or a partial tuple that must never be persisted as verified.
+    public enum PopulationState: Equatable, Sendable {
+        case empty
+        case complete
+        case partial
+    }
+
     public var serverURL: String
     public var clientToken: String
     public var workerToken: String
@@ -103,10 +111,24 @@ public struct UnboundServerRelayCredentialFragments: Equatable, Sendable {
         self.workerToken = workerToken
     }
 
-    public var requiresManualReentry: Bool {
-        [serverURL, clientToken, workerToken].contains {
-            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    public var populationState: PopulationState {
+        let populatedFieldCount = [serverURL, clientToken, workerToken].reduce(into: 0) { count, value in
+            if !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                count += 1
+            }
         }
+        switch populatedFieldCount {
+        case 0:
+            return .empty
+        case 3:
+            return .complete
+        default:
+            return .partial
+        }
+    }
+
+    public var requiresManualReentry: Bool {
+        populationState != .empty
     }
 }
 

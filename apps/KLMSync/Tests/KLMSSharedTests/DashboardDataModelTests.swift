@@ -8093,6 +8093,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: mac,
             description: "Mac relay connection persistence"
         )
+        let normalizeConnection = try sourceBody(
+            after: "private static func normalizedServerRelayConnection(",
+            in: mac,
+            description: "Mac relay connection normalization"
+        )
         let applyConnection = try sourceBody(
             after: "func applyServerRelayConnection(",
             in: mac,
@@ -8126,6 +8131,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil"))
         XCTAssertTrue(persistConnection.contains("decodeServerRelayConnection("))
         XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayCredentials()"))
+        XCTAssertTrue(normalizeConnection.contains("UnboundServerRelayCredentialFragments("))
+        XCTAssertTrue(normalizeConnection.contains("guard fragments.populationState != .partial else"))
         let persisted = try XCTUnwrap(applyConnection.range(of: "guard Self.persistServerRelayConnection(nextConnection)"))
         let reset = try XCTUnwrap(applyConnection.range(of: "resetServerRelaySessionForConnectionChange()"))
         let commitURL = try XCTUnwrap(applyConnection.range(of: "serverRelayURL = nextConnection.serverURL"))
@@ -8138,11 +8145,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settings.contains("text: $serverRelayURLDraft"))
         XCTAssertTrue(settings.contains("text: $serverRelayClientTokenDraft"))
         XCTAssertTrue(settings.contains("text: $serverRelayWorkerTokenDraft"))
+        XCTAssertTrue(settings.contains("serverRelayDraftPopulationState == .partial"))
+        XCTAssertTrue(settings.contains("서버 URL, 클라이언트 토큰, Mac 전용 토큰을 모두 입력해야 안전하게 저장할 수 있습니다."))
         XCTAssertFalse(settings.contains("model.setServerRelayURL"))
         XCTAssertFalse(settings.contains("model.setServerRelayClientToken"))
         XCTAssertFalse(settings.contains("model.setServerRelayWorkerToken"))
         XCTAssertTrue(saveDraft.contains("model.applyServerRelayConnection("))
         XCTAssertTrue(saveDraft.contains("resetServerRelayConnectionDraft()"))
+        XCTAssertTrue(applyConnection.contains("세 항목을 모두 입력하거나 모두 비워 주세요"))
     }
 
     func testMacAuthCodeBannerExposesOneDigitAwareVoiceOverElement() throws {
