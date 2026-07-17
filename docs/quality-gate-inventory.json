@@ -145,7 +145,7 @@
     },
     {
       "id": "relay-cloudflare",
-      "command": "npm run check && npm test && npm run test:integration",
+      "command": "npx --yes node@22.23.1 --check src/worker.mjs && npx --yes node@22.23.1 --test test/setup-script.test.mjs && npx --yes node@22.23.1 test/smoke.mjs && npx --yes node@22.23.1 test/integration.mjs",
       "workingDirectory": "deploy/cloudflare-worker",
       "execution": {
         "workingDirectory": "deploy/cloudflare-worker",
@@ -153,9 +153,10 @@
         "timeoutSeconds": 1800,
         "maxOutputBytes": 67108864,
         "steps": [
-          {"argv": ["npm", "run", "check"]},
-          {"argv": ["npm", "test"]},
-          {"argv": ["npm", "run", "test:integration"]}
+          {"argv": ["npx", "--yes", "node@22.23.1", "--check", "src/worker.mjs"]},
+          {"argv": ["npx", "--yes", "node@22.23.1", "--test", "test/setup-script.test.mjs"]},
+          {"argv": ["npx", "--yes", "node@22.23.1", "test/smoke.mjs"]},
+          {"argv": ["npx", "--yes", "node@22.23.1", "test/integration.mjs"]}
         ]
       }
     },
