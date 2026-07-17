@@ -1960,13 +1960,18 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-client-mac\")", model)
         self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-worker-mac\")", model)
         self.assertIn('serverRelayConnectionAccount = "server-relay-connection-mac"', model)
-        self.assertIn("guard Self.persistServerRelayConnection(nextConnection) else", model)
+        self.assertIn("case let .persisted(legacyCleanupPending)", model)
         self.assertIn("serverRelayURL = nextConnection.serverURL", model)
         self.assertIn("serverRelayClientToken = nextConnection.clientToken", model)
         self.assertIn("serverRelayWorkerToken = nextConnection.workerToken", model)
+        self.assertIn("serverRelayCredentialCleanupPending = legacyCleanupPending", model)
         self.assertIn("decodeServerRelayConnection(", model)
         self.assertIn("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)", model)
         self.assertIn("removeLegacyServerRelayCredentials()", model)
+        self.assertLess(
+            model.index("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"),
+            model.index("let legacyCleanupCompleted = removeLegacyServerRelayCredentials()"),
+        )
         self.assertIn("func delete(account: String, service: String) -> Bool", shared)
         self.assertIn("status == errSecSuccess || status == errSecItemNotFound", shared)
         self.assertIn("private static func deleteAllServerRelayCredentials() -> Bool", model)
@@ -1984,6 +1989,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             ios_app,
         )
         self.assertIn("persistServerRelayConnectionEnvelope", ios_app)
+        self.assertIn("removeLegacyServerRelayConnectionStorage() -> Bool", ios_app)
+        self.assertIn("LegacyCredentialCleanupPolicy.perform(", ios_app)
+        self.assertIn(
+            "LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)",
+            ios_app,
+        )
         self.assertIn("UIPasteboard.general.string = \"\"", ios_app)
 
     def test_ios_companion_has_tabbed_remote_control_and_cancel(self) -> None:

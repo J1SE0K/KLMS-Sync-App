@@ -8031,7 +8031,7 @@ final class DashboardDataModelTests: XCTestCase {
             description: "iOS server connection migration"
         )
         let removeLegacy = try sourceBody(
-            after: "nonisolated private static func removeLegacyServerRelayConnectionStorage()",
+            after: "nonisolated private static func removeLegacyServerRelayConnectionStorage() -> Bool",
             in: companionModel,
             description: "iOS legacy relay connection cleanup"
         )
@@ -8055,12 +8055,26 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.load("))
         let save = try XCTUnwrap(persistConnection.range(of: "LocalRemoteTokenStore.save("))
         let readBack = try XCTUnwrap(persistConnection.range(of: "LocalRemoteTokenStore.load("))
-        let cleanup = try XCTUnwrap(persistConnection.range(of: "removeLegacyServerRelayConnectionStorage()"))
+        let clearCleanup = try XCTUnwrap(
+            persistConnection.range(of: "guard removeLegacyServerRelayConnectionStorage() else")
+        )
+        let savedCleanup = try XCTUnwrap(
+            persistConnection.range(
+                of: "_ = removeLegacyServerRelayConnectionStorage()",
+                options: .backwards
+            )
+        )
+        XCTAssertTrue(persistConnection.contains("let clearsConnection ="))
+        XCTAssertLessThan(clearCleanup.lowerBound, save.lowerBound)
         XCTAssertLessThan(save.lowerBound, readBack.lowerBound)
-        XCTAssertLessThan(readBack.lowerBound, cleanup.lowerBound)
+        XCTAssertLessThan(readBack.lowerBound, savedCleanup.lowerBound)
         XCTAssertTrue(persistConnection.contains("storedEnvelope == envelope"))
         XCTAssertTrue(persistConnection.contains("storeServerTokenPersistenceGeneration(envelope.generation)"))
+        XCTAssertTrue(removeLegacy.contains("LegacyCredentialCleanupPolicy.perform("))
         XCTAssertTrue(removeLegacy.contains("LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)"))
+        let verifiedDelete = try XCTUnwrap(removeLegacy.range(of: "LocalRemoteTokenStore.delete("))
+        let clearURL = try XCTUnwrap(removeLegacy.range(of: "UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)"))
+        XCTAssertLessThan(verifiedDelete.lowerBound, clearURL.lowerBound)
         XCTAssertTrue(removeLegacy.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)"))
         XCTAssertTrue(removeLegacy.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertFalse(persistConnection.contains("UserDefaults.standard.set"))
@@ -8089,7 +8103,7 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac relay credential migration"
         )
         let persistConnection = try sourceBody(
-            after: "private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> Bool",
+            after: "private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> ServerRelayConnectionPersistenceResult",
             in: mac,
             description: "Mac relay connection persistence"
         )
@@ -8143,28 +8157,38 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(initializer.contains("UnboundServerRelayCredentialFragments("))
         XCTAssertTrue(initializer.contains("legacyRequiresManualReentry"))
         XCTAssertTrue(initializer.contains("serverRelayCredentialRecoveryRequired = credentialPersistenceFailed"))
+        XCTAssertTrue(initializer.contains("serverRelayCredentialCleanupPending = !Self.removeLegacyServerRelayCredentials()"))
         XCTAssertFalse(initializer.contains("migrationConnection"))
         XCTAssertFalse(initializer.contains("migrationConnection.map(Self.persistServerRelayConnection)"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"))
         XCTAssertTrue(persistConnection.contains("deleteAllServerRelayCredentials()"))
-        XCTAssertTrue(persistConnection.contains("deleteLegacyServerRelayKeychainCredentials()"))
         XCTAssertTrue(persistConnection.contains("decodeServerRelayConnection("))
-        XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayDefaults()"))
+        XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayCredentials()"))
+        let save = try XCTUnwrap(persistConnection.range(of: "LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"))
+        let readBack = try XCTUnwrap(persistConnection.range(of: "decodeServerRelayConnection("))
+        let cleanup = try XCTUnwrap(persistConnection.range(of: "removeLegacyServerRelayCredentials()"))
+        XCTAssertLessThan(save.lowerBound, readBack.lowerBound)
+        XCTAssertLessThan(readBack.lowerBound, cleanup.lowerBound)
+        XCTAssertTrue(persistConnection.contains("return .persisted(legacyCleanupPending: !legacyCleanupCompleted)"))
         XCTAssertFalse(persistConnection.contains("LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil"))
         XCTAssertTrue(normalizeConnection.contains("UnboundServerRelayCredentialFragments("))
         XCTAssertTrue(normalizeConnection.contains("guard fragments.populationState != .partial else"))
         XCTAssertTrue(applyConnection.contains("guard fragments.populationState == .complete else"))
         XCTAssertTrue(canClearConnection.contains("serverRelayCredentialRecoveryRequired"))
+        XCTAssertTrue(canClearConnection.contains("serverRelayCredentialCleanupPending"))
         XCTAssertTrue(canClearConnection.contains("serverRelayURL"))
-        let persisted = try XCTUnwrap(applyConnection.range(of: "guard Self.persistServerRelayConnection(nextConnection)"))
+        let persisted = try XCTUnwrap(applyConnection.range(of: "Self.persistServerRelayConnection(nextConnection)"))
+        XCTAssertTrue(applyConnection.contains("case let .persisted(legacyCleanupPending)"))
         let reset = try XCTUnwrap(applyConnection.range(of: "resetServerRelaySessionForConnectionChange()"))
         let commitURL = try XCTUnwrap(applyConnection.range(of: "serverRelayURL = nextConnection.serverURL"))
         let resolvedRecovery = try XCTUnwrap(applyConnection.range(of: "serverRelayCredentialRecoveryRequired = false"))
+        let cleanupPending = try XCTUnwrap(applyConnection.range(of: "serverRelayCredentialCleanupPending = legacyCleanupPending"))
         XCTAssertLessThan(persisted.lowerBound, reset.lowerBound)
         XCTAssertLessThan(reset.lowerBound, commitURL.lowerBound)
         XCTAssertLessThan(persisted.lowerBound, resolvedRecovery.lowerBound)
+        XCTAssertLessThan(persisted.lowerBound, cleanupPending.lowerBound)
         XCTAssertFalse(pasteConnection.contains("applyServerRelayConnection("))
         XCTAssertFalse(pasteConnection.contains("resetServerRelaySessionForConnectionChange()"))
         XCTAssertTrue(pasteConnection.contains("return KLMSMacServerRelayConnectionDraft("))
@@ -8189,6 +8213,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(applyConnection.contains("연결 정보 삭제를 사용해 주세요"))
         XCTAssertTrue(clearConnection.contains("Self.persistServerRelayConnection(Self.emptyServerRelayConnection)"))
         XCTAssertTrue(clearConnection.contains("serverRelayCredentialRecoveryRequired = false"))
+        XCTAssertTrue(clearConnection.contains("serverRelayCredentialCleanupPending = false"))
         XCTAssertTrue(clearConnection.contains("serverRelayEnabled = false"))
         XCTAssertTrue(clearConnection.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
         let deleted = try XCTUnwrap(clearConnection.range(of: "Self.persistServerRelayConnection(Self.emptyServerRelayConnection)"))

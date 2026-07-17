@@ -1036,6 +1036,7 @@ public enum LocalRemoteTokenStore {
 
     static func load(account: String, backend: LocalRemoteTokenKeychainBackend) -> String? {
         if let token = normalizedToken(backend.load(account: account, service: service)) {
+            _ = deleteLegacyServices(account: account, backend: backend)
             return token
         }
         for legacyService in legacyServices {
@@ -1045,10 +1046,24 @@ public enum LocalRemoteTokenStore {
             guard save(token, account: account, service: service, backend: backend) else {
                 return token
             }
-            _ = backend.delete(account: account, service: legacyService)
+            _ = deleteLegacyServices(account: account, backend: backend)
             return token
         }
         return nil
+    }
+
+    @discardableResult
+    private static func deleteLegacyServices(
+        account: String,
+        backend: LocalRemoteTokenKeychainBackend
+    ) -> Bool {
+        var deletedEverywhere = true
+        for legacyService in legacyServices {
+            if !backend.delete(account: account, service: legacyService) {
+                deletedEverywhere = false
+            }
+        }
+        return deletedEverywhere
     }
 
     @discardableResult

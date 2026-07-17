@@ -6214,8 +6214,16 @@ final class CompanionModel: ObservableObject {
         guard let pair = normalizedServerRelayCredentialPair(encoded: envelope.value),
               let canonicalPair = try? pair.encoded(),
               canonicalPair == envelope.value,
-              let encodedEnvelope = try? envelope.encoded(),
-              LocalRemoteTokenStore.save(
+              let encodedEnvelope = try? envelope.encoded() else {
+            return false
+        }
+        let clearsConnection = pair.serverURL.isEmpty && pair.clientToken.isEmpty
+        if clearsConnection {
+            guard removeLegacyServerRelayConnectionStorage() else {
+                return false
+            }
+        }
+        guard LocalRemoteTokenStore.save(
                 encodedEnvelope,
                 account: klmsServerRelayConnectionKeychainAccount
               ),
@@ -6228,7 +6236,9 @@ final class CompanionModel: ObservableObject {
             return false
         }
         storeServerTokenPersistenceGeneration(envelope.generation)
-        removeLegacyServerRelayConnectionStorage()
+        if !clearsConnection {
+            _ = removeLegacyServerRelayConnectionStorage()
+        }
         return true
     }
 
@@ -6247,7 +6257,7 @@ final class CompanionModel: ObservableObject {
                 )
             }
             storeServerTokenPersistenceGeneration(envelope.generation)
-            removeLegacyServerRelayConnectionStorage()
+            _ = removeLegacyServerRelayConnectionStorage()
             return PersistedServerConnection(pair: pair, generation: envelope.generation)
         }
 
@@ -6306,10 +6316,17 @@ final class CompanionModel: ObservableObject {
         )
     }
 
-    nonisolated private static func removeLegacyServerRelayConnectionStorage() {
-        LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+    @discardableResult
+    nonisolated private static func removeLegacyServerRelayConnectionStorage() -> Bool {
+        LegacyCredentialCleanupPolicy.perform(
+            deleteSecureValues: {
+                LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)
+            },
+            clearMetadata: {
+                UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)
+                UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
+            }
+        )
     }
 
     nonisolated private static func loadServerTokenPersistenceGeneration() -> UInt64 {

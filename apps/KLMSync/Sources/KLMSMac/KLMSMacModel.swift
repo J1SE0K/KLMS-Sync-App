@@ -378,6 +378,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var serverRelayClientToken: String
     @Published var serverRelayWorkerToken: String
     @Published private(set) var serverRelayCredentialRecoveryRequired = false
+    @Published private(set) var serverRelayCredentialCleanupPending = false
     @Published var serverRelayStatusMessage: String?
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
@@ -555,6 +556,11 @@ final class KLMSMacModel: ObservableObject {
         var workerToken: String
     }
 
+    private enum ServerRelayConnectionPersistenceResult: Equatable {
+        case failed
+        case persisted(legacyCleanupPending: Bool)
+    }
+
     init(paths: KLMSPaths = KLMSPaths()) {
         serverRelayTerminalOutbox = RemoteCommandTerminalOutboxStore(
             url: paths.serverRelayTerminalCommandOutboxURL
@@ -610,8 +616,11 @@ final class KLMSMacModel: ObservableObject {
                 serverRelayStatusMessage = "저장된 서버 연결 정보를 안전하게 읽지 못해 연결을 껐습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
             }
         } else {
-            Self.removeLegacyServerRelayCredentials()
+            serverRelayCredentialCleanupPending = !Self.removeLegacyServerRelayCredentials()
             applyCachedServerRelaySyncDataForStartup()
+            if serverRelayCredentialCleanupPending {
+                serverRelayStatusMessage = "현재 연결은 안전하게 저장되어 있지만 이전 연결 정보 정리가 대기 중입니다. 다음 실행 또는 저장 때 다시 시도합니다."
+            }
         }
     }
 
@@ -668,11 +677,12 @@ final class KLMSMacModel: ObservableObject {
     }
 
     @discardableResult
-    private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> Bool {
+    private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> ServerRelayConnectionPersistenceResult {
         if connection == emptyServerRelayConnection {
             return deleteAllServerRelayCredentials()
+                ? .persisted(legacyCleanupPending: false)
+                : .failed
         }
-        guard deleteLegacyServerRelayKeychainCredentials() else { return false }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(connection),
@@ -681,10 +691,10 @@ final class KLMSMacModel: ObservableObject {
               decodeServerRelayConnection(
                 LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) ?? ""
               ) == connection else {
-            return false
+            return .failed
         }
-        removeLegacyServerRelayDefaults()
-        return true
+        let legacyCleanupCompleted = removeLegacyServerRelayCredentials()
+        return .persisted(legacyCleanupPending: !legacyCleanupCompleted)
     }
 
     private static func deleteAllServerRelayCredentials() -> Bool {
@@ -715,9 +725,10 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     private static func removeLegacyServerRelayCredentials() -> Bool {
-        guard deleteLegacyServerRelayKeychainCredentials() else { return false }
-        removeLegacyServerRelayDefaults()
-        return true
+        LegacyCredentialCleanupPolicy.perform(
+            deleteSecureValues: { deleteLegacyServerRelayKeychainCredentials() },
+            clearMetadata: { removeLegacyServerRelayDefaults() }
+        )
     }
 
     private static func relayTokenFingerprint(_ token: String) -> String {
@@ -962,6 +973,7 @@ final class KLMSMacModel: ObservableObject {
 
     var serverRelayConnectionCanBeCleared: Bool {
         serverRelayCredentialRecoveryRequired
+            || serverRelayCredentialCleanupPending
             || [serverRelayURL, serverRelayClientToken, serverRelayWorkerToken].contains {
                 !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
@@ -1155,11 +1167,15 @@ final class KLMSMacModel: ObservableObject {
             workerToken: serverRelayWorkerToken
         ) ?? Self.emptyServerRelayConnection
         guard nextConnection != currentConnection else {
-            serverRelayStatusMessage = "서버 연결 정보가 이미 최신입니다."
+            let legacyCleanupCompleted = Self.removeLegacyServerRelayCredentials()
+            serverRelayCredentialCleanupPending = !legacyCleanupCompleted
+            serverRelayStatusMessage = legacyCleanupCompleted
+                ? "서버 연결 정보가 이미 최신입니다."
+                : "현재 연결은 안전하게 저장되어 있지만 이전 연결 정보 정리가 대기 중입니다. 다음 실행 또는 저장 때 다시 시도합니다."
             errorMessage = nil
             return true
         }
-        guard Self.persistServerRelayConnection(nextConnection) else {
+        guard case let .persisted(legacyCleanupPending) = Self.persistServerRelayConnection(nextConnection) else {
             serverRelayStatusMessage = "키체인에 연결 정보를 저장하지 못해 기존 연결을 유지했습니다. 잠시 후 다시 시도해 주세요."
             errorMessage = serverRelayStatusMessage
             return false
@@ -1169,7 +1185,10 @@ final class KLMSMacModel: ObservableObject {
         serverRelayClientToken = nextConnection.clientToken
         serverRelayWorkerToken = nextConnection.workerToken
         serverRelayCredentialRecoveryRequired = false
-        serverRelayStatusMessage = "서버 연결 정보를 안전하게 저장했습니다. 연결 확인을 눌러 주세요."
+        serverRelayCredentialCleanupPending = legacyCleanupPending
+        serverRelayStatusMessage = legacyCleanupPending
+            ? "새 연결은 안전하게 저장됐지만 이전 연결 정보 정리가 대기 중입니다. 다음 실행 또는 저장 때 다시 시도합니다."
+            : "서버 연결 정보를 안전하게 저장했습니다. 연결 확인을 눌러 주세요."
         errorMessage = nil
         if serverRelayEnabled {
             configureServerRelayRealtime()
@@ -1179,7 +1198,7 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     func clearServerRelayConnection() -> Bool {
-        guard Self.persistServerRelayConnection(Self.emptyServerRelayConnection) else {
+        guard case .persisted = Self.persistServerRelayConnection(Self.emptyServerRelayConnection) else {
             serverRelayStatusMessage = "키체인에서 서버 연결 정보를 지우지 못했습니다. 기존 연결 정보는 유지했습니다. 잠시 후 다시 시도해 주세요."
             errorMessage = serverRelayStatusMessage
             return false
@@ -1189,6 +1208,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayClientToken = ""
         serverRelayWorkerToken = ""
         serverRelayCredentialRecoveryRequired = false
+        serverRelayCredentialCleanupPending = false
         serverRelayEnabled = false
         UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
         serverRelayStatusMessage = "서버 연결 정보를 이 Mac에서 모두 삭제했습니다."

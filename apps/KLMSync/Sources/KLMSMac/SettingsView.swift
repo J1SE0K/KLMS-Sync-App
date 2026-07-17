@@ -751,6 +751,8 @@ struct SettingsView: View {
                         SettingsHelpText("세 항목을 모두 지우려면 변경 저장 대신 연결 정보 삭제를 눌러 확인해 주세요.")
                     } else if model.serverRelayCredentialRecoveryRequired, !serverRelayDraftHasChanges {
                         SettingsHelpText("확인할 수 없는 이전 연결 정보가 보존되어 있습니다. 세 항목을 모두 새로 입력하거나 연결 정보 삭제로 폐기해 주세요.")
+                    } else if model.serverRelayCredentialCleanupPending, !serverRelayDraftHasChanges {
+                        SettingsHelpText("현재 연결은 안전하게 저장되어 있지만 이전 연결 정보 정리가 대기 중입니다. 다음 실행 또는 저장 때 다시 시도합니다.")
                     } else if serverRelayDraftHasChanges {
                         SettingsHelpText("입력한 값은 아직 적용되지 않았습니다. 세 항목을 확인한 뒤 변경 저장을 눌러 주세요.")
                     }

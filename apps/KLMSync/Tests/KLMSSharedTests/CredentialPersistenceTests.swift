@@ -3,6 +3,26 @@ import XCTest
 @testable import KLMSShared
 
 final class CredentialPersistenceTests: XCTestCase {
+    func testLegacyCredentialCleanupKeepsMetadataWhenSecureDeletionFails() {
+        var metadataWasCleared = false
+
+        XCTAssertFalse(
+            LegacyCredentialCleanupPolicy.perform(
+                deleteSecureValues: { false },
+                clearMetadata: { metadataWasCleared = true }
+            )
+        )
+        XCTAssertFalse(metadataWasCleared)
+
+        XCTAssertTrue(
+            LegacyCredentialCleanupPolicy.perform(
+                deleteSecureValues: { true },
+                clearMetadata: { metadataWasCleared = true }
+            )
+        )
+        XCTAssertTrue(metadataWasCleared)
+    }
+
     func testRelayConnectionCredentialKeepsURLAndTokenInOneVersionedValue() throws {
         let pair = ServerRelayCredentialPair(
             serverURL: "https://new-relay.example/",

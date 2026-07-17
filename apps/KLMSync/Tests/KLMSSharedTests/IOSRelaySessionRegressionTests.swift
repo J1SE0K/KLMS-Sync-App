@@ -216,7 +216,26 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertFalse(migration.contains("persistServerRelayConnectionEnvelope("))
         XCTAssertFalse(migration.contains("normalizedServerRelayCredentialPair(\n            serverURL: trimmedLegacyURL"))
         XCTAssertFalse(migration.contains("UserDefaults.standard.removeObject"))
-        XCTAssertTrue(source.contains("removeLegacyServerRelayConnectionStorage()"))
+        XCTAssertTrue(source.contains("removeLegacyServerRelayConnectionStorage() -> Bool"))
+        let envelopePersistence = try sourceSlice(
+            source,
+            from: "nonisolated private static func persistServerRelayConnectionEnvelope",
+            to: "nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage"
+        )
+        let clearCleanup = try XCTUnwrap(
+            envelopePersistence.range(of: "guard removeLegacyServerRelayConnectionStorage() else")
+        )
+        let save = try XCTUnwrap(envelopePersistence.range(of: "LocalRemoteTokenStore.save("))
+        let readBack = try XCTUnwrap(envelopePersistence.range(of: "LocalRemoteTokenStore.load("))
+        let savedCleanup = try XCTUnwrap(
+            envelopePersistence.range(
+                of: "_ = removeLegacyServerRelayConnectionStorage()",
+                options: .backwards
+            )
+        )
+        XCTAssertLessThan(clearCleanup.lowerBound, save.lowerBound)
+        XCTAssertLessThan(save.lowerBound, readBack.lowerBound)
+        XCTAssertLessThan(readBack.lowerBound, savedCleanup.lowerBound)
     }
 
     func testServerAssignedIDsReplaceOptimisticOverlayKeys() throws {

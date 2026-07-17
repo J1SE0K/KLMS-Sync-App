@@ -694,6 +694,35 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertFalse(backend.deletedKeys.contains(legacyKey))
     }
 
+    func testLocalRemoteTokenStoreRetriesLegacyCleanupAfterVerifiedMigration() throws {
+        let account = "server-relay-ios"
+        let currentService = LocalRemoteTokenStore.serviceForTesting
+        let legacyService = try XCTUnwrap(LocalRemoteTokenStore.legacyServicesForTesting.first)
+        let legacyKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: legacyService
+        )
+        let currentKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: currentService
+        )
+        let backend = FakeLocalRemoteTokenKeychainBackend(
+            storage: [legacyKey: "legacy-token"],
+            failingDeleteKeys: [legacyKey]
+        )
+
+        XCTAssertEqual(LocalRemoteTokenStore.load(account: account, backend: backend), "legacy-token")
+        XCTAssertEqual(backend.storage[currentKey], "legacy-token")
+        XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
+        XCTAssertEqual(backend.deletedKeys.filter { $0 == legacyKey }.count, 1)
+
+        backend.failingDeleteKeys.remove(legacyKey)
+
+        XCTAssertEqual(LocalRemoteTokenStore.load(account: account, backend: backend), "legacy-token")
+        XCTAssertNil(backend.storage[legacyKey])
+        XCTAssertEqual(backend.deletedKeys.filter { $0 == legacyKey }.count, 2)
+    }
+
     func testLocalRemoteTokenStoreDeleteRequiresEveryServiceDeletion() throws {
         let account = "server-relay-connection-mac"
         let currentKey = FakeLocalRemoteTokenKeychainBackend.Key(

@@ -132,6 +132,20 @@ public struct UnboundServerRelayCredentialFragments: Equatable, Sendable {
     }
 }
 
+public enum LegacyCredentialCleanupPolicy {
+    @discardableResult
+    public static func perform(
+        deleteSecureValues: () -> Bool,
+        clearMetadata: () -> Void
+    ) -> Bool {
+        guard deleteSecureValues() else {
+            return false
+        }
+        clearMetadata()
+        return true
+    }
+}
+
 public enum CredentialPersistenceResult: Sendable, Equatable {
     case persisted(VersionedCredentialEnvelope)
     case superseded
