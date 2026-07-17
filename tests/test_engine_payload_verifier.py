@@ -43,6 +43,28 @@ class EnginePayloadVerifierTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(f"candidate={REVISION}", result.stdout)
 
+    def test_json_summary_matches_release_receipt_cli_contract(self) -> None:
+        result = self.run_verifier(json_output=True)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        summary = json.loads(result.stdout)
+        self.assertEqual(
+            summary,
+            {
+                "schemaVersion": 1,
+                "status": "pass",
+                "candidate": REVISION,
+                "dirty": False,
+                "fileCount": 5,
+                "totalBytes": sum(
+                    path.stat().st_size
+                    for path in self.payload.rglob("*")
+                    if path.is_file() and path.name != "EnginePayloadManifest.json"
+                ),
+                "payloadVersion": REVISION,
+            },
+        )
+
     def test_unlisted_python_file_is_rejected(self) -> None:
         self.write_file("python-packages/attacker.py", b"raise SystemExit\n")
         result = self.run_verifier()
@@ -111,9 +133,8 @@ class EnginePayloadVerifierTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_verifier(self) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [
+    def run_verifier(self, *, json_output: bool = False) -> subprocess.CompletedProcess[str]:
+        command = [
                 sys.executable,
                 str(VERIFIER),
                 str(self.payload),
@@ -123,7 +144,11 @@ class EnginePayloadVerifierTests(unittest.TestCase):
                 str(self.python_allowlist),
                 "--expected-revision",
                 REVISION,
-            ],
+            ]
+        if json_output:
+            command.append("--json")
+        return subprocess.run(
+            command,
             check=False,
             capture_output=True,
             text=True,

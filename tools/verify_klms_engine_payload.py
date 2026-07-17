@@ -60,6 +60,7 @@ def main() -> None:
     parser.add_argument("--python-allowlist", required=True, type=Path)
     parser.add_argument("--expected-revision")
     parser.add_argument("--require-clean", action="store_true")
+    parser.add_argument("--json", action="store_true", dest="json_output")
     args = parser.parse_args()
 
     payload_root = args.payload.resolve()
@@ -165,14 +166,26 @@ def main() -> None:
     if not all(path.is_file() for path in required_vendor):
         fail("missing-python-runtime")
 
-    print(
-        "engine-payload-summary"
-        " status=pass"
-        f" candidate={source_revision}"
-        f" dirty={str(dirty).lower()}"
-        f" files={len(actual_files)}"
-        f" bytes={total_bytes}"
-    )
+    summary = {
+        "schemaVersion": 1,
+        "status": "pass",
+        "candidate": source_revision,
+        "dirty": dirty,
+        "fileCount": len(actual_files),
+        "totalBytes": total_bytes,
+        "payloadVersion": payload_version,
+    }
+    if args.json_output:
+        print(json.dumps(summary, sort_keys=True))
+    else:
+        print(
+            "engine-payload-summary"
+            " status=pass"
+            f" candidate={source_revision}"
+            f" dirty={str(dirty).lower()}"
+            f" files={len(actual_files)}"
+            f" bytes={total_bytes}"
+        )
 
 
 if __name__ == "__main__":

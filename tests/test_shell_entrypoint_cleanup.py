@@ -1970,8 +1970,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("LocalRemoteTokenStore.delete(account: \"server-relay-mac\")", model)
         self.assertIn("UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)", model)
         self.assertIn("pasteboardClearTask", model)
-        self.assertIn("LocalRemoteTokenStore.load(account: \"server-relay-ios\")", ios_app)
-        self.assertIn("persistServerToken", ios_app)
+        self.assertIn('klmsServerRelayConnectionKeychainAccount = "server-relay-ios-connection-v1"', ios_app)
+        self.assertIn(
+            "LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount)",
+            ios_app,
+        )
+        self.assertIn("persistServerRelayConnectionEnvelope", ios_app)
         self.assertIn("UIPasteboard.general.string = \"\"", ios_app)
 
     def test_ios_companion_has_tabbed_remote_control_and_cancel(self) -> None:

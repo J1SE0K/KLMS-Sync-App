@@ -172,12 +172,12 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertTrue(source.contains("sharedRunLogsClearPending = true\n            clearSharedRunLogDisplayState()"))
     }
 
-    func testServerTokenPersistenceSerializesStartedKeychainWrites() throws {
+    func testServerConnectionPersistenceSerializesAtomicKeychainWrites() throws {
         let source = try iosSource()
         let persistence = try sourceSlice(
             source,
-            from: "private func persistConnectionToken",
-            to: "nonisolated private static func persistServerToken"
+            from: "private func persistServerRelayConnection(serverURL:",
+            to: "nonisolated private static func persistServerRelayConnectionEnvelope"
         )
 
         let persistenceSource = try String(
@@ -186,34 +186,40 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         )
 
         XCTAssertTrue(persistenceSource.contains("public final class CredentialPersistenceCoordinator: @unchecked Sendable"))
-        XCTAssertTrue(source.contains("private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator"))
+        XCTAssertTrue(persistenceSource.contains("public struct ServerRelayCredentialPair: Codable, Equatable, Sendable"))
+        XCTAssertTrue(source.contains("private let serverConnectionPersistenceCoordinator: CredentialPersistenceCoordinator"))
         XCTAssertTrue(persistence.contains("let result = await persistenceCoordinator.persist("))
+        XCTAssertTrue(persistence.contains("encodedPair,"))
         XCTAssertTrue(persistenceSource.contains("operationQueue = DispatchQueue("))
         XCTAssertTrue(persistenceSource.contains("operationQueue.async"))
         XCTAssertFalse(source.contains("operationQueue.sync"))
         XCTAssertFalse(persistenceSource.contains("operationQueue.sync"))
         XCTAssertTrue(source.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
-        XCTAssertTrue(source.contains("case let .failed(lastPersisted):"))
-        XCTAssertTrue(source.contains("lastPersisted.generation >= lastPersistedServerTokenGeneration"))
         XCTAssertFalse(persistence.contains("serverToken ="))
         XCTAssertTrue(source.contains("@Published private(set) var serverToken: String"))
-        XCTAssertTrue(source.contains("!(await persistConnectionToken(nextServerToken))"))
+        XCTAssertTrue(source.contains("guard await persistServerRelayConnection("))
+        XCTAssertTrue(source.contains("serverURL: nextServerURL"))
+        XCTAssertTrue(source.contains("serverToken: nextServerToken"))
         XCTAssertFalse(persistence.contains("storeServerTokenPersistenceGeneration(persistenceGeneration)"))
         XCTAssertFalse(persistence.contains("Task.detached"))
 
         let migration = try sourceSlice(
             source,
-            from: "nonisolated private static func loadServerRelayCredentialMigratingUserDefaults",
+            from: "nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage",
             to: "nonisolated private static func loadServerTokenPersistenceGeneration"
         )
         let legacyRead = try XCTUnwrap(migration.range(of: "let legacyDefaultsToken ="))
-        let legacyRemoval = try XCTUnwrap(migration.range(of: "UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
-        let keychainRead = try XCTUnwrap(migration.range(of: "LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
-        XCTAssertLessThan(legacyRead.lowerBound, legacyRemoval.lowerBound)
-        XCTAssertLessThan(legacyRemoval.lowerBound, keychainRead.lowerBound)
-        XCTAssertTrue(migration.contains("token: migrated"))
-        XCTAssertTrue(migration.contains(": \"\","))
+        let migrationWrite = try XCTUnwrap(migration.range(of: "persistServerRelayConnectionEnvelope("))
+        XCTAssertLessThan(legacyRead.lowerBound, migrationWrite.lowerBound)
+        XCTAssertFalse(
+            migration[..<migrationWrite.lowerBound]
+                .contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)")
+        )
+        XCTAssertTrue(migration.contains("LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount)"))
+        XCTAssertTrue(migration.contains("LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount)"))
+        XCTAssertTrue(migration.contains("pair: migrated ? pair : ServerRelayCredentialPair("))
         XCTAssertTrue(migration.contains("migrationFailed: !migrated"))
+        XCTAssertTrue(source.contains("removeLegacyServerRelayConnectionStorage()"))
     }
 
     func testServerAssignedIDsReplaceOptimisticOverlayKeys() throws {

@@ -3,6 +3,71 @@ import XCTest
 @testable import KLMSShared
 
 final class CredentialPersistenceTests: XCTestCase {
+    func testRelayConnectionCredentialKeepsURLAndTokenInOneVersionedValue() throws {
+        let pair = ServerRelayCredentialPair(
+            serverURL: "https://new-relay.example/",
+            clientToken: "new-client-token"
+        )
+
+        let encodedPair = try pair.encoded()
+        let envelope = VersionedCredentialEnvelope(generation: 7, value: encodedPair)
+        let persisted = try envelope.encoded()
+        let restoredEnvelope = try XCTUnwrap(
+            VersionedCredentialEnvelope.acceptedEnvelope(from: persisted, minimumGeneration: 7)
+        )
+
+        XCTAssertEqual(ServerRelayCredentialPair.decode(restoredEnvelope.value), pair)
+        XCTAssertNil(
+            ServerRelayCredentialPair.decode(
+                #"{"version":1,"serverURL":"https://relay.example/","clientToken":""}"#
+            ),
+            "partially populated URL/token pairs must fail closed"
+        )
+    }
+
+    func testRelayConnectionCrashBoundaryReturnsOnlyOldOrNewAtomicPair() async throws {
+        let oldPair = ServerRelayCredentialPair(
+            serverURL: "https://old-relay.example/",
+            clientToken: "old-client-token"
+        )
+        let newPair = ServerRelayCredentialPair(
+            serverURL: "https://new-relay.example/",
+            clientToken: "new-client-token"
+        )
+        let oldValue = try oldPair.encoded()
+        let newValue = try newPair.encoded()
+        let coordinator = CredentialPersistenceCoordinator(
+            initialGeneration: 3,
+            initialValue: oldValue,
+            queueLabel: "relay-connection-crash-boundary-test"
+        )
+
+        let failedGeneration = coordinator.begin()
+        let failed = await coordinator.persist(newValue, generation: failedGeneration) { _ in false }
+        guard case let .failed(lastPersisted) = failed else {
+            return XCTFail("failed persistence must retain the previous atomic pair")
+        }
+        XCTAssertEqual(ServerRelayCredentialPair.decode(lastPersisted.value), oldPair)
+
+        let successfulGeneration = coordinator.begin()
+        let successful = await coordinator.persist(newValue, generation: successfulGeneration) { _ in true }
+        guard case let .persisted(saved) = successful else {
+            return XCTFail("successful persistence must expose the new atomic pair")
+        }
+        XCTAssertEqual(ServerRelayCredentialPair.decode(saved.value), newPair)
+
+        let possiblePairs = [lastPersisted, saved].compactMap {
+            ServerRelayCredentialPair.decode($0.value)
+        }
+        XCTAssertEqual(possiblePairs, [oldPair, newPair])
+        XCTAssertFalse(possiblePairs.contains {
+            $0.serverURL == oldPair.serverURL && $0.clientToken == newPair.clientToken
+        })
+        XCTAssertFalse(possiblePairs.contains {
+            $0.serverURL == newPair.serverURL && $0.clientToken == oldPair.clientToken
+        })
+    }
+
     func testVersionedEnvelopeRejectsStaleCredential() throws {
         let encoded = try VersionedCredentialEnvelope(
             generation: 41,

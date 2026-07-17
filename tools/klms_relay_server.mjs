@@ -271,6 +271,8 @@ const activeFileUploadClaims = new Set();
 const db = new DatabaseSync(DB_PATH);
 initDatabase();
 recoverStaleFileDownloadReservations({ notify: false });
+// This routine snapshots pending claims before filesystem awaits. Keep it
+// before listen() so a live upload cannot finish underneath that snapshot.
 await recoverInterruptedFileUploads({ recoverDeletionClaims: true, sweepUnreferencedObjects: true });
 let state = loadState();
 const realtimeClients = new Set();
@@ -3570,7 +3572,6 @@ async function cleanupExpiredFileAccess() {
       for (const candidate of candidates) releaseFileAccessDeletionClaim(candidate);
     }
   }
-  await recoverInterruptedFileUploads();
 }
 
 function scheduleExpiredFileAccessCleanup() {

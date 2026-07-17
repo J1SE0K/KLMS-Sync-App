@@ -49,6 +49,46 @@ public struct VersionedCredentialEnvelope: Codable, Equatable, Sendable {
     }
 }
 
+public struct ServerRelayCredentialPair: Codable, Equatable, Sendable {
+    public static let schemaVersion = 1
+
+    public var version: Int
+    public var serverURL: String
+    public var clientToken: String
+
+    public init(serverURL: String, clientToken: String) {
+        version = Self.schemaVersion
+        self.serverURL = serverURL
+        self.clientToken = clientToken
+    }
+
+    public func encoded() throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let data = try encoder.encode(self)
+        guard let encoded = String(data: data, encoding: .utf8) else {
+            throw EncodingError.invalidValue(
+                self,
+                EncodingError.Context(
+                    codingPath: [],
+                    debugDescription: "Relay connection credential is not valid UTF-8."
+                )
+            )
+        }
+        return encoded
+    }
+
+    public static func decode(_ encoded: String) -> ServerRelayCredentialPair? {
+        guard let data = encoded.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(ServerRelayCredentialPair.self, from: data),
+              decoded.version == schemaVersion,
+              decoded.serverURL.isEmpty == decoded.clientToken.isEmpty else {
+            return nil
+        }
+        return decoded
+    }
+}
+
 public enum CredentialPersistenceResult: Sendable, Equatable {
     case persisted(VersionedCredentialEnvelope)
     case superseded

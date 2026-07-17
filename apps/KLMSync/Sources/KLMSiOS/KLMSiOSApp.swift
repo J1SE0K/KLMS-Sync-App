@@ -3,6 +3,9 @@ import SwiftUI
 
 private let klmsServerRelayTokenDefaultsKey = "KLMSServerRelayToken"
 private let klmsServerRelayTokenGenerationDefaultsKey = "KLMSServerRelayTokenGeneration"
+private let klmsServerRelayURLDefaultsKey = "KLMSServerRelayURL"
+private let klmsServerRelayConnectionKeychainAccount = "server-relay-ios-connection-v1"
+private let klmsLegacyServerRelayTokenKeychainAccount = "server-relay-ios"
 
 #if canImport(EventKit)
 import EventKit
@@ -245,9 +248,7 @@ final class CompanionModel: ObservableObject {
     private var notifiedCancelCompletionCommandIDs = Set<UUID>()
     private var pasteboardClearTask: Task<Void, Never>?
     private var cancelFollowUpTask: Task<Void, Never>?
-    private let serverTokenPersistenceCoordinator: CredentialPersistenceCoordinator
-    private var lastPersistedServerToken = ""
-    private var lastPersistedServerTokenGeneration: UInt64 = 0
+    private let serverConnectionPersistenceCoordinator: CredentialPersistenceCoordinator
     private var itemActionResolutionTasksByID: [UUID: Task<Void, Never>] = [:]
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
@@ -302,10 +303,14 @@ final class CompanionModel: ObservableObject {
         var optimistic: Bool
     }
 
-    private struct PersistedServerCredential: Sendable {
-        var token: String
+    private struct PersistedServerConnection: Sendable {
+        var pair: ServerRelayCredentialPair
         var generation: UInt64
         var migrationFailed = false
+
+        var encodedPair: String {
+            (try? pair.encoded()) ?? ""
+        }
     }
     private struct PendingItemActionOverlay {
         var action: ServerRelayItemAction
@@ -355,7 +360,6 @@ final class CompanionModel: ObservableObject {
     private static let deprecatedLocalHostKey = "KLMSLocalRemoteHost"
     private static let deprecatedLocalPortKey = "KLMSLocalRemotePort"
     private static let deprecatedLocalTokenKey = "KLMSLocalRemoteToken"
-    private static let serverURLKey = "KLMSServerRelayURL"
     private static let shouldUpdateNoticeNotesKey = "KLMSShouldUpdateNoticeNotes"
     private static let sharedAppearanceModeKey = "KLMS_APPEARANCE_MODE"
     private static let sharedNoticeUpdateNotesKey = "KLMS_UPDATE_NOTICE_NOTES"
@@ -611,19 +615,19 @@ final class CompanionModel: ObservableObject {
         let useCaptureFixture = Self.shouldUseUITestCaptureFixture
         let useRunningFixture = Self.shouldUseUITestRunningFixture
         let useLargeDatasetFixture = Self.shouldUseUITestLargeDatasetFixture
-        let persistedCredential: PersistedServerCredential
+        let persistedConnection: PersistedServerConnection
         if useCaptureFixture || useRunningFixture || useLargeDatasetFixture {
-            persistedCredential = PersistedServerCredential(
-                token: "",
+            persistedConnection = PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
                 generation: Self.loadServerTokenPersistenceGeneration()
             )
         } else {
-            persistedCredential = Self.loadServerRelayCredentialMigratingUserDefaults()
+            persistedConnection = Self.loadServerRelayConnectionMigratingLegacyStorage()
         }
-        serverTokenPersistenceCoordinator = CredentialPersistenceCoordinator(
-            initialGeneration: persistedCredential.generation,
-            initialValue: persistedCredential.token,
-            queueLabel: "com.local.klmssync.server-token-persistence"
+        serverConnectionPersistenceCoordinator = CredentialPersistenceCoordinator(
+            initialGeneration: persistedConnection.generation,
+            initialValue: persistedConnection.encodedPair,
+            queueLabel: "com.local.klmssync.server-connection-persistence"
         )
         usesUITestCaptureFixture = useCaptureFixture
         usesUITestRunningFixture = useRunningFixture
@@ -652,20 +656,8 @@ final class CompanionModel: ObservableObject {
             applyUITestCaptureFixture()
             return
         }
-        let storedServerToken = persistedCredential.token
-        let storedServerURL = UserDefaults.standard.string(forKey: Self.serverURLKey) ?? ""
-        if storedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            serverURL = ""
-        } else if let publicURL = ServerRelayConnectionInfo.normalizedPublicRelayURL(storedServerURL) {
-            serverURL = publicURL.absoluteString
-            UserDefaults.standard.set(publicURL.absoluteString, forKey: Self.serverURLKey)
-        } else {
-            serverURL = ""
-            UserDefaults.standard.removeObject(forKey: Self.serverURLKey)
-        }
-        serverToken = storedServerToken
-        lastPersistedServerToken = storedServerToken
-        lastPersistedServerTokenGeneration = persistedCredential.generation
+        serverURL = persistedConnection.pair.serverURL
+        serverToken = persistedConnection.pair.clientToken
         shouldUpdateNoticeNotes = UserDefaults.standard.object(forKey: Self.shouldUpdateNoticeNotesKey) as? Bool ?? true
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
@@ -677,8 +669,8 @@ final class CompanionModel: ObservableObject {
             connectionMessage = "저장된 서버 요약을 먼저 보여주고, 최신 상태를 다시 불러옵니다."
             connectionSucceeded = nil
         }
-        if persistedCredential.migrationFailed {
-            let message = "기존 클라이언트 토큰을 키체인으로 옮기지 못해 연결하지 않았습니다. 토큰을 다시 입력해 주세요."
+        if persistedConnection.migrationFailed {
+            let message = "기존 서버 URL과 클라이언트 토큰을 안전한 단일 키체인 레코드로 옮기지 못해 연결하지 않았습니다. 연결 정보를 다시 입력해 주세요."
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
@@ -4557,9 +4549,13 @@ final class CompanionModel: ObservableObject {
             errorMessage = message
             return false
         }
-        if nextServerToken != serverToken,
-           !(await persistConnectionToken(nextServerToken)) {
-            return false
+        if nextServerURL != serverURL || nextServerToken != serverToken {
+            guard await persistServerRelayConnection(
+                serverURL: nextServerURL,
+                serverToken: nextServerToken
+            ) else {
+                return false
+            }
         }
         commitServerRelayConnection(serverURL: nextServerURL, serverToken: nextServerToken)
         connectionMessage = "서버 연결 정보를 안전하게 저장했습니다. 최신 요약을 바로 불러옵니다."
@@ -4574,11 +4570,6 @@ final class CompanionModel: ObservableObject {
         resetRemoteSessionForConnectionChange()
         serverURL = nextServerURL
         serverToken = nextServerToken
-        if nextServerURL.isEmpty {
-            UserDefaults.standard.removeObject(forKey: Self.serverURLKey)
-        } else {
-            UserDefaults.standard.set(nextServerURL, forKey: Self.serverURLKey)
-        }
         UserDefaults.standard.removeObject(forKey: Self.cachedServerSyncDataKey)
     }
 
@@ -4667,7 +4658,7 @@ final class CompanionModel: ObservableObject {
     }
 
     func clearServerRelayConnectionInfo() async {
-        guard await persistConnectionToken("") else { return }
+        guard await persistServerRelayConnection(serverURL: "", serverToken: "") else { return }
         commitServerRelayConnection(serverURL: "", serverToken: "")
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
@@ -6176,23 +6167,29 @@ final class CompanionModel: ObservableObject {
         return didChange
     }
 
-    private func persistConnectionToken(_ token: String) async -> Bool {
-        let persistenceCoordinator = serverTokenPersistenceCoordinator
+    private func persistServerRelayConnection(serverURL: String, serverToken: String) async -> Bool {
+        guard let pair = Self.normalizedServerRelayCredentialPair(
+            serverURL: serverURL,
+            clientToken: serverToken
+        ), let encodedPair = try? pair.encoded() else {
+            let message = "서버 URL과 클라이언트 토큰을 안전한 연결 정보로 만들지 못했습니다."
+            connectionMessage = message
+            connectionSucceeded = false
+            errorMessage = message
+            return false
+        }
+        let persistenceCoordinator = serverConnectionPersistenceCoordinator
         let persistenceGeneration = persistenceCoordinator.begin(
             after: Self.loadServerTokenPersistenceGeneration()
         )
         let result = await persistenceCoordinator.persist(
-            token.trimmingCharacters(in: .whitespacesAndNewlines),
+            encodedPair,
             generation: persistenceGeneration
         ) { envelope in
-            Self.persistServerToken(envelope)
+            Self.persistServerRelayConnectionEnvelope(envelope)
         }
         switch result {
-        case let .persisted(envelope):
-            if envelope.generation >= lastPersistedServerTokenGeneration {
-                lastPersistedServerToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                lastPersistedServerTokenGeneration = envelope.generation
-            }
+        case .persisted:
             return true
         case .superseded:
             let message = "더 최신 연결 정보 저장 요청이 있어 이 변경은 적용하지 않았습니다."
@@ -6200,94 +6197,159 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = false
             errorMessage = message
             return false
-        case let .failed(lastPersisted):
-            if lastPersisted.generation >= lastPersistedServerTokenGeneration {
-                lastPersistedServerToken = lastPersisted.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                lastPersistedServerTokenGeneration = lastPersisted.generation
-            }
-            let message = "클라이언트 토큰을 안전하게 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
+        case .failed:
+            let message = "서버 URL과 클라이언트 토큰을 함께 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
-            userAlert = UserAlert(title: "토큰 저장 실패", message: message)
+            userAlert = UserAlert(title: "연결 정보 저장 실패", message: message)
             return false
         }
     }
 
     @discardableResult
-    nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope) -> Bool {
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-        let trimmedToken = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedToken.isEmpty {
-            LocalRemoteTokenStore.delete(account: "server-relay-ios")
-            guard LocalRemoteTokenStore.load(account: "server-relay-ios") == nil else {
-                return false
-            }
-            storeServerTokenPersistenceGeneration(envelope.generation)
-            return true
-        }
-        guard let encoded = try? VersionedCredentialEnvelope(
-            generation: envelope.generation,
-            value: trimmedToken
-        ).encoded() else {
+    nonisolated private static func persistServerRelayConnectionEnvelope(
+        _ envelope: VersionedCredentialEnvelope
+    ) -> Bool {
+        guard let pair = normalizedServerRelayCredentialPair(encoded: envelope.value),
+              let canonicalPair = try? pair.encoded(),
+              canonicalPair == envelope.value,
+              let encodedEnvelope = try? envelope.encoded(),
+              LocalRemoteTokenStore.save(
+                encodedEnvelope,
+                account: klmsServerRelayConnectionKeychainAccount
+              ),
+              let storedEnvelopeText = LocalRemoteTokenStore.load(
+                account: klmsServerRelayConnectionKeychainAccount
+              ),
+              let storedEnvelope = VersionedCredentialEnvelope.decode(storedEnvelopeText),
+              storedEnvelope == envelope,
+              normalizedServerRelayCredentialPair(encoded: storedEnvelope.value) == pair else {
             return false
         }
-        let saved = LocalRemoteTokenStore.save(encoded, account: "server-relay-ios")
-        if saved {
-            storeServerTokenPersistenceGeneration(envelope.generation)
-        }
-        return saved
+        storeServerTokenPersistenceGeneration(envelope.generation)
+        removeLegacyServerRelayConnectionStorage()
+        return true
     }
 
-    nonisolated private static func loadServerRelayCredentialMigratingUserDefaults() -> PersistedServerCredential {
+    nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage() -> PersistedServerConnection {
         let minimumGeneration = loadServerTokenPersistenceGeneration()
+        if let storedConnection = LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount),
+           !storedConnection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let envelope = VersionedCredentialEnvelope.acceptedEnvelope(
+                from: storedConnection,
+                minimumGeneration: minimumGeneration
+            ), let pair = normalizedServerRelayCredentialPair(encoded: envelope.value) else {
+                return PersistedServerConnection(
+                    pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                    generation: minimumGeneration,
+                    migrationFailed: true
+                )
+            }
+            storeServerTokenPersistenceGeneration(envelope.generation)
+            removeLegacyServerRelayConnectionStorage()
+            return PersistedServerConnection(pair: pair, generation: envelope.generation)
+        }
+
+        let legacyServerURL = UserDefaults.standard.string(forKey: klmsServerRelayURLDefaultsKey) ?? ""
         let legacyDefaultsToken = UserDefaults.standard.string(
             forKey: klmsServerRelayTokenDefaultsKey
         ) ?? ""
-        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
-        if let storedCredential = LocalRemoteTokenStore.load(account: "server-relay-ios"),
-           !storedCredential.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let storedLegacyToken = LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount) ?? ""
+        let legacyToken: String
+        let legacyGeneration: UInt64
+        if !storedLegacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             if let envelope = VersionedCredentialEnvelope.acceptedEnvelope(
-                from: storedCredential,
+                from: storedLegacyToken,
                 minimumGeneration: minimumGeneration
             ) {
-                let token = envelope.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                storeServerTokenPersistenceGeneration(envelope.generation)
-                return PersistedServerCredential(token: token, generation: envelope.generation)
-            }
-            if VersionedCredentialEnvelope.decode(storedCredential) != nil {
-                return PersistedServerCredential(token: "", generation: minimumGeneration)
-            }
-            if minimumGeneration == 0 {
-                let migrationGeneration: UInt64 = 1
-                let migrated = persistServerToken(VersionedCredentialEnvelope(
-                    generation: migrationGeneration,
-                    value: storedCredential
-                ))
-                let token = storedCredential.trimmingCharacters(in: .whitespacesAndNewlines)
-                return PersistedServerCredential(
-                    token: token,
-                    generation: migrated ? migrationGeneration : 0
+                legacyToken = envelope.value
+                legacyGeneration = envelope.generation
+            } else if VersionedCredentialEnvelope.decode(storedLegacyToken) != nil || minimumGeneration > 0 {
+                return PersistedServerConnection(
+                    pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                    generation: minimumGeneration,
+                    migrationFailed: true
                 )
+            } else {
+                legacyToken = storedLegacyToken
+                legacyGeneration = 0
             }
-            return PersistedServerCredential(token: "", generation: minimumGeneration)
+        } else {
+            legacyToken = legacyDefaultsToken
+            legacyGeneration = 0
         }
-        guard minimumGeneration == 0,
-              !legacyDefaultsToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return PersistedServerCredential(token: "", generation: minimumGeneration)
+
+        let trimmedLegacyURL = legacyServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedLegacyToken = legacyToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedLegacyURL.isEmpty && trimmedLegacyToken.isEmpty {
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration
+            )
         }
-        let migrationGeneration: UInt64 = 1
-        let migrated = persistServerToken(VersionedCredentialEnvelope(
-            generation: migrationGeneration,
-            value: legacyDefaultsToken
-        ))
-        return PersistedServerCredential(
-            token: migrated
-                ? legacyDefaultsToken.trimmingCharacters(in: .whitespacesAndNewlines)
-                : "",
-            generation: migrated ? migrationGeneration : 0,
+        guard let pair = normalizedServerRelayCredentialPair(
+            serverURL: trimmedLegacyURL,
+            clientToken: trimmedLegacyToken
+        ), let encodedPair = try? pair.encoded() else {
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                migrationFailed: true
+            )
+        }
+        let previousGeneration = max(minimumGeneration, legacyGeneration)
+        guard previousGeneration < UInt64.max else {
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                migrationFailed: true
+            )
+        }
+        let migrationGeneration = previousGeneration + 1
+        let migrated = persistServerRelayConnectionEnvelope(
+            VersionedCredentialEnvelope(generation: migrationGeneration, value: encodedPair)
+        )
+        return PersistedServerConnection(
+            pair: migrated ? pair : ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+            generation: migrated ? migrationGeneration : minimumGeneration,
             migrationFailed: !migrated
         )
+    }
+
+    nonisolated private static func normalizedServerRelayCredentialPair(
+        serverURL rawURL: String,
+        clientToken rawToken: String
+    ) -> ServerRelayCredentialPair? {
+        let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedToken = rawToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedURL.isEmpty && trimmedToken.isEmpty {
+            return ServerRelayCredentialPair(serverURL: "", clientToken: "")
+        }
+        guard !trimmedToken.isEmpty,
+              let publicURL = ServerRelayConnectionInfo.normalizedPublicRelayURL(trimmedURL) else {
+            return nil
+        }
+        return ServerRelayCredentialPair(
+            serverURL: publicURL.absoluteString,
+            clientToken: trimmedToken
+        )
+    }
+
+    nonisolated private static func normalizedServerRelayCredentialPair(
+        encoded: String
+    ) -> ServerRelayCredentialPair? {
+        guard let decoded = ServerRelayCredentialPair.decode(encoded) else { return nil }
+        return normalizedServerRelayCredentialPair(
+            serverURL: decoded.serverURL,
+            clientToken: decoded.clientToken
+        )
+    }
+
+    nonisolated private static func removeLegacyServerRelayConnectionStorage() {
+        LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)
+        UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)
     }
 
     nonisolated private static func loadServerTokenPersistenceGeneration() -> UInt64 {

@@ -479,6 +479,59 @@ try {
     );
   }
 
+  {
+    const runtimeInterruptedRequest = await jsonRequest("/v1/file-access", {
+      method: "POST",
+      expectedStatus: 201,
+      body: {
+        itemID: "file-runtime-interrupted-upload",
+        itemKind: "file",
+        itemTitle: "runtime-interrupted.txt",
+      },
+    });
+    const runtimeInterruptedClaim = crypto.randomUUID();
+    const runtimeInterruptedObjectKey = [
+      "file-access",
+      runtimeInterruptedRequest.id,
+      `${crypto.randomUUID()}-runtime-interrupted.txt`,
+    ].join("/");
+    const runtimeInterruptedPath = path.join(fileDir, ...runtimeInterruptedObjectKey.split("/"));
+    await fs.mkdir(path.dirname(runtimeInterruptedPath), { recursive: true });
+    await fs.writeFile(runtimeInterruptedPath, "must survive until restart", "utf8");
+    const interruptedDB = new DatabaseSync(dbPath);
+    try {
+      interruptedDB.prepare(`
+        UPDATE file_access_requests
+        SET upload_claim = ?, pending_object_key = ?, reserved_upload_bytes = 26
+        WHERE id = ? AND object_key IS NULL
+      `).run(runtimeInterruptedClaim, runtimeInterruptedObjectKey, runtimeInterruptedRequest.id);
+    } finally {
+      interruptedDB.close();
+    }
+
+    assert.equal((await request("/v1/status")).status, 200);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(
+      await fs.readFile(runtimeInterruptedPath, "utf8"),
+      "must survive until restart",
+      "runtime maintenance must not recover uploads from a stale database snapshot"
+    );
+    const verifier = new DatabaseSync(dbPath);
+    try {
+      const preserved = verifier.prepare(`
+        SELECT upload_claim, pending_object_key
+        FROM file_access_requests
+        WHERE id = ?
+      `).get(runtimeInterruptedRequest.id);
+      assert.equal(preserved.upload_claim, runtimeInterruptedClaim);
+      assert.equal(preserved.pending_object_key, runtimeInterruptedObjectKey);
+      verifier.prepare("DELETE FROM file_access_requests WHERE id = ?").run(runtimeInterruptedRequest.id);
+    } finally {
+      verifier.close();
+    }
+    await fs.rm(path.dirname(runtimeInterruptedPath), { recursive: true, force: true });
+  }
+
   const terminalRaceRequest = await jsonRequest("/v1/file-access", {
     method: "POST",
     expectedStatus: 201,

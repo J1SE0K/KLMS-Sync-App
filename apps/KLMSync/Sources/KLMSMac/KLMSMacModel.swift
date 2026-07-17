@@ -572,10 +572,6 @@ final class KLMSMacModel: ObservableObject {
         let legacyClientToken = UserDefaults.standard.string(forKey: Self.serverRelayClientTokenKey)
         let legacyWorkerToken = UserDefaults.standard.string(forKey: Self.serverRelayWorkerTokenKey)
             ?? UserDefaults.standard.string(forKey: Self.deprecatedServerRelayTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
-        UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)
         let clientCandidate = (storedClientToken ?? legacyClientToken)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let workerCandidate = (storedWorkerToken ?? legacyWorkerToken ?? secureLegacyWorkerToken)?

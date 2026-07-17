@@ -7688,9 +7688,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(pasteMethod.contains("guard await applyServerRelayConnection("))
         XCTAssertFalse(pasteMethod.contains("serverURL = nextServerURL"))
         XCTAssertFalse(pasteMethod.contains("serverToken = nextServerToken"))
-        let persistToken = try XCTUnwrap(applyConnection.range(of: "await persistConnectionToken(nextServerToken)"))
+        let persistConnection = try XCTUnwrap(applyConnection.range(of: "await persistServerRelayConnection("))
         let commitConnection = try XCTUnwrap(applyConnection.range(of: "commitServerRelayConnection("))
-        XCTAssertLessThan(persistToken.lowerBound, commitConnection.lowerBound)
+        XCTAssertLessThan(persistConnection.lowerBound, commitConnection.lowerBound)
         XCTAssertFalse(pasteMethod.contains("이제 서버 연결 확인을 눌러 주세요."))
         XCTAssertTrue(refreshMethod.contains("configureServerRelayEventStream()"))
         XCTAssertTrue(refreshMethod.contains("await self?.refreshRecent(includeSyncData: true, showsActivity: true)"))
@@ -7811,7 +7811,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(clearLoadedServerSyncData.contains("cachedSyncDataPersistTask?.cancel()"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettings = []"))
         XCTAssertTrue(clearLoadedServerSyncData.contains("sharedSettingsSignature = nil"))
-        XCTAssertTrue(clearConnection.contains("await persistConnectionToken(\"\")"))
+        XCTAssertTrue(clearConnection.contains("await persistServerRelayConnection(serverURL: \"\", serverToken: \"\")"))
         XCTAssertTrue(clearConnection.contains("commitServerRelayConnection(serverURL: \"\", serverToken: \"\")"))
         XCTAssertTrue(resetRemoteSession.contains("clearLoadedServerSyncData()"))
         XCTAssertTrue(resetRemoteSession.contains("recentCommands = []"))
@@ -7921,7 +7921,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(expansion.contains("renderTask?.cancel()"))
     }
 
-    func testIOSServerTokenPersistenceDoesNotBlockTypingAndAppliesAtomically() throws {
+    func testIOSServerConnectionPersistenceDoesNotBlockTypingAndAppliesAtomically() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -7939,10 +7939,10 @@ final class DashboardDataModelTests: XCTestCase {
             in: companionModel,
             description: "iOS atomic server connection apply"
         )
-        let persistConnectionToken = try sourceBody(
-            after: "private func persistConnectionToken(_ token: String) async -> Bool",
+        let persistConnection = try sourceBody(
+            after: "private func persistServerRelayConnection(serverURL: String, serverToken: String) async -> Bool",
             in: companionModel,
-            description: "iOS server token persistence"
+            description: "iOS server connection persistence"
         )
         let credentialPersistence = try String(
             contentsOf: packageRoot.appendingPathComponent("Sources/KLMSShared/CredentialPersistence.swift"),
@@ -7952,11 +7952,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settingsScreen.contains("@State private var serverTokenDraft = \"\""))
         XCTAssertTrue(settingsScreen.contains("set: { serverTokenDraft = $0 }"))
         XCTAssertTrue(settingsScreen.contains("await model.applyServerRelayConnection("))
-        XCTAssertFalse(companionModel.contains("didSet { Self.persistServerToken(serverToken) }"))
+        XCTAssertFalse(companionModel.contains("didSet { Self.persistServerRelayConnectionEnvelope(serverToken) }"))
         XCTAssertFalse(companionModel.contains("serverTokenPersistTask"))
-        XCTAssertTrue(persistConnectionToken.contains("await persistenceCoordinator.persist("))
-        XCTAssertTrue(persistConnectionToken.contains("Self.persistServerToken(envelope)"))
-        let persistenceIndex = try XCTUnwrap(applyConnection.range(of: "await persistConnectionToken(nextServerToken)")?.lowerBound)
+        XCTAssertTrue(persistConnection.contains("await persistenceCoordinator.persist("))
+        XCTAssertTrue(persistConnection.contains("Self.persistServerRelayConnectionEnvelope(envelope)"))
+        XCTAssertTrue(persistConnection.contains("serverURL: serverURL"))
+        XCTAssertTrue(persistConnection.contains("clientToken: serverToken"))
+        let persistenceIndex = try XCTUnwrap(applyConnection.range(of: "await persistServerRelayConnection(")?.lowerBound)
         let commitIndex = try XCTUnwrap(applyConnection.range(of: "commitServerRelayConnection(serverURL: nextServerURL, serverToken: nextServerToken)")?.lowerBound)
         XCTAssertLessThan(persistenceIndex, commitIndex)
         XCTAssertTrue(credentialPersistence.contains("public final class CredentialPersistenceCoordinator: @unchecked Sendable"))
@@ -7964,7 +7966,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(credentialPersistence.contains("operationQueue.async"))
         XCTAssertFalse(credentialPersistence.contains("operationQueue.sync"))
         XCTAssertFalse(ios.contains("operationQueue.sync"))
-        XCTAssertTrue(ios.contains("nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope)"))
+        XCTAssertTrue(ios.contains("nonisolated private static func persistServerRelayConnectionEnvelope("))
+        XCTAssertTrue(credentialPersistence.contains("public struct ServerRelayCredentialPair: Codable, Equatable, Sendable"))
     }
 
     func testSensitiveClipboardDataExpiresOutsideAppLifetime() throws {
@@ -8004,7 +8007,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macApp.contains("model?.clearSensitivePasteboard()"))
     }
 
-    func testIOSServerTokenUserDefaultsPathIsMigrationOnly() throws {
+    func testIOSServerConnectionUsesOneVerifiedKeychainRecordAndFailClosedMigration() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -8017,43 +8020,51 @@ final class DashboardDataModelTests: XCTestCase {
             description: "CompanionModel"
         )
         let initializer = try sourceBody(after: "init()", in: companionModel, description: "CompanionModel init")
-        let persistToken = try sourceBody(
-            after: "nonisolated private static func persistServerToken(_ envelope: VersionedCredentialEnvelope)",
+        let persistConnection = try sourceBody(
+            after: "nonisolated private static func persistServerRelayConnectionEnvelope(",
             in: companionModel,
-            description: "iOS server token persistence"
+            description: "iOS atomic server connection persistence"
         )
-        let loadMigratingToken = try sourceBody(
-            after: "nonisolated private static func loadServerRelayCredentialMigratingUserDefaults() -> PersistedServerCredential",
+        let loadMigratingConnection = try sourceBody(
+            after: "nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage() -> PersistedServerConnection",
             in: companionModel,
-            description: "iOS server token migration"
+            description: "iOS server connection migration"
+        )
+        let removeLegacy = try sourceBody(
+            after: "nonisolated private static func removeLegacyServerRelayConnectionStorage()",
+            in: companionModel,
+            description: "iOS legacy relay connection cleanup"
         )
 
-        XCTAssertTrue(initializer.contains("Self.loadServerRelayCredentialMigratingUserDefaults()"))
-        XCTAssertTrue(initializer.contains("initialValue: persistedCredential.token"))
+        XCTAssertTrue(initializer.contains("Self.loadServerRelayConnectionMigratingLegacyStorage()"))
+        XCTAssertTrue(initializer.contains("initialValue: persistedConnection.encodedPair"))
+        XCTAssertTrue(initializer.contains("serverURL = persistedConnection.pair.serverURL"))
+        XCTAssertTrue(initializer.contains("serverToken = persistedConnection.pair.clientToken"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
-        XCTAssertFalse(initializer.contains("Self.persistServerToken(storedServerToken)"))
-        XCTAssertTrue(loadMigratingToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\")"))
-        XCTAssertTrue(loadMigratingToken.contains("UserDefaults.standard.string("))
-        XCTAssertTrue(loadMigratingToken.contains("forKey: klmsServerRelayTokenDefaultsKey"))
-        XCTAssertTrue(loadMigratingToken.contains("persistServerToken(VersionedCredentialEnvelope("))
-        XCTAssertGreaterThanOrEqual(
-            loadMigratingToken.components(separatedBy: "UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)").count - 1,
-            1
-        )
-        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.save(encoded, account: \"server-relay-ios\")"))
-        XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
-        XCTAssertTrue(persistToken.contains("if saved"))
-        XCTAssertTrue(persistToken.contains("storeServerTokenPersistenceGeneration(envelope.generation)"))
-        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.delete(account: \"server-relay-ios\")"))
-        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.load(account: \"server-relay-ios\") == nil"))
-        XCTAssertTrue(persistToken.contains("return saved"))
-        XCTAssertTrue(loadMigratingToken.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
-        XCTAssertTrue(loadMigratingToken.contains("minimumGeneration: minimumGeneration"))
-        XCTAssertTrue(loadMigratingToken.contains("generation: migrated ? migrationGeneration : 0"))
-        XCTAssertFalse(persistToken.contains("UserDefaults.standard.set"))
+        XCTAssertTrue(loadMigratingConnection.contains("LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount)"))
+        XCTAssertTrue(loadMigratingConnection.contains("LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount)"))
+        XCTAssertTrue(loadMigratingConnection.contains("UserDefaults.standard.string(forKey: klmsServerRelayURLDefaultsKey)"))
+        XCTAssertTrue(loadMigratingConnection.contains("forKey: klmsServerRelayTokenDefaultsKey"))
+        XCTAssertTrue(loadMigratingConnection.contains("persistServerRelayConnectionEnvelope("))
+        XCTAssertFalse(loadMigratingConnection.contains("UserDefaults.standard.removeObject"))
+        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save("))
+        XCTAssertTrue(persistConnection.contains("account: klmsServerRelayConnectionKeychainAccount"))
+        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.load("))
+        let save = try XCTUnwrap(persistConnection.range(of: "LocalRemoteTokenStore.save("))
+        let readBack = try XCTUnwrap(persistConnection.range(of: "LocalRemoteTokenStore.load("))
+        let cleanup = try XCTUnwrap(persistConnection.range(of: "removeLegacyServerRelayConnectionStorage()"))
+        XCTAssertLessThan(save.lowerBound, readBack.lowerBound)
+        XCTAssertLessThan(readBack.lowerBound, cleanup.lowerBound)
+        XCTAssertTrue(persistConnection.contains("storedEnvelope == envelope"))
+        XCTAssertTrue(persistConnection.contains("storeServerTokenPersistenceGeneration(envelope.generation)"))
+        XCTAssertTrue(removeLegacy.contains("LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)"))
+        XCTAssertTrue(removeLegacy.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)"))
+        XCTAssertTrue(removeLegacy.contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)"))
+        XCTAssertFalse(persistConnection.contains("UserDefaults.standard.set"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(serverToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(trimmedToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(token"))
+        XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(nextServerURL"))
     }
 
     func testMacServerConnectionIsMigratedAndAppliedAtomicallyWithoutPlaintextFallback() throws {
@@ -8101,8 +8112,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(initializer.contains("serverRelayWorkerToken = \"\""))
         XCTAssertTrue(initializer.contains("serverRelayEnabled = false"))
         XCTAssertTrue(initializer.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
-        XCTAssertTrue(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
-        XCTAssertTrue(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
+        XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
+        XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil"))
