@@ -1967,7 +1967,15 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("decodeServerRelayConnection(", model)
         self.assertIn("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)", model)
         self.assertIn("removeLegacyServerRelayCredentials()", model)
-        self.assertIn("LocalRemoteTokenStore.delete(account: \"server-relay-mac\")", model)
+        self.assertIn("func delete(account: String, service: String) -> Bool", shared)
+        self.assertIn("status == errSecSuccess || status == errSecItemNotFound", shared)
+        self.assertIn("private static func deleteAllServerRelayCredentials() -> Bool", model)
+        self.assertIn(
+            '["server-relay-client-mac", "server-relay-worker-mac", "server-relay-mac"]',
+            model,
+        )
+        self.assertIn("if !LocalRemoteTokenStore.delete(account: account)", model)
+        self.assertIn("guard deleteLegacyServerRelayKeychainCredentials(),", model)
         self.assertIn("UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)", model)
         self.assertIn("pasteboardClearTask", model)
         self.assertIn('klmsServerRelayConnectionKeychainAccount = "server-relay-ios-connection-v1"', ios_app)
