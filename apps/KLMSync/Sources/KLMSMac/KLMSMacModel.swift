@@ -16,6 +16,12 @@ struct KLMSPermissionProbeRow: Identifiable, Equatable {
     var isWarning: Bool
 }
 
+struct KLMSMacServerRelayConnectionDraft: Equatable {
+    var serverURL: String
+    var clientToken: String
+    var workerToken: String?
+}
+
 struct KLMSMacDashboardSummaryCache: Equatable {
     var visibleCounts = EngineVisibleCounts()
     var hiddenSummary = EngineHiddenSummary()
@@ -506,6 +512,7 @@ final class KLMSMacModel: ObservableObject {
     private static let serverRelayClientTokenKey = "KLMSServerRelayClientToken"
     private static let serverRelayWorkerTokenKey = "KLMSServerRelayWorkerToken"
     private static let deprecatedServerRelayTokenKey = "KLMSServerRelayToken"
+    private static let serverRelayConnectionAccount = "server-relay-connection-mac"
     private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
     private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
     private static let cachedServerRelaySyncDataKey = "KLMSMacCachedServerRelaySyncData"
@@ -538,6 +545,15 @@ final class KLMSMacModel: ObservableObject {
         var syncData: ServerRelaySyncData
     }
 
+    private struct PersistedServerRelayConnection: Codable, Equatable {
+        static let schemaVersion = 1
+
+        var version: Int
+        var serverURL: String
+        var clientToken: String
+        var workerToken: String
+    }
+
     init(paths: KLMSPaths = KLMSPaths()) {
         serverRelayTerminalOutbox = RemoteCommandTerminalOutboxStore(
             url: paths.serverRelayTerminalCommandOutboxURL
@@ -546,17 +562,10 @@ final class KLMSMacModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteEnabledKey)
         serverRelayEnabled = UserDefaults.standard.bool(forKey: Self.serverRelayEnabledKey)
         let storedRelayURL = UserDefaults.standard.string(forKey: Self.serverRelayURLKey) ?? ""
-        if storedRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            serverRelayURL = ""
-        } else if let publicURL = ServerRelayConnectionInfo.normalizedPublicRelayURL(storedRelayURL) {
-            serverRelayURL = publicURL.absoluteString
-            UserDefaults.standard.set(publicURL.absoluteString, forKey: Self.serverRelayURLKey)
-        } else {
-            serverRelayURL = ""
-            UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)
-        }
         LocalRemoteTokenStore.delete(account: "mac")
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)
+        let persistedConnectionPayload = LocalRemoteTokenStore.load(account: Self.serverRelayConnectionAccount)
+        let persistedConnection = persistedConnectionPayload.flatMap(Self.decodeServerRelayConnection)
         let storedClientToken = LocalRemoteTokenStore.load(account: "server-relay-client-mac")
         let storedWorkerToken = LocalRemoteTokenStore.load(account: "server-relay-worker-mac")
         let secureLegacyWorkerToken = LocalRemoteTokenStore.load(account: "server-relay-mac")
@@ -566,28 +575,30 @@ final class KLMSMacModel: ObservableObject {
         UserDefaults.standard.removeObject(forKey: Self.serverRelayClientTokenKey)
         UserDefaults.standard.removeObject(forKey: Self.serverRelayWorkerTokenKey)
         UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)
+        UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)
         let clientCandidate = (storedClientToken ?? legacyClientToken)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let workerCandidate = (storedWorkerToken ?? legacyWorkerToken ?? secureLegacyWorkerToken)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let clientTokenSaved = storedClientToken != nil || clientCandidate.isEmpty || Self.persistRelayToken(
-            clientCandidate,
-            account: "server-relay-client-mac",
-            defaultsKey: Self.serverRelayClientTokenKey
+        let migrationConnection = Self.normalizedServerRelayConnection(
+            serverURL: storedRelayURL,
+            clientToken: clientCandidate,
+            workerToken: workerCandidate
         )
-        let workerTokenSaved = storedWorkerToken != nil || workerCandidate.isEmpty || Self.persistRelayToken(
-            workerCandidate,
-            account: "server-relay-worker-mac",
-            defaultsKey: Self.serverRelayWorkerTokenKey
-        )
-        serverRelayClientToken = clientTokenSaved ? clientCandidate : ""
-        let workerCanUseSecureLegacy = storedWorkerToken == nil
-            && legacyWorkerToken == nil
-            && secureLegacyWorkerToken != nil
-        serverRelayWorkerToken = workerTokenSaved || workerCanUseSecureLegacy ? workerCandidate : ""
-        let credentialPersistenceFailed =
-            (!clientCandidate.isEmpty && !clientTokenSaved)
-            || (!workerCandidate.isEmpty && !workerTokenSaved && !workerCanUseSecureLegacy)
+        let hasLegacyConnection = !storedRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !clientCandidate.isEmpty
+            || !workerCandidate.isEmpty
+        let migratedConnectionSaved = persistedConnection != nil
+            || !hasLegacyConnection
+            || migrationConnection.map(Self.persistServerRelayConnection) == true
+        let activeConnection = persistedConnection
+            ?? (migratedConnectionSaved ? migrationConnection : nil)
+            ?? Self.emptyServerRelayConnection
+        serverRelayURL = activeConnection.serverURL
+        serverRelayClientToken = activeConnection.clientToken
+        serverRelayWorkerToken = activeConnection.workerToken
+        let credentialPersistenceFailed = (persistedConnectionPayload != nil && persistedConnection == nil && !hasLegacyConnection)
+            || !migratedConnectionSaved
         self.paths = paths
         let startupSnapshot = EngineSnapshotStore(paths: paths).load()
         snapshot = startupSnapshot
@@ -603,24 +614,87 @@ final class KLMSMacModel: ObservableObject {
             UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
             serverRelayStatusMessage = "키체인에 서버 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
         } else {
-            if workerTokenSaved {
-                LocalRemoteTokenStore.delete(account: "server-relay-mac")
-            }
+            Self.removeLegacyServerRelayCredentials()
             applyCachedServerRelaySyncDataForStartup()
         }
     }
 
-    @discardableResult
-    private static func persistRelayToken(_ token: String, account: String, defaultsKey: String) -> Bool {
-        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedToken.isEmpty else {
-            LocalRemoteTokenStore.delete(account: account)
-            UserDefaults.standard.removeObject(forKey: defaultsKey)
-            return LocalRemoteTokenStore.load(account: account) == nil
+    private static var emptyServerRelayConnection: PersistedServerRelayConnection {
+        PersistedServerRelayConnection(
+            version: PersistedServerRelayConnection.schemaVersion,
+            serverURL: "",
+            clientToken: "",
+            workerToken: ""
+        )
+    }
+
+    private static func normalizedServerRelayConnection(
+        serverURL rawURL: String,
+        clientToken rawClientToken: String,
+        workerToken rawWorkerToken: String
+    ) -> PersistedServerRelayConnection? {
+        let trimmedURL = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedURL: String
+        if trimmedURL.isEmpty {
+            normalizedURL = ""
+        } else if let publicURL = ServerRelayConnectionInfo.normalizedPublicRelayURL(trimmedURL) {
+            normalizedURL = publicURL.absoluteString
+        } else {
+            return nil
         }
-        let saved = LocalRemoteTokenStore.save(trimmedToken, account: account)
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
-        return saved
+        return PersistedServerRelayConnection(
+            version: PersistedServerRelayConnection.schemaVersion,
+            serverURL: normalizedURL,
+            clientToken: rawClientToken.trimmingCharacters(in: .whitespacesAndNewlines),
+            workerToken: rawWorkerToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+
+    private static func decodeServerRelayConnection(_ payload: String) -> PersistedServerRelayConnection? {
+        guard let data = payload.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode(PersistedServerRelayConnection.self, from: data),
+              decoded.version == PersistedServerRelayConnection.schemaVersion else {
+            return nil
+        }
+        return normalizedServerRelayConnection(
+            serverURL: decoded.serverURL,
+            clientToken: decoded.clientToken,
+            workerToken: decoded.workerToken
+        )
+    }
+
+    @discardableResult
+    private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> Bool {
+        if connection == emptyServerRelayConnection {
+            LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)
+            guard LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil else {
+                return false
+            }
+            removeLegacyServerRelayCredentials()
+            return true
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(connection),
+              let payload = String(data: data, encoding: .utf8),
+              LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount),
+              decodeServerRelayConnection(
+                LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) ?? ""
+              ) == connection else {
+            return false
+        }
+        removeLegacyServerRelayCredentials()
+        return true
+    }
+
+    private static func removeLegacyServerRelayCredentials() {
+        LocalRemoteTokenStore.delete(account: "server-relay-client-mac")
+        LocalRemoteTokenStore.delete(account: "server-relay-worker-mac")
+        LocalRemoteTokenStore.delete(account: "server-relay-mac")
+        UserDefaults.standard.removeObject(forKey: serverRelayURLKey)
+        UserDefaults.standard.removeObject(forKey: serverRelayClientTokenKey)
+        UserDefaults.standard.removeObject(forKey: serverRelayWorkerTokenKey)
+        UserDefaults.standard.removeObject(forKey: deprecatedServerRelayTokenKey)
     }
 
     private static func relayTokenFingerprint(_ token: String) -> String {
@@ -1016,55 +1090,46 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    func setServerRelayURL(_ value: String) {
-        let nextValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard nextValue != serverRelayURL else { return }
+    @discardableResult
+    func applyServerRelayConnection(
+        serverURL rawURL: String,
+        clientToken rawClientToken: String,
+        workerToken rawWorkerToken: String
+    ) -> Bool {
+        guard let nextConnection = Self.normalizedServerRelayConnection(
+            serverURL: rawURL,
+            clientToken: rawClientToken,
+            workerToken: rawWorkerToken
+        ) else {
+            serverRelayStatusMessage = "서버 URL은 공개 HTTPS 주소로 입력해 주세요. 기존 연결 정보는 유지했습니다."
+            errorMessage = serverRelayStatusMessage
+            return false
+        }
+        let currentConnection = Self.normalizedServerRelayConnection(
+            serverURL: serverRelayURL,
+            clientToken: serverRelayClientToken,
+            workerToken: serverRelayWorkerToken
+        ) ?? Self.emptyServerRelayConnection
+        guard nextConnection != currentConnection else {
+            serverRelayStatusMessage = "서버 연결 정보가 이미 최신입니다."
+            errorMessage = nil
+            return true
+        }
+        guard Self.persistServerRelayConnection(nextConnection) else {
+            serverRelayStatusMessage = "키체인에 연결 정보를 저장하지 못해 기존 연결을 유지했습니다. 잠시 후 다시 시도해 주세요."
+            errorMessage = serverRelayStatusMessage
+            return false
+        }
         resetServerRelaySessionForConnectionChange()
-        serverRelayURL = nextValue
-        UserDefaults.standard.set(serverRelayURL, forKey: Self.serverRelayURLKey)
-        UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
+        serverRelayURL = nextConnection.serverURL
+        serverRelayClientToken = nextConnection.clientToken
+        serverRelayWorkerToken = nextConnection.workerToken
+        serverRelayStatusMessage = "서버 연결 정보를 안전하게 저장했습니다. 연결 확인을 눌러 주세요."
+        errorMessage = nil
         if serverRelayEnabled {
             configureServerRelayRealtime()
         }
-    }
-
-    func setServerRelayClientToken(_ value: String) {
-        let nextValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard nextValue != serverRelayClientToken else { return }
-        let saved = Self.persistRelayToken(
-            nextValue,
-            account: "server-relay-client-mac",
-            defaultsKey: Self.serverRelayClientTokenKey
-        )
-        guard saved else {
-            serverRelayStatusMessage = "키체인에 클라이언트 토큰을 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
-            return
-        }
-        resetServerRelaySessionForConnectionChange()
-        serverRelayClientToken = nextValue
-        if serverRelayEnabled {
-            configureServerRelayRealtime()
-        }
-    }
-
-    func setServerRelayWorkerToken(_ value: String) {
-        let nextValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard nextValue != serverRelayWorkerToken else { return }
-        let saved = Self.persistRelayToken(
-            nextValue,
-            account: "server-relay-worker-mac",
-            defaultsKey: Self.serverRelayWorkerTokenKey
-        )
-        guard saved else {
-            serverRelayStatusMessage = "키체인에 Mac 전용 토큰을 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
-            return
-        }
-        resetServerRelaySessionForConnectionChange()
-        serverRelayWorkerToken = nextValue
-        UserDefaults.standard.removeObject(forKey: Self.cachedServerRelaySyncDataKey)
-        if serverRelayEnabled {
-            configureServerRelayRealtime()
-        }
+        return true
     }
 
     private func resetServerRelaySessionForConnectionChange() {
@@ -1175,14 +1240,13 @@ final class KLMSMacModel: ObservableObject {
         serverRelayStatusMessage = "클라이언트 토큰을 복사했습니다."
     }
 
-    func pasteServerRelayConnectionInfo() {
+    func serverRelayConnectionDraftFromPasteboard() -> KLMSMacServerRelayConnectionDraft? {
         guard let text = NSPasteboard.general.string(forType: .string),
               let connectionInfo = ServerRelayConnectionInfo.parse(urlText: text) else {
             serverRelayStatusMessage = "클립보드에서 서버 URL과 클라이언트 토큰을 찾지 못했습니다."
             errorMessage = serverRelayStatusMessage
-            return
+            return nil
         }
-        setServerRelayURL(connectionInfo.baseURL.absoluteString)
         let clientToken = ServerRelayConnectionInfo.labeledToken(
             in: text,
             labels: ServerRelayConnectionInfo.clientTokenLabels + ServerRelayConnectionInfo.legacyTokenLabels
@@ -1191,17 +1255,18 @@ final class KLMSMacModel: ObservableObject {
             in: text,
             labels: ServerRelayConnectionInfo.workerTokenLabels
         )
-        setServerRelayClientToken(clientToken)
-        if let workerToken {
-            setServerRelayWorkerToken(workerToken)
-        }
         if NSPasteboard.general.string(forType: .string) == text {
             NSPasteboard.general.clearContents()
         }
-        serverRelayStatusMessage = workerToken == nil && serverRelayWorkerToken.isEmpty
-            ? "클라이언트 토큰은 붙여넣었습니다. Mac 전용 토큰도 입력해 주세요."
-            : "서버 연결 정보를 붙여넣었습니다. 연결 확인을 눌러 주세요."
+        serverRelayStatusMessage = workerToken == nil
+            ? "연결 정보를 입력란에 불러왔습니다. Mac 전용 토큰을 확인한 뒤 변경 저장을 눌러 주세요."
+            : "연결 정보를 입력란에 불러왔습니다. 검토 후 변경 저장을 눌러 주세요."
         errorMessage = nil
+        return KLMSMacServerRelayConnectionDraft(
+            serverURL: connectionInfo.baseURL.absoluteString,
+            clientToken: clientToken,
+            workerToken: workerToken
+        )
     }
 
     func checkServerRelayConnection(enableOnSuccess: Bool = false) async {

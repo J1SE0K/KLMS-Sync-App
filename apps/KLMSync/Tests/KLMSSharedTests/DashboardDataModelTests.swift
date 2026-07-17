@@ -8056,7 +8056,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(token"))
     }
 
-    func testMacServerTokenMigrationFailsClosedWithoutPlaintextFallback() throws {
+    func testMacServerConnectionIsMigratedAndAppliedAtomicallyWithoutPlaintextFallback() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -8065,26 +8065,88 @@ final class DashboardDataModelTests: XCTestCase {
             contentsOf: packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift"),
             encoding: .utf8
         )
+        let settings = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSMac/SettingsView.swift"),
+            encoding: .utf8
+        )
         let initializer = try sourceBody(
             after: "init(paths: KLMSPaths = KLMSPaths())",
             in: mac,
             description: "Mac relay credential migration"
         )
-        let persistToken = try sourceBody(
-            after: "private static func persistRelayToken(_ token: String, account: String, defaultsKey: String) -> Bool",
+        let persistConnection = try sourceBody(
+            after: "private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> Bool",
             in: mac,
-            description: "Mac relay credential persistence"
+            description: "Mac relay connection persistence"
+        )
+        let applyConnection = try sourceBody(
+            after: "func applyServerRelayConnection(",
+            in: mac,
+            description: "Mac atomic relay connection apply"
+        )
+        let pasteConnection = try sourceBody(
+            after: "func serverRelayConnectionDraftFromPasteboard()",
+            in: mac,
+            description: "Mac relay connection paste"
+        )
+        let saveDraft = try sourceBody(
+            after: "private func saveServerRelayConnectionDraft()",
+            in: settings,
+            description: "Mac relay connection draft save"
         )
 
         XCTAssertTrue(initializer.contains("let credentialPersistenceFailed ="))
+        XCTAssertTrue(initializer.contains("LocalRemoteTokenStore.load(account: Self.serverRelayConnectionAccount)"))
         XCTAssertTrue(initializer.contains("serverRelayClientToken = \"\""))
         XCTAssertTrue(initializer.contains("serverRelayWorkerToken = \"\""))
         XCTAssertTrue(initializer.contains("serverRelayEnabled = false"))
         XCTAssertTrue(initializer.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
+        XCTAssertTrue(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
         XCTAssertTrue(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
-        XCTAssertTrue(persistToken.contains("UserDefaults.standard.removeObject(forKey: defaultsKey)"))
-        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.delete(account: account)"))
-        XCTAssertTrue(persistToken.contains("LocalRemoteTokenStore.load(account: account) == nil"))
+        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"))
+        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)"))
+        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil"))
+        XCTAssertTrue(persistConnection.contains("decodeServerRelayConnection("))
+        XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayCredentials()"))
+        let persisted = try XCTUnwrap(applyConnection.range(of: "guard Self.persistServerRelayConnection(nextConnection)"))
+        let reset = try XCTUnwrap(applyConnection.range(of: "resetServerRelaySessionForConnectionChange()"))
+        let commitURL = try XCTUnwrap(applyConnection.range(of: "serverRelayURL = nextConnection.serverURL"))
+        XCTAssertLessThan(persisted.lowerBound, reset.lowerBound)
+        XCTAssertLessThan(reset.lowerBound, commitURL.lowerBound)
+        XCTAssertFalse(pasteConnection.contains("applyServerRelayConnection("))
+        XCTAssertFalse(pasteConnection.contains("resetServerRelaySessionForConnectionChange()"))
+        XCTAssertTrue(pasteConnection.contains("return KLMSMacServerRelayConnectionDraft("))
+        XCTAssertTrue(settings.contains("@State private var serverRelayURLDraft: String"))
+        XCTAssertTrue(settings.contains("text: $serverRelayURLDraft"))
+        XCTAssertTrue(settings.contains("text: $serverRelayClientTokenDraft"))
+        XCTAssertTrue(settings.contains("text: $serverRelayWorkerTokenDraft"))
+        XCTAssertFalse(settings.contains("model.setServerRelayURL"))
+        XCTAssertFalse(settings.contains("model.setServerRelayClientToken"))
+        XCTAssertFalse(settings.contains("model.setServerRelayWorkerToken"))
+        XCTAssertTrue(saveDraft.contains("model.applyServerRelayConnection("))
+        XCTAssertTrue(saveDraft.contains("resetServerRelayConnectionDraft()"))
+    }
+
+    func testMacAuthCodeBannerExposesOneDigitAwareVoiceOverElement() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let mac = try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSMac/MenuBarRootView.swift"),
+            encoding: .utf8
+        )
+        let banner = try sourceBody(
+            after: "private struct AuthCodeBannerView: View",
+            in: mac,
+            description: "Mac authentication code banner"
+        )
+
+        XCTAssertTrue(banner.contains(".accessibilityHidden(true)"))
+        XCTAssertTrue(banner.contains(".accessibilityElement(children: .combine)"))
+        XCTAssertTrue(banner.contains(".accessibilityLabel(\"KAIST 인증 번호\")"))
+        XCTAssertTrue(banner.contains(".accessibilityValue(digits.map(String.init).joined(separator: \" \"))"))
+        XCTAssertTrue(banner.contains(".accessibilityLabel(\"KAIST 인증 번호 복사\")"))
     }
 
     func testLogClearPreservesActiveCancellationAndFileRequests() throws {

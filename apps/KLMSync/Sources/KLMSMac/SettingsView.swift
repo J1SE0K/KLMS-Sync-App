@@ -96,6 +96,9 @@ struct SettingsView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var selectedTab: SettingsTab = .app
     @State private var hoveredTab: SettingsTab?
+    @State private var serverRelayURLDraft: String
+    @State private var serverRelayClientTokenDraft: String
+    @State private var serverRelayWorkerTokenDraft: String
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
     private let settingsTabColumns = [
         GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7),
@@ -103,6 +106,13 @@ struct SettingsView: View {
     private let settingsActionColumns = [
         GridItem(.adaptive(minimum: 118), spacing: 8),
     ]
+
+    init(model: KLMSMacModel) {
+        _model = ObservedObject(wrappedValue: model)
+        _serverRelayURLDraft = State(initialValue: model.serverRelayURL)
+        _serverRelayClientTokenDraft = State(initialValue: model.serverRelayClientToken)
+        _serverRelayWorkerTokenDraft = State(initialValue: model.serverRelayWorkerToken)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -644,7 +654,9 @@ struct SettingsView: View {
     private var relaySettingsCollapsed: some View {
         SettingsGroupBox(
             title: "서버 릴레이",
-            detail: model.serverRelayConfigured ? "연결 정보 저장됨" : "서버 연결이 필요할 때만 펼치세요.",
+            detail: serverRelayDraftHasChanges
+                ? "입력한 변경 사항을 저장해 주세요."
+                : model.serverRelayConfigured ? "연결 정보 저장됨" : "서버 연결이 필요할 때만 펼치세요.",
             systemImage: "network",
             badge: "서버",
             collapsible: true
@@ -657,44 +669,61 @@ struct SettingsView: View {
                 ) {
                     described(
                         "서버 URL",
-                        summary: model.serverRelayURL.isEmpty ? "미설정" : "저장됨",
+                        summary: relayDraftSummary(
+                            draft: serverRelayURLDraft,
+                            committed: model.serverRelayURL
+                        ),
                         "Cloudflare Worker 같은 릴레이 서버 주소입니다. 집 주소나 로컬 IP가 아니라 공개 HTTPS 주소만 입력하세요."
                     ) {
                         settingsTextInput(
                             "서버 URL",
-                            text: Binding(
-                                get: { model.serverRelayURL },
-                                set: { model.setServerRelayURL($0) }
-                            )
+                            text: $serverRelayURLDraft
                         )
                     }
                     described(
                         "클라이언트 토큰",
-                        summary: model.serverRelayClientToken.isEmpty ? "미설정" : "저장됨",
+                        summary: relayDraftSummary(
+                            draft: serverRelayClientTokenDraft,
+                            committed: model.serverRelayClientToken
+                        ),
                         "iPhone/iPad/Windows에 넣는 토큰입니다. 상태 조회와 실행 요청만 할 수 있습니다."
                     ) {
                         settingsTextInput(
                             "클라이언트 토큰",
-                            text: Binding(
-                                get: { model.serverRelayClientToken },
-                                set: { model.setServerRelayClientToken($0) }
-                            ),
+                            text: $serverRelayClientTokenDraft,
                             secure: true
                         )
                     }
                     described(
                         "Mac 전용 토큰",
-                        summary: model.serverRelayWorkerToken.isEmpty ? "미설정" : "저장됨",
+                        summary: relayDraftSummary(
+                            draft: serverRelayWorkerTokenDraft,
+                            committed: model.serverRelayWorkerToken
+                        ),
                         "Mac 앱 전용 토큰입니다. 서버에 상태와 요약 데이터를 올리고 원격 명령을 처리할 때 사용합니다."
                     ) {
                         settingsTextInput(
                             "Mac 전용 토큰",
-                            text: Binding(
-                                get: { model.serverRelayWorkerToken },
-                                set: { model.setServerRelayWorkerToken($0) }
-                            ),
+                            text: $serverRelayWorkerTokenDraft,
                             secure: true
                         )
+                    }
+                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                        Button {
+                            saveServerRelayConnectionDraft()
+                        } label: {
+                            Label("변경 저장", systemImage: "checkmark.circle")
+                        }
+                        .disabled(!serverRelayDraftHasChanges)
+                        Button {
+                            resetServerRelayConnectionDraft()
+                        } label: {
+                            Label("변경 취소", systemImage: "arrow.uturn.backward")
+                        }
+                        .disabled(!serverRelayDraftHasChanges)
+                    }
+                    if serverRelayDraftHasChanges {
+                        SettingsHelpText("입력한 값은 아직 적용되지 않았습니다. 세 항목을 확인한 뒤 변경 저장을 눌러 주세요.")
                     }
                 }
 
@@ -715,6 +744,7 @@ struct SettingsView: View {
                                 set: { model.setServerRelayEnabled($0) }
                             )
                         )
+                        .disabled(serverRelayDraftHasChanges)
                     }
                     SettingsFieldRow(
                         title: "서버 상태",
@@ -735,7 +765,7 @@ struct SettingsView: View {
                 ) {
                     LazyVGrid(columns: settingsActionColumns, spacing: 8) {
                         Button {
-                            model.pasteServerRelayConnectionInfo()
+                            pasteServerRelayConnectionDraft()
                         } label: {
                             Label("붙여넣기", systemImage: "doc.on.clipboard")
                         }
@@ -746,7 +776,7 @@ struct SettingsView: View {
                         } label: {
                             Label("연결 확인", systemImage: "checkmark.seal")
                         }
-                        .disabled(!model.serverRelayConfigured)
+                        .disabled(!model.serverRelayConfigured || serverRelayDraftHasChanges)
                         Button {
                             Task {
                                 await model.checkServerRelayConnection(enableOnSuccess: true)
@@ -754,7 +784,7 @@ struct SettingsView: View {
                         } label: {
                             Label("확인 후 켜기", systemImage: "bolt.badge.checkmark")
                         }
-                        .disabled(!model.serverRelayConfigured)
+                        .disabled(!model.serverRelayConfigured || serverRelayDraftHasChanges)
                     }
                 }
 
@@ -769,19 +799,23 @@ struct SettingsView: View {
                         } label: {
                             Label("URL 복사", systemImage: "link")
                         }
-                        .disabled(model.serverRelayURL.isEmpty)
+                        .disabled(model.serverRelayURL.isEmpty || serverRelayDraftHasChanges)
                         Button {
                             model.copyServerRelayConnectionInfo()
                         } label: {
                             Label("연결 정보 복사", systemImage: "doc.on.doc")
                         }
-                        .disabled(model.serverRelayURL.isEmpty || model.serverRelayClientToken.isEmpty)
+                        .disabled(
+                            model.serverRelayURL.isEmpty
+                                || model.serverRelayClientToken.isEmpty
+                                || serverRelayDraftHasChanges
+                        )
                         Button {
                             model.copyServerRelayClientToken()
                         } label: {
                             Label("클라이언트 토큰", systemImage: "key")
                         }
-                        .disabled(model.serverRelayClientToken.isEmpty)
+                        .disabled(model.serverRelayClientToken.isEmpty || serverRelayDraftHasChanges)
                     }
                 }
 
@@ -794,6 +828,51 @@ struct SettingsView: View {
                     SettingsHelpText("파일 열기를 요청할 때만 Mac이 임시 링크를 만들고, 만료되면 서버 파일도 정리합니다. 복사된 토큰은 보안을 위해 잠시 뒤 클립보드에서 자동으로 지워집니다.")
                 }
             }
+        }
+    }
+
+    private var serverRelayDraftHasChanges: Bool {
+        trimmedRelayDraft(serverRelayURLDraft) != model.serverRelayURL
+            || trimmedRelayDraft(serverRelayClientTokenDraft) != model.serverRelayClientToken
+            || trimmedRelayDraft(serverRelayWorkerTokenDraft) != model.serverRelayWorkerToken
+    }
+
+    private func relayDraftSummary(draft: String, committed: String) -> String {
+        if trimmedRelayDraft(draft) != committed {
+            return "수정됨 · 저장 전"
+        }
+        return committed.isEmpty ? "미설정" : "저장됨"
+    }
+
+    private func trimmedRelayDraft(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func resetServerRelayConnectionDraft() {
+        serverRelayURLDraft = model.serverRelayURL
+        serverRelayClientTokenDraft = model.serverRelayClientToken
+        serverRelayWorkerTokenDraft = model.serverRelayWorkerToken
+    }
+
+    private func saveServerRelayConnectionDraft() {
+        guard model.applyServerRelayConnection(
+            serverURL: serverRelayURLDraft,
+            clientToken: serverRelayClientTokenDraft,
+            workerToken: serverRelayWorkerTokenDraft
+        ) else {
+            return
+        }
+        resetServerRelayConnectionDraft()
+    }
+
+    private func pasteServerRelayConnectionDraft() {
+        guard let draft = model.serverRelayConnectionDraftFromPasteboard() else {
+            return
+        }
+        serverRelayURLDraft = draft.serverURL
+        serverRelayClientTokenDraft = draft.clientToken
+        if let workerToken = draft.workerToken {
+            serverRelayWorkerTokenDraft = workerToken
         }
     }
 

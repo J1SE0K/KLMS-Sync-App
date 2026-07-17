@@ -3477,6 +3477,7 @@ private struct AuthCodeBannerView: View {
                     .font(.title3)
                     .foregroundStyle(Color.klmsMacWarningForeground)
                     .frame(width: 28)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("KAIST 인증 번호")
                         .font(.caption.weight(.semibold))
@@ -3485,6 +3486,9 @@ private struct AuthCodeBannerView: View {
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .monospacedDigit()
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("KAIST 인증 번호")
+                .accessibilityValue(digits.map(String.init).joined(separator: " "))
                 Spacer()
                 Button {
                     NSPasteboard.general.clearContents()
