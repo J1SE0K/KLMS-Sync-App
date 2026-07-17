@@ -18,14 +18,14 @@ final class KLMSiOSUITests: XCTestCase {
     @MainActor
     func testAdaptiveLayoutPreservesSectionAcrossResize() throws {
         let app = XCUIApplication()
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        XCUIDevice.shared.orientation = isPad ? .landscapeRight : .portrait
         app.launchArguments.append("KLMS_UI_TEST_CAPTURE")
         app.launch()
 
         XCTAssertTrue(app.wait(for: .runningForeground, timeout: 12), "KLMS Sync did not enter the foreground.")
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 8), "KLMS Sync did not show a window.")
 
-        let isPad = UIDevice.current.userInterfaceIdiom == .pad
-        XCUIDevice.shared.orientation = isPad ? .landscapeRight : .portrait
         RunLoop.current.run(until: Date().addingTimeInterval(0.8))
 
         let initialPrimarySync = identifiedElement("dashboard-primary-full-sync", in: app)

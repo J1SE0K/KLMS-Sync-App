@@ -11562,7 +11562,7 @@ private extension View {
         label: String? = nil,
         enabled: Bool
     ) -> some View {
-        overlay {
+        background {
             if enabled {
                 Color.clear
                     .accessibilityElement()
