@@ -670,7 +670,7 @@ final class CompanionModel: ObservableObject {
             connectionSucceeded = nil
         }
         if persistedConnection.migrationFailed {
-            let message = "기존 서버 URL과 클라이언트 토큰을 안전한 단일 키체인 레코드로 옮기지 못해 연결하지 않았습니다. 연결 정보를 다시 입력해 주세요."
+            let message = "이전 서버 URL과 클라이언트 토큰이 함께 저장됐는지 확인할 수 없어 자동으로 연결하지 않았습니다. 연결 정보를 함께 다시 입력해 주세요."
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
@@ -6256,64 +6256,24 @@ final class CompanionModel: ObservableObject {
             forKey: klmsServerRelayTokenDefaultsKey
         ) ?? ""
         let storedLegacyToken = LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount) ?? ""
-        let legacyToken: String
-        let legacyGeneration: UInt64
-        if !storedLegacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            if let envelope = VersionedCredentialEnvelope.acceptedEnvelope(
-                from: storedLegacyToken,
-                minimumGeneration: minimumGeneration
-            ) {
-                legacyToken = envelope.value
-                legacyGeneration = envelope.generation
-            } else if VersionedCredentialEnvelope.decode(storedLegacyToken) != nil || minimumGeneration > 0 {
-                return PersistedServerConnection(
-                    pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
-                    generation: minimumGeneration,
-                    migrationFailed: true
-                )
-            } else {
-                legacyToken = storedLegacyToken
-                legacyGeneration = 0
-            }
-        } else {
-            legacyToken = legacyDefaultsToken
-            legacyGeneration = 0
-        }
-
-        let trimmedLegacyURL = legacyServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedLegacyToken = legacyToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedLegacyURL.isEmpty && trimmedLegacyToken.isEmpty {
-            return PersistedServerConnection(
-                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
-                generation: minimumGeneration
-            )
-        }
-        guard let pair = normalizedServerRelayCredentialPair(
-            serverURL: trimmedLegacyURL,
-            clientToken: trimmedLegacyToken
-        ), let encodedPair = try? pair.encoded() else {
-            return PersistedServerConnection(
-                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
-                generation: minimumGeneration,
-                migrationFailed: true
-            )
-        }
-        let previousGeneration = max(minimumGeneration, legacyGeneration)
-        guard previousGeneration < UInt64.max else {
-            return PersistedServerConnection(
-                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
-                generation: minimumGeneration,
-                migrationFailed: true
-            )
-        }
-        let migrationGeneration = previousGeneration + 1
-        let migrated = persistServerRelayConnectionEnvelope(
-            VersionedCredentialEnvelope(generation: migrationGeneration, value: encodedPair)
+        let legacyToken = storedLegacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? legacyDefaultsToken
+            : storedLegacyToken
+        let legacyFragments = UnboundServerRelayCredentialFragments(
+            serverURL: legacyServerURL,
+            clientToken: legacyToken,
+            workerToken: ""
         )
+        if legacyFragments.requiresManualReentry {
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                migrationFailed: true
+            )
+        }
         return PersistedServerConnection(
-            pair: migrated ? pair : ServerRelayCredentialPair(serverURL: "", clientToken: ""),
-            generation: migrated ? migrationGeneration : minimumGeneration,
-            migrationFailed: !migrated
+            pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+            generation: minimumGeneration
         )
     }
 

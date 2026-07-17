@@ -576,25 +576,19 @@ final class KLMSMacModel: ObservableObject {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let workerCandidate = (storedWorkerToken ?? legacyWorkerToken ?? secureLegacyWorkerToken)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let migrationConnection = Self.normalizedServerRelayConnection(
+        let legacyFragments = UnboundServerRelayCredentialFragments(
             serverURL: storedRelayURL,
             clientToken: clientCandidate,
             workerToken: workerCandidate
         )
-        let hasLegacyConnection = !storedRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !clientCandidate.isEmpty
-            || !workerCandidate.isEmpty
-        let migratedConnectionSaved = persistedConnection != nil
-            || !hasLegacyConnection
-            || migrationConnection.map(Self.persistServerRelayConnection) == true
-        let activeConnection = persistedConnection
-            ?? (migratedConnectionSaved ? migrationConnection : nil)
-            ?? Self.emptyServerRelayConnection
+        let legacyRequiresManualReentry = persistedConnection == nil
+            && legacyFragments.requiresManualReentry
+        let activeConnection = persistedConnection ?? Self.emptyServerRelayConnection
         serverRelayURL = activeConnection.serverURL
         serverRelayClientToken = activeConnection.clientToken
         serverRelayWorkerToken = activeConnection.workerToken
-        let credentialPersistenceFailed = (persistedConnectionPayload != nil && persistedConnection == nil && !hasLegacyConnection)
-            || !migratedConnectionSaved
+        let credentialPersistenceFailed = (persistedConnectionPayload != nil && persistedConnection == nil)
+            || legacyRequiresManualReentry
         self.paths = paths
         let startupSnapshot = EngineSnapshotStore(paths: paths).load()
         snapshot = startupSnapshot
@@ -608,7 +602,11 @@ final class KLMSMacModel: ObservableObject {
             serverRelayWorkerToken = ""
             serverRelayEnabled = false
             UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
-            serverRelayStatusMessage = "키체인에 서버 토큰을 저장하지 못해 연결을 껐습니다. 토큰을 다시 입력해 주세요."
+            if legacyRequiresManualReentry {
+                serverRelayStatusMessage = "이전 서버 URL과 토큰이 함께 저장됐는지 확인할 수 없어 연결을 껐습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
+            } else {
+                serverRelayStatusMessage = "저장된 서버 연결 정보를 안전하게 읽지 못해 연결을 껐습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
+            }
         } else {
             Self.removeLegacyServerRelayCredentials()
             applyCachedServerRelaySyncDataForStartup()

@@ -206,19 +206,16 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         let migration = try sourceSlice(
             source,
             from: "nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage",
-            to: "nonisolated private static func loadServerTokenPersistenceGeneration"
-        )
-        let legacyRead = try XCTUnwrap(migration.range(of: "let legacyDefaultsToken ="))
-        let migrationWrite = try XCTUnwrap(migration.range(of: "persistServerRelayConnectionEnvelope("))
-        XCTAssertLessThan(legacyRead.lowerBound, migrationWrite.lowerBound)
-        XCTAssertFalse(
-            migration[..<migrationWrite.lowerBound]
-                .contains("UserDefaults.standard.removeObject(forKey: klmsServerRelayTokenDefaultsKey)")
+            to: "nonisolated private static func normalizedServerRelayCredentialPair("
         )
         XCTAssertTrue(migration.contains("LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount)"))
         XCTAssertTrue(migration.contains("LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount)"))
-        XCTAssertTrue(migration.contains("pair: migrated ? pair : ServerRelayCredentialPair("))
-        XCTAssertTrue(migration.contains("migrationFailed: !migrated"))
+        XCTAssertTrue(migration.contains("UnboundServerRelayCredentialFragments("))
+        XCTAssertTrue(migration.contains("legacyFragments.requiresManualReentry"))
+        XCTAssertTrue(migration.contains("migrationFailed: true"))
+        XCTAssertFalse(migration.contains("persistServerRelayConnectionEnvelope("))
+        XCTAssertFalse(migration.contains("normalizedServerRelayCredentialPair(\n            serverURL: trimmedLegacyURL"))
+        XCTAssertFalse(migration.contains("UserDefaults.standard.removeObject"))
         XCTAssertTrue(source.contains("removeLegacyServerRelayConnectionStorage()"))
     }
 

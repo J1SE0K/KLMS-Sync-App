@@ -89,6 +89,27 @@ public struct ServerRelayCredentialPair: Codable, Equatable, Sendable {
     }
 }
 
+/// Values from the legacy clients were stored in independent locations and have no
+/// transaction identifier that can prove they were saved as one connection. Any
+/// nonempty fragment therefore requires the user to re-enter the complete tuple.
+public struct UnboundServerRelayCredentialFragments: Equatable, Sendable {
+    public var serverURL: String
+    public var clientToken: String
+    public var workerToken: String
+
+    public init(serverURL: String, clientToken: String, workerToken: String) {
+        self.serverURL = serverURL
+        self.clientToken = clientToken
+        self.workerToken = workerToken
+    }
+
+    public var requiresManualReentry: Bool {
+        [serverURL, clientToken, workerToken].contains {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+}
+
 public enum CredentialPersistenceResult: Sendable, Equatable {
     case persisted(VersionedCredentialEnvelope)
     case superseded

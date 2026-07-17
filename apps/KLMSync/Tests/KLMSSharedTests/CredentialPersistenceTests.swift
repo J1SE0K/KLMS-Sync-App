@@ -68,6 +68,50 @@ final class CredentialPersistenceTests: XCTestCase {
         })
     }
 
+    func testUnboundLegacyRelayFragmentsAlwaysRequireManualReentry() {
+        let ambiguousUpgradeCrashStates = [
+            UnboundServerRelayCredentialFragments(
+                serverURL: "https://old-relay.example/",
+                clientToken: "new-client-token",
+                workerToken: ""
+            ),
+            UnboundServerRelayCredentialFragments(
+                serverURL: "https://new-relay.example/",
+                clientToken: "old-client-token",
+                workerToken: ""
+            ),
+            UnboundServerRelayCredentialFragments(
+                serverURL: "https://old-relay.example/",
+                clientToken: "new-client-token",
+                workerToken: "new-worker-token"
+            ),
+            UnboundServerRelayCredentialFragments(
+                serverURL: "",
+                clientToken: "orphaned-client-token",
+                workerToken: ""
+            ),
+            UnboundServerRelayCredentialFragments(
+                serverURL: "",
+                clientToken: "",
+                workerToken: "orphaned-worker-token"
+            )
+        ]
+
+        for fragments in ambiguousUpgradeCrashStates {
+            XCTAssertTrue(
+                fragments.requiresManualReentry,
+                "independently stored legacy fields cannot prove they belong together"
+            )
+        }
+        XCTAssertFalse(
+            UnboundServerRelayCredentialFragments(
+                serverURL: " \n ",
+                clientToken: "",
+                workerToken: "\t"
+            ).requiresManualReentry
+        )
+    }
+
     func testVersionedEnvelopeRejectsStaleCredential() throws {
         let encoded = try VersionedCredentialEnvelope(
             generation: 41,

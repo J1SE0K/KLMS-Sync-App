@@ -32,16 +32,16 @@ final class DashboardDataModelTests: XCTestCase {
             title: "A 오후 시험",
             course: "데이타베이스 개론",
             category: "exam",
-            syncDue: "2026-07-17T07:00:00Z",
-            syncStart: "2026-07-17T04:00:00Z"
+            syncDue: "2099-07-17T07:00:00Z",
+            syncStart: "2099-07-17T04:00:00Z"
         )
         let morning = try decodeStateItem(
             url: "https://klms.kaist.ac.kr/mod/courseboard/article.php?id=1",
             title: "Z 오전 시험",
             course: "전기전자공학특강",
             category: "exam",
-            syncDue: "2026-07-17T02:30:00Z",
-            syncStart: "2026-07-17T00:00:00Z"
+            syncDue: "2099-07-17T02:30:00Z",
+            syncStart: "2099-07-17T00:00:00Z"
         )
         let content = LegacySyncState.Content(examItems: [afternoon, morning])
             .applyingManualOverrides(ManualOverridesSnapshot())
@@ -8045,7 +8045,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(loadMigratingConnection.contains("LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount)"))
         XCTAssertTrue(loadMigratingConnection.contains("UserDefaults.standard.string(forKey: klmsServerRelayURLDefaultsKey)"))
         XCTAssertTrue(loadMigratingConnection.contains("forKey: klmsServerRelayTokenDefaultsKey"))
-        XCTAssertTrue(loadMigratingConnection.contains("persistServerRelayConnectionEnvelope("))
+        XCTAssertTrue(loadMigratingConnection.contains("UnboundServerRelayCredentialFragments("))
+        XCTAssertTrue(loadMigratingConnection.contains("legacyFragments.requiresManualReentry"))
+        XCTAssertTrue(loadMigratingConnection.contains("migrationFailed: true"))
+        XCTAssertFalse(loadMigratingConnection.contains("persistServerRelayConnectionEnvelope("))
         XCTAssertFalse(loadMigratingConnection.contains("UserDefaults.standard.removeObject"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save("))
         XCTAssertTrue(persistConnection.contains("account: klmsServerRelayConnectionKeychainAccount"))
@@ -8067,7 +8070,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(nextServerURL"))
     }
 
-    func testMacServerConnectionIsMigratedAndAppliedAtomicallyWithoutPlaintextFallback() throws {
+    func testMacServerConnectionRejectsUnboundLegacyAndAppliesCompositeAtomically() throws {
         let packageRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -8112,6 +8115,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(initializer.contains("serverRelayWorkerToken = \"\""))
         XCTAssertTrue(initializer.contains("serverRelayEnabled = false"))
         XCTAssertTrue(initializer.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
+        XCTAssertTrue(initializer.contains("UnboundServerRelayCredentialFragments("))
+        XCTAssertTrue(initializer.contains("legacyRequiresManualReentry"))
+        XCTAssertFalse(initializer.contains("migrationConnection"))
+        XCTAssertFalse(initializer.contains("migrationConnection.map(Self.persistServerRelayConnection)"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"))
