@@ -3,7 +3,7 @@
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
     "expectedFindings": 40,
-    "coordinatesSha256": "cd37b38c9f665197fa45b0edf5d1ea4ecd70a3753289802df8a883fec895f7f0",
+    "coordinatesSha256": "161219695c841588911faf478a924a2a0dc820c68343af9f3c55c1bac11f73d6",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -114,8 +114,8 @@
         "reason": "This policy intentionally contains only scanner-coordinate SHA-256 digests and false-positive rationale."
       }
     ],
-    "expectedFindings": 23,
-    "coordinatesSha256": "aaec0eae95ff7fdeb2aafe3a6bd5346f9bf94d76cc0fec152b81a78bed8ad9ee",
+    "expectedFindings": 24,
+    "coordinatesSha256": "5760664d2d031fcd03adfc0de42e6e36d26217bae1c7371e6854310d7c63f713",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
@@ -134,6 +134,12 @@
         "path": "apps/KLMSyncWindows/test/relay-security.test.cjs",
         "expectedCount": 1,
         "reason": "The match is an intentionally invalid URL credential fixture used to prove rejection."
+      },
+      {
+        "type": "Basic Auth Credentials",
+        "path": "apps/KLMSync/Tests/KLMSSharedTests/RemoteCommandModelTests.swift",
+        "expectedCount": 1,
+        "reason": "The match is an intentionally invalid URL credential fixture used to prove that Apple relay clients reject userinfo before persistence or requests."
       },
       {
         "type": "Base64 High Entropy String",
