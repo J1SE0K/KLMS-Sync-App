@@ -39,6 +39,7 @@ test.beforeAll(async () => {
   page = await electronApp.firstWindow();
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.waitForLoadState("domcontentloaded");
+  await resizeElectronContent(1_040, 700);
 });
 
 test.afterAll(async () => {
