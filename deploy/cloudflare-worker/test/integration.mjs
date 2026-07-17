@@ -463,8 +463,29 @@ try {
   const idempotentResponses = await Promise.all(Array.from({ length: 20 }, () => (
     request("/v1/item-actions", { method: "POST", body: idempotentActionBody })
   )));
-  assert.equal(idempotentResponses.filter((response) => response.status === 201).length, 1);
-  assert.equal(idempotentResponses.filter((response) => response.status === 200).length, 19);
+  const idempotentStatusCounts = Object.fromEntries(
+    [...new Set(idempotentResponses.map((response) => response.status))]
+      .sort((lhs, rhs) => lhs - rhs)
+      .map((status) => [status, idempotentResponses.filter((response) => response.status === status).length])
+  );
+  const unexpectedIdempotentResponses = await Promise.all(idempotentResponses
+    .filter((response) => response.status !== 200 && response.status !== 201)
+    .map(async (response) => ({ status: response.status, body: await response.clone().text() })));
+  const idempotentDiagnostics = JSON.stringify({
+    statusCounts: idempotentStatusCounts,
+    unexpected: unexpectedIdempotentResponses,
+    ...(unexpectedIdempotentResponses.length > 0 ? { wranglerTail: devOutput.slice(-8_000) } : {}),
+  });
+  assert.equal(
+    idempotentResponses.filter((response) => response.status === 201).length,
+    1,
+    idempotentDiagnostics,
+  );
+  assert.equal(
+    idempotentResponses.filter((response) => response.status === 200).length,
+    19,
+    idempotentDiagnostics,
+  );
   const idempotentActions = await Promise.all(idempotentResponses.map((response) => response.json()));
   assert.equal(idempotentActions.every((action) => action.id === idempotentActionID), true);
   assert.equal((await jsonRequest("/v1/status")).revision, 72, "idempotent replays must allocate one revision total");
