@@ -930,8 +930,14 @@ private extension String {
     }
 }
 
+enum LocalRemoteTokenKeychainLoadResult: Equatable {
+    case value(String)
+    case notFound
+    case failure
+}
+
 protocol LocalRemoteTokenKeychainBackend {
-    func load(account: String, service: String) -> String?
+    func load(account: String, service: String) -> LocalRemoteTokenKeychainLoadResult
 
     @discardableResult
     func save(_ token: String, account: String, service: String) -> Bool
@@ -941,7 +947,7 @@ protocol LocalRemoteTokenKeychainBackend {
 }
 
 private struct SecurityLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychainBackend {
-    func load(account: String, service: String) -> String? {
+    func load(account: String, service: String) -> LocalRemoteTokenKeychainLoadResult {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -951,13 +957,18 @@ private struct SecurityLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychain
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data else {
-            return nil
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound {
+            return .notFound
         }
-        return String(data: data, encoding: .utf8)
+        guard status == errSecSuccess,
+              let data = item as? Data,
+              let token = String(data: data, encoding: .utf8) else {
+            return .failure
+        }
+        return .value(token)
         #else
-        return nil
+        return .failure
         #endif
     }
 
@@ -1035,25 +1046,49 @@ public enum LocalRemoteTokenStore {
     }
 
     static func load(account: String, backend: LocalRemoteTokenKeychainBackend) -> String? {
-        if let token = normalizedToken(backend.load(account: account, service: service)) {
-            _ = deleteLegacyServices(account: account, backend: backend)
-            return token
+        switch backend.load(account: account, service: service) {
+        case let .value(storedToken):
+            return normalizedToken(storedToken)
+        case .failure:
+            return nil
+        case .notFound:
+            break
         }
         for legacyService in legacyServices {
-            guard let token = normalizedToken(backend.load(account: account, service: legacyService)) else {
+            let token: String
+            switch backend.load(account: account, service: legacyService) {
+            case let .value(storedToken):
+                guard let normalized = normalizedToken(storedToken) else {
+                    return nil
+                }
+                token = normalized
+            case .failure:
+                return nil
+            case .notFound:
                 continue
             }
             guard save(token, account: account, service: service, backend: backend) else {
                 return token
             }
-            _ = deleteLegacyServices(account: account, backend: backend)
+            guard case let .value(storedToken) = backend.load(account: account, service: service),
+                  normalizedToken(storedToken) == token else {
+                return nil
+            }
             return token
         }
         return nil
     }
 
     @discardableResult
-    private static func deleteLegacyServices(
+    public static func deleteLegacyServices(account: String) -> Bool {
+        deleteLegacyServices(
+            account: account,
+            backend: SecurityLocalRemoteTokenKeychainBackend()
+        )
+    }
+
+    @discardableResult
+    static func deleteLegacyServices(
         account: String,
         backend: LocalRemoteTokenKeychainBackend
     ) -> Bool {
@@ -1098,13 +1133,10 @@ public enum LocalRemoteTokenStore {
 
     @discardableResult
     static func delete(account: String, backend: LocalRemoteTokenKeychainBackend) -> Bool {
-        var deletedEverywhere = backend.delete(account: account, service: service)
-        for legacyService in legacyServices {
-            if !backend.delete(account: account, service: legacyService) {
-                deletedEverywhere = false
-            }
+        guard deleteLegacyServices(account: account, backend: backend) else {
+            return false
         }
-        return deletedEverywhere
+        return backend.delete(account: account, service: service)
     }
 
     private static func normalizedToken(_ token: String?) -> String? {

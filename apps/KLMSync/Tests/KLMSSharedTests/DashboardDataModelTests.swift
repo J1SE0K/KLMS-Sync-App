@@ -8071,7 +8071,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(persistConnection.contains("storedEnvelope == envelope"))
         XCTAssertTrue(persistConnection.contains("storeServerTokenPersistenceGeneration(envelope.generation)"))
         XCTAssertTrue(removeLegacy.contains("LegacyCredentialCleanupPolicy.perform("))
-        XCTAssertTrue(removeLegacy.contains("LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)"))
+        XCTAssertTrue(removeLegacy.contains("LocalRemoteTokenStore.deleteLegacyServices("))
+        XCTAssertTrue(removeLegacy.contains("account: klmsServerRelayConnectionKeychainAccount"))
+        XCTAssertTrue(removeLegacy.contains("LocalRemoteTokenStore.delete("))
+        XCTAssertTrue(removeLegacy.contains("account: klmsLegacyServerRelayTokenKeychainAccount"))
         let verifiedDelete = try XCTUnwrap(removeLegacy.range(of: "LocalRemoteTokenStore.delete("))
         let clearURL = try XCTUnwrap(removeLegacy.range(of: "UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)"))
         XCTAssertLessThan(verifiedDelete.lowerBound, clearURL.lowerBound)
@@ -8126,6 +8129,11 @@ final class DashboardDataModelTests: XCTestCase {
             after: "private static func deleteAllServerRelayCredentials() -> Bool",
             in: mac,
             description: "Mac verified relay credential deletion"
+        )
+        let removeLegacyCredentials = try sourceBody(
+            after: "private static func removeLegacyServerRelayCredentials() -> Bool",
+            in: mac,
+            description: "Mac verified legacy relay credential cleanup"
         )
         let canClearConnection = try sourceBody(
             after: "var serverRelayConnectionCanBeCleared: Bool",
@@ -8222,6 +8230,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(deleteAllCredentials.contains("deleteLegacyServerRelayKeychainCredentials()"))
         XCTAssertTrue(deleteAllCredentials.contains("LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)"))
         XCTAssertTrue(deleteAllCredentials.contains("removeLegacyServerRelayDefaults()"))
+        XCTAssertTrue(removeLegacyCredentials.contains("LocalRemoteTokenStore.deleteLegacyServices("))
+        XCTAssertTrue(removeLegacyCredentials.contains("account: serverRelayConnectionAccount"))
+        XCTAssertTrue(removeLegacyCredentials.contains("deleteLegacyServerRelayKeychainCredentials()"))
     }
 
     func testMacAuthCodeBannerExposesOneDigitAwareVoiceOverElement() throws {

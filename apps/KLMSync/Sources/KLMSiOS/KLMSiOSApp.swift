@@ -6320,7 +6320,13 @@ final class CompanionModel: ObservableObject {
     nonisolated private static func removeLegacyServerRelayConnectionStorage() -> Bool {
         LegacyCredentialCleanupPolicy.perform(
             deleteSecureValues: {
-                LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)
+                let deletedCurrentAccountLegacyServices = LocalRemoteTokenStore.deleteLegacyServices(
+                    account: klmsServerRelayConnectionKeychainAccount
+                )
+                let deletedLegacyAccount = LocalRemoteTokenStore.delete(
+                    account: klmsLegacyServerRelayTokenKeychainAccount
+                )
+                return deletedCurrentAccountLegacyServices && deletedLegacyAccount
             },
             clearMetadata: {
                 UserDefaults.standard.removeObject(forKey: klmsServerRelayURLDefaultsKey)

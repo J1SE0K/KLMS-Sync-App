@@ -1973,6 +1973,11 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             model.index("let legacyCleanupCompleted = removeLegacyServerRelayCredentials()"),
         )
         self.assertIn("func delete(account: String, service: String) -> Bool", shared)
+        self.assertIn("enum LocalRemoteTokenKeychainLoadResult: Equatable", shared)
+        self.assertIn("case notFound", shared)
+        self.assertIn("case failure", shared)
+        self.assertIn("if status == errSecItemNotFound", shared)
+        self.assertIn("guard deleteLegacyServices(account: account, backend: backend) else", shared)
         self.assertIn("status == errSecSuccess || status == errSecItemNotFound", shared)
         self.assertIn("private static func deleteAllServerRelayCredentials() -> Bool", model)
         self.assertIn(
@@ -1992,7 +1997,11 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("removeLegacyServerRelayConnectionStorage() -> Bool", ios_app)
         self.assertIn("LegacyCredentialCleanupPolicy.perform(", ios_app)
         self.assertIn(
-            "LocalRemoteTokenStore.delete(account: klmsLegacyServerRelayTokenKeychainAccount)",
+            "LocalRemoteTokenStore.deleteLegacyServices(\n                    account: klmsServerRelayConnectionKeychainAccount",
+            ios_app,
+        )
+        self.assertIn(
+            "account: klmsLegacyServerRelayTokenKeychainAccount",
             ios_app,
         )
         self.assertIn("UIPasteboard.general.string = \"\"", ios_app)

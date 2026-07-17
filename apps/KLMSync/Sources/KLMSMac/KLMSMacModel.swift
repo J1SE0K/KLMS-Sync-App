@@ -726,7 +726,13 @@ final class KLMSMacModel: ObservableObject {
     @discardableResult
     private static func removeLegacyServerRelayCredentials() -> Bool {
         LegacyCredentialCleanupPolicy.perform(
-            deleteSecureValues: { deleteLegacyServerRelayKeychainCredentials() },
+            deleteSecureValues: {
+                let deletedCurrentAccountLegacyServices = LocalRemoteTokenStore.deleteLegacyServices(
+                    account: serverRelayConnectionAccount
+                )
+                let deletedLegacyAccounts = deleteLegacyServerRelayKeychainCredentials()
+                return deletedCurrentAccountLegacyServices && deletedLegacyAccounts
+            },
             clearMetadata: { removeLegacyServerRelayDefaults() }
         )
     }
