@@ -377,6 +377,7 @@ final class KLMSMacModel: ObservableObject {
     @Published var serverRelayURL: String
     @Published var serverRelayClientToken: String
     @Published var serverRelayWorkerToken: String
+    @Published private(set) var serverRelayCredentialRecoveryRequired = false
     @Published var serverRelayStatusMessage: String?
     @Published var permissionStatusMessage: String?
     @Published var permissionProbeRows: [KLMSPermissionProbeRow] = []
@@ -589,6 +590,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayWorkerToken = activeConnection.workerToken
         let credentialPersistenceFailed = (persistedConnectionPayload != nil && persistedConnection == nil)
             || legacyRequiresManualReentry
+        serverRelayCredentialRecoveryRequired = credentialPersistenceFailed
         self.paths = paths
         let startupSnapshot = EngineSnapshotStore(paths: paths).load()
         snapshot = startupSnapshot
@@ -939,6 +941,13 @@ final class KLMSMacModel: ObservableObject {
         (try? makeServerRelayStore()) != nil
     }
 
+    var serverRelayConnectionCanBeCleared: Bool {
+        serverRelayCredentialRecoveryRequired
+            || [serverRelayURL, serverRelayClientToken, serverRelayWorkerToken].contains {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+    }
+
     var hasClearableVisibleLogs: Bool {
         let hasLocalRunLog = !liveCommandOutput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || lastCommandResult != nil
@@ -1103,8 +1112,12 @@ final class KLMSMacModel: ObservableObject {
             clientToken: rawClientToken,
             workerToken: rawWorkerToken
         )
-        guard fragments.populationState != .partial else {
-            serverRelayStatusMessage = "서버 URL, 클라이언트 토큰, Mac 전용 토큰 세 항목을 모두 입력하거나 모두 비워 주세요. 기존 연결 정보는 유지했습니다."
+        guard fragments.populationState == .complete else {
+            if fragments.populationState == .empty {
+                serverRelayStatusMessage = "연결 정보를 모두 지우려면 연결 정보 삭제를 사용해 주세요. 기존 연결 정보는 유지했습니다."
+            } else {
+                serverRelayStatusMessage = "서버 URL, 클라이언트 토큰, Mac 전용 토큰 세 항목을 모두 입력해 주세요. 기존 연결 정보는 유지했습니다."
+            }
             errorMessage = serverRelayStatusMessage
             return false
         }
@@ -1136,11 +1149,31 @@ final class KLMSMacModel: ObservableObject {
         serverRelayURL = nextConnection.serverURL
         serverRelayClientToken = nextConnection.clientToken
         serverRelayWorkerToken = nextConnection.workerToken
+        serverRelayCredentialRecoveryRequired = false
         serverRelayStatusMessage = "서버 연결 정보를 안전하게 저장했습니다. 연결 확인을 눌러 주세요."
         errorMessage = nil
         if serverRelayEnabled {
             configureServerRelayRealtime()
         }
+        return true
+    }
+
+    @discardableResult
+    func clearServerRelayConnection() -> Bool {
+        guard Self.persistServerRelayConnection(Self.emptyServerRelayConnection) else {
+            serverRelayStatusMessage = "키체인에서 서버 연결 정보를 지우지 못했습니다. 기존 연결 정보는 유지했습니다. 잠시 후 다시 시도해 주세요."
+            errorMessage = serverRelayStatusMessage
+            return false
+        }
+        resetServerRelaySessionForConnectionChange()
+        serverRelayURL = ""
+        serverRelayClientToken = ""
+        serverRelayWorkerToken = ""
+        serverRelayCredentialRecoveryRequired = false
+        serverRelayEnabled = false
+        UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
+        serverRelayStatusMessage = "서버 연결 정보를 이 Mac에서 모두 삭제했습니다."
+        errorMessage = nil
         return true
     }
 

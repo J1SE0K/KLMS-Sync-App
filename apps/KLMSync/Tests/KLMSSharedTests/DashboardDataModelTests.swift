@@ -8103,6 +8103,16 @@ final class DashboardDataModelTests: XCTestCase {
             in: mac,
             description: "Mac atomic relay connection apply"
         )
+        let clearConnection = try sourceBody(
+            after: "func clearServerRelayConnection() -> Bool",
+            in: mac,
+            description: "Mac explicit relay connection clear"
+        )
+        let canClearConnection = try sourceBody(
+            after: "var serverRelayConnectionCanBeCleared: Bool",
+            in: mac,
+            description: "Mac relay clear availability"
+        )
         let pasteConnection = try sourceBody(
             after: "func serverRelayConnectionDraftFromPasteboard()",
             in: mac,
@@ -8122,6 +8132,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(initializer.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
         XCTAssertTrue(initializer.contains("UnboundServerRelayCredentialFragments("))
         XCTAssertTrue(initializer.contains("legacyRequiresManualReentry"))
+        XCTAssertTrue(initializer.contains("serverRelayCredentialRecoveryRequired = credentialPersistenceFailed"))
         XCTAssertFalse(initializer.contains("migrationConnection"))
         XCTAssertFalse(initializer.contains("migrationConnection.map(Self.persistServerRelayConnection)"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
@@ -8133,11 +8144,16 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayCredentials()"))
         XCTAssertTrue(normalizeConnection.contains("UnboundServerRelayCredentialFragments("))
         XCTAssertTrue(normalizeConnection.contains("guard fragments.populationState != .partial else"))
+        XCTAssertTrue(applyConnection.contains("guard fragments.populationState == .complete else"))
+        XCTAssertTrue(canClearConnection.contains("serverRelayCredentialRecoveryRequired"))
+        XCTAssertTrue(canClearConnection.contains("serverRelayURL"))
         let persisted = try XCTUnwrap(applyConnection.range(of: "guard Self.persistServerRelayConnection(nextConnection)"))
         let reset = try XCTUnwrap(applyConnection.range(of: "resetServerRelaySessionForConnectionChange()"))
         let commitURL = try XCTUnwrap(applyConnection.range(of: "serverRelayURL = nextConnection.serverURL"))
+        let resolvedRecovery = try XCTUnwrap(applyConnection.range(of: "serverRelayCredentialRecoveryRequired = false"))
         XCTAssertLessThan(persisted.lowerBound, reset.lowerBound)
         XCTAssertLessThan(reset.lowerBound, commitURL.lowerBound)
+        XCTAssertLessThan(persisted.lowerBound, resolvedRecovery.lowerBound)
         XCTAssertFalse(pasteConnection.contains("applyServerRelayConnection("))
         XCTAssertFalse(pasteConnection.contains("resetServerRelaySessionForConnectionChange()"))
         XCTAssertTrue(pasteConnection.contains("return KLMSMacServerRelayConnectionDraft("))
@@ -8147,12 +8163,24 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settings.contains("text: $serverRelayWorkerTokenDraft"))
         XCTAssertTrue(settings.contains("serverRelayDraftPopulationState == .partial"))
         XCTAssertTrue(settings.contains("서버 URL, 클라이언트 토큰, Mac 전용 토큰을 모두 입력해야 안전하게 저장할 수 있습니다."))
+        XCTAssertTrue(settings.contains("model.serverRelayConnectionCanBeCleared"))
+        XCTAssertTrue(settings.contains("model.clearServerRelayConnection()"))
+        XCTAssertTrue(settings.contains("confirmationDialog("))
+        XCTAssertTrue(settings.contains("Button(\"연결 정보 삭제\", role: .destructive)"))
         XCTAssertFalse(settings.contains("model.setServerRelayURL"))
         XCTAssertFalse(settings.contains("model.setServerRelayClientToken"))
         XCTAssertFalse(settings.contains("model.setServerRelayWorkerToken"))
         XCTAssertTrue(saveDraft.contains("model.applyServerRelayConnection("))
         XCTAssertTrue(saveDraft.contains("resetServerRelayConnectionDraft()"))
-        XCTAssertTrue(applyConnection.contains("세 항목을 모두 입력하거나 모두 비워 주세요"))
+        XCTAssertTrue(applyConnection.contains("세 항목을 모두 입력해 주세요"))
+        XCTAssertTrue(applyConnection.contains("연결 정보 삭제를 사용해 주세요"))
+        XCTAssertTrue(clearConnection.contains("Self.persistServerRelayConnection(Self.emptyServerRelayConnection)"))
+        XCTAssertTrue(clearConnection.contains("serverRelayCredentialRecoveryRequired = false"))
+        XCTAssertTrue(clearConnection.contains("serverRelayEnabled = false"))
+        XCTAssertTrue(clearConnection.contains("UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)"))
+        let deleted = try XCTUnwrap(clearConnection.range(of: "Self.persistServerRelayConnection(Self.emptyServerRelayConnection)"))
+        let clearedRecovery = try XCTUnwrap(clearConnection.range(of: "serverRelayCredentialRecoveryRequired = false"))
+        XCTAssertLessThan(deleted.lowerBound, clearedRecovery.lowerBound)
     }
 
     func testMacAuthCodeBannerExposesOneDigitAwareVoiceOverElement() throws {

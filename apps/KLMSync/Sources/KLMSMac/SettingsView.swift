@@ -99,6 +99,7 @@ struct SettingsView: View {
     @State private var serverRelayURLDraft: String
     @State private var serverRelayClientTokenDraft: String
     @State private var serverRelayWorkerTokenDraft: String
+    @State private var showsServerRelayClearConfirmation = false
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
     private let settingsTabColumns = [
         GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7),
@@ -716,7 +717,7 @@ struct SettingsView: View {
                         }
                         .disabled(
                             !serverRelayDraftHasChanges
-                                || serverRelayDraftPopulationState == .partial
+                                || serverRelayDraftPopulationState != .complete
                         )
                         Button {
                             resetServerRelayConnectionDraft()
@@ -724,9 +725,32 @@ struct SettingsView: View {
                             Label("변경 취소", systemImage: "arrow.uturn.backward")
                         }
                         .disabled(!serverRelayDraftHasChanges)
+                        Button(role: .destructive) {
+                            showsServerRelayClearConfirmation = true
+                        } label: {
+                            Label("연결 정보 삭제", systemImage: "trash")
+                        }
+                        .buttonStyle(KLMSMacSettingsButtonStyle(tone: .destructive))
+                        .disabled(!model.serverRelayConnectionCanBeCleared)
+                        .confirmationDialog(
+                            "서버 연결 정보를 삭제할까요?",
+                            isPresented: $showsServerRelayClearConfirmation,
+                            titleVisibility: .visible
+                        ) {
+                            Button("연결 정보 삭제", role: .destructive) {
+                                clearServerRelayConnection()
+                            }
+                            Button("취소", role: .cancel) {}
+                        } message: {
+                            Text("저장된 서버 URL과 토큰, 복구 대기 중인 이전 연결 정보를 이 Mac에서 모두 삭제합니다. 다른 앱 데이터는 지우지 않습니다.")
+                        }
                     }
                     if serverRelayDraftPopulationState == .partial {
                         SettingsHelpText("서버 URL, 클라이언트 토큰, Mac 전용 토큰을 모두 입력해야 안전하게 저장할 수 있습니다.")
+                    } else if serverRelayDraftPopulationState == .empty, serverRelayDraftHasChanges {
+                        SettingsHelpText("세 항목을 모두 지우려면 변경 저장 대신 연결 정보 삭제를 눌러 확인해 주세요.")
+                    } else if model.serverRelayCredentialRecoveryRequired, !serverRelayDraftHasChanges {
+                        SettingsHelpText("확인할 수 없는 이전 연결 정보가 보존되어 있습니다. 세 항목을 모두 새로 입력하거나 연결 정보 삭제로 폐기해 주세요.")
                     } else if serverRelayDraftHasChanges {
                         SettingsHelpText("입력한 값은 아직 적용되지 않았습니다. 세 항목을 확인한 뒤 변경 저장을 눌러 주세요.")
                     }
@@ -873,6 +897,13 @@ struct SettingsView: View {
             clientToken: serverRelayClientTokenDraft,
             workerToken: serverRelayWorkerTokenDraft
         ) else {
+            return
+        }
+        resetServerRelayConnectionDraft()
+    }
+
+    private func clearServerRelayConnection() {
+        guard model.clearServerRelayConnection() else {
             return
         }
         resetServerRelayConnectionDraft()
