@@ -102,7 +102,51 @@ test("pasted credentials leave the clipboard only when it is still unchanged", a
   await page.locator("#relayURL").fill("");
   await page.locator("#relayToken").fill("");
   await page.locator("#connectionPaste").fill("");
+  const oversizedCredentialText = `${credentialText}\n${"X".repeat(200_001)}`;
+  await electronApp.evaluate(
+    ({ clipboard }, value) => clipboard.writeText(value, "clipboard"),
+    oversizedCredentialText
+  );
+  await page.locator("#pasteClipboardButton").click();
+  await expect(page.locator("#toast")).toContainText("200,000자 이하");
+  await expect(page.locator("#relayURL")).toHaveValue("");
+  await expect(page.locator("#relayToken")).toHaveValue("");
+  await expect(page.locator("#connectionPaste")).toHaveValue("");
+  expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText("clipboard").length))
+    .toBe(oversizedCredentialText.length);
+
+  const directPaste = await page.locator("#connectionPaste").evaluate((element, value) => {
+    const transfer = new DataTransfer();
+    transfer.setData("text/plain", value);
+    const event = new ClipboardEvent("paste", {
+      bubbles: true,
+      cancelable: true,
+      clipboardData: transfer
+    });
+    return {
+      allowed: element.dispatchEvent(event),
+      value: element.value
+    };
+  }, oversizedCredentialText);
+  expect(directPaste).toEqual({ allowed: false, value: "" });
   await electronApp.evaluate(({ clipboard }) => clipboard.clear("clipboard"));
+});
+
+test("replacement-token cleanup clears the credential that was actually consumed", async () => {
+  const staleToken = ["stale", "client", "token", "value"].join("-");
+  const staleConnectionText = `서버 URL: ${relay.url}\n클라이언트 토큰: ${staleToken}`;
+  await electronApp.evaluate(
+    ({ clipboard }, value) => clipboard.writeText(value, "clipboard"),
+    TEST_TOKEN
+  );
+
+  expect(await page.evaluate(
+    ({ pastedConnectionText, tokenDraft }) => (
+      clearConsumedCredentialClipboardText(pastedConnectionText, tokenDraft)
+    ),
+    { pastedConnectionText: staleConnectionText, tokenDraft: TEST_TOKEN }
+  )).toBe(true);
+  expect(await electronApp.evaluate(({ clipboard }) => clipboard.readText("clipboard"))).toBe("");
 });
 
 test("WebSocket changes render immediately and responsive resize preserves selection without polling", async () => {
@@ -608,6 +652,9 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   await expect(longRow).toBeVisible({ timeout: 3_000 });
   await expect(page.locator("#statusSubtitle")).toContainText("LONG_MESSAGE_");
   await expect(page.locator("#statusSubtitle")).toHaveAttribute("aria-label", replacementRelay.message);
+  expect(await page.locator("#statusSubtitle").evaluate((element) => Array.from(element.textContent).length))
+    .toBeLessThanOrEqual(161);
+  await expect(page.locator("#statusSubtitle")).toHaveText(/…$/);
   const statusDisclosure = page.locator("#statusMessageDisclosure");
   await expect(statusDisclosure).toBeVisible();
   await statusDisclosure.locator("summary").focus();
@@ -720,9 +767,18 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
       const region = document.querySelector("#syncStatusRegion").getBoundingClientRect();
       const subtitle = document.querySelector("#statusSubtitle").getBoundingClientRect();
       return {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
         contentInnerRight: contentRect.right - Number.parseFloat(contentStyle.paddingRight),
         regionRight: region.right,
+        regionWidth: region.width,
+        regionPaddingRight: getComputedStyle(document.querySelector("#syncStatusRegion")).paddingRight,
         subtitleRight: subtitle.right,
+        subtitleWidth: subtitle.width,
+        subtitleScrollWidth: document.querySelector("#statusSubtitle").scrollWidth,
+        subtitleClientWidth: document.querySelector("#statusSubtitle").clientWidth,
+        subtitleLineClamp: getComputedStyle(document.querySelector("#statusSubtitle")).webkitLineClamp,
         viewportRight: document.documentElement.clientWidth
       };
     });
@@ -734,6 +790,13 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
     }
     if (factor === 2) {
       await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+      const edgeInk = await countViewportEdgeInkInElement("#statusSubtitle", 4);
+      await writeStableArtifact("windows-zoom-200-status-geometry.json", JSON.stringify({
+        statusGeometry,
+        edgeInk
+      }, null, 2));
+      expect(edgeInk.differentPixels).toBe(0);
       await captureStableScreenshot("windows-zoom-200-light-long-data");
     }
   }
@@ -825,11 +888,64 @@ async function captureStableScreenshot(name) {
   const screenshotDirectory = path.join(appRoot, "output", "playwright");
   await fs.mkdir(screenshotDirectory, { recursive: true });
   const screenshotPath = path.join(screenshotDirectory, `${name}.png`);
-  await page.screenshot({ path: screenshotPath });
+  const base64 = await electronApp.evaluate(async ({ BrowserWindow }) => {
+    const image = await BrowserWindow.getAllWindows()[0].webContents.capturePage();
+    return image.toPNG().toString("base64");
+  });
+  await fs.writeFile(screenshotPath, Buffer.from(base64, "base64"));
   await test.info().attach(name, {
     path: screenshotPath,
     contentType: "image/png"
   });
+}
+
+async function countViewportEdgeInkInElement(selector, edgeWidth) {
+  const geometry = await page.evaluate((targetSelector) => {
+    const rect = document.querySelector(targetSelector).getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight
+    };
+  }, selector);
+  return electronApp.evaluate(async ({ BrowserWindow }, input) => {
+    const image = await BrowserWindow.getAllWindows()[0].webContents.capturePage();
+    const size = image.getSize();
+    const bitmap = image.toBitmap();
+    const scaleX = size.width / input.geometry.innerWidth;
+    const scaleY = size.height / input.geometry.innerHeight;
+    const startY = Math.max(0, Math.floor(input.geometry.top * scaleY));
+    const endY = Math.min(size.height, Math.ceil(input.geometry.bottom * scaleY));
+    const edgePixels = Math.max(1, Math.ceil(input.edgeWidth * scaleX));
+    const referenceY = Math.max(0, startY - Math.ceil(4 * scaleY));
+    const referenceOffset = (referenceY * size.width + size.width - 1) * 4;
+    const reference = bitmap.subarray(referenceOffset, referenceOffset + 4);
+    let differentPixels = 0;
+    for (let y = startY; y < endY; y += 1) {
+      for (let x = size.width - edgePixels; x < size.width; x += 1) {
+        const offset = (y * size.width + x) * 4;
+        if (
+          bitmap[offset] !== reference[0]
+          || bitmap[offset + 1] !== reference[1]
+          || bitmap[offset + 2] !== reference[2]
+          || bitmap[offset + 3] !== reference[3]
+        ) {
+          differentPixels += 1;
+        }
+      }
+    }
+    return {
+      differentPixels,
+      bitmapBytes: bitmap.length,
+      imageSize: size,
+      scaleFactors: image.getScaleFactors(),
+      startY,
+      endY,
+      edgePixels,
+      referenceY
+    };
+  }, { geometry, edgeWidth });
 }
 
 async function writeStableArtifact(name, contents) {

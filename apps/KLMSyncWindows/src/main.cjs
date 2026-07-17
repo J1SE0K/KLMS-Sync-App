@@ -24,6 +24,7 @@ const SOCKET_RECONNECT_MIN_MS = 250;
 const SOCKET_RECONNECT_MAX_MS = 2_000;
 const SOCKET_HEARTBEAT_MS = 20_000;
 const SOCKET_STALE_MS = 45_000;
+const MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH = 200_000;
 const APP_ENTRY_PATH = path.join(__dirname, "index.html");
 const APP_ENTRY_URL = pathToFileURL(APP_ENTRY_PATH).toString();
 
@@ -105,14 +106,34 @@ function registerIPC() {
     activateRelayConfigRevision(nextRevision);
     return configForRenderer({ configRevision: nextRevision });
   }));
-  registerTrustedIPCHandler("clipboard:readText", async () => clipboard.readText("clipboard"));
+  registerTrustedIPCHandler("clipboard:readText", async () => {
+    const text = clipboard.readText("clipboard");
+    if (text.length > MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH) {
+      return {
+        text: "",
+        oversized: true,
+        maxLength: MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH
+      };
+    }
+    return {
+      text,
+      oversized: false,
+      maxLength: MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH
+    };
+  });
   registerTrustedIPCHandler("clipboard:writeText", async (value) => {
-    const text = typeof value === "string" ? value.slice(0, 200_000) : "";
+    const text = typeof value === "string"
+      ? value.slice(0, MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH)
+      : "";
     clipboard.writeText(text, "clipboard");
     return { written: true };
   });
   registerTrustedIPCHandler("clipboard:clearTextIfUnchanged", async (value) => {
-    if (typeof value !== "string" || value.length === 0 || value.length > 200_000) {
+    if (
+      typeof value !== "string"
+      || value.length === 0
+      || value.length > MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH
+    ) {
       return { cleared: false };
     }
     if (clipboard.readText("clipboard") !== value) {

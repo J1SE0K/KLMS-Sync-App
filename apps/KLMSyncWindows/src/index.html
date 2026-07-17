@@ -34,14 +34,14 @@
           </div>
           <label for="relayURL">
             서버 URL
-            <input id="relayURL" type="url" placeholder="https://sync.example.com">
+            <input id="relayURL" type="url" maxlength="2048" placeholder="https://sync.example.com">
           </label>
           <label for="relayToken">
             클라이언트 토큰
-            <input id="relayToken" type="password" placeholder="처음 연결하거나 바꿀 때만 입력">
+            <input id="relayToken" type="password" maxlength="4096" placeholder="처음 연결하거나 바꿀 때만 입력">
           </label>
           <label for="connectionPaste">연결 정보 붙여넣기</label>
-          <textarea id="connectionPaste" rows="4" placeholder="Mac 앱에서 복사한 서버 연결 정보를 붙여넣기"></textarea>
+          <textarea id="connectionPaste" rows="4" maxlength="200000" placeholder="Mac 앱에서 복사한 서버 연결 정보를 붙여넣기"></textarea>
           <div class="button-row three">
             <button id="pasteClipboardButton" class="secondary">붙여넣기</button>
             <button id="parseConnectionButton" class="secondary">내용 읽기</button>

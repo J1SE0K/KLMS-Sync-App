@@ -48,17 +48,27 @@ test("renderer receives only a boolean token state and conditionally clears cons
   const main = read("src/main.cjs");
   const preload = read("src/preload.cjs");
   const renderer = read("src/renderer.js");
+  const html = read("src/index.html");
 
   assert.doesNotMatch(main, /tokenPreview/);
   assert.match(main, /hasToken:\s*token\.length > 0/);
   assert.match(renderer, /relayToken"\)\.placeholder = config\.hasToken \? "저장됨"/);
   assert.match(renderer, /connectionPaste"\)\.value = ""/);
   assert.match(main, /registerTrustedIPCHandler\("clipboard:clearTextIfUnchanged"/);
+  assert.match(main, /MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH = 200_000/);
+  assert.match(main, /oversized: true/);
   assert.match(main, /clipboard\.readText\("clipboard"\) !== value/);
   assert.match(main, /clipboard\.clear\("clipboard"\)/);
   assert.match(preload, /clearClipboardTextIfUnchanged: \(text\) => ipcRenderer\.invoke\("clipboard:clearTextIfUnchanged", text\)/);
   assert.match(renderer, /await window\.klmsWindows\.clearClipboardTextIfUnchanged\(text\)/);
   assert.match(renderer, /clearConsumedCredentialClipboardText\(pastedConnectionText, tokenDraft\)/);
+  assert.match(renderer, /const candidates = \[tokenDraft, pastedConnection\.token \? pastedConnectionText : ""\]/);
+  assert.match(renderer, /text\.length > MAX_CONNECTION_PASTE_LENGTH/);
+  assert.match(renderer, /addEventListener\("paste", rejectOversizedConnectionPaste\)/);
+  assert.match(html, /id="connectionPaste"[^>]*maxlength="200000"/);
+  assert.match(renderer, /STATUS_PREVIEW_GRAPHEME_LIMIT = 160/);
+  assert.match(renderer, /const subtitlePreview = boundedStatusPreview\(subtitle\)/);
+  assert.match(renderer, /subtitlePreview !== subtitle/);
 });
 
 test("responsive data surfaces wrap and forced-color selections use system highlight colors", () => {
@@ -73,6 +83,8 @@ test("responsive data surfaces wrap and forced-color selections use system highl
   assert.match(styles, /#syncStatusRegion,[\s\S]*max-inline-size: 100%/);
   assert.match(styles, /\.status-message-disclosure[\s\S]*max-inline-size: 100%/);
   assert.match(styles, /#statusSubtitle\s*\{[^}]*white-space: normal;/);
+  assert.match(styles, /#syncStatusRegion\s*\{[^}]*padding-inline-end: 12px;/);
+  assert.match(styles, /#statusSubtitle\s*\{[^}]*-webkit-line-clamp: 4;/);
   assert.match(styles, /button:not\(\.sidebar-backdrop\)[\s\S]*border: 1px solid ButtonText/);
   assert.match(styles, /button \.icon[\s\S]*forced-color-adjust: none/);
   assert.match(styles, /\.metric-card\.active,[\s\S]*forced-color-adjust: none;[\s\S]*background: Highlight;[\s\S]*color: HighlightText;/);
@@ -81,10 +93,13 @@ test("responsive data surfaces wrap and forced-color selections use system highl
   assert.match(styles, /\.connection-panel > \.button-row:not\(\.three\) button\s*\{[^}]*white-space: nowrap;/);
 });
 
-test("status preview wraps at the available width without fixed character breaks", () => {
+test("status preview is grapheme-bounded while complete text remains available", () => {
   const renderer = read("src/renderer.js");
 
-  assert.match(renderer, /subtitleElement\.textContent = subtitle;/);
+  assert.match(renderer, /subtitleElement\.textContent = subtitlePreview;/);
+  assert.match(renderer, /new Intl\.Segmenter\("ko", \{ granularity: "grapheme" \}\)/);
+  assert.match(renderer, /subtitleElement\.setAttribute\("aria-label", subtitle\)/);
+  assert.match(renderer, /\$\("statusFullMessage"\)\.textContent = subtitle/);
   assert.doesNotMatch(renderer, /\[0, 32, 64\]|slice\(offset, offset \+ 32\)/);
 });
 

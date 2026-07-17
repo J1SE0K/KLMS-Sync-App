@@ -222,6 +222,7 @@ final class CompanionModel: ObservableObject {
     @Published var errorMessage = ""
     @Published var connectionMessage = ""
     @Published var connectionSucceeded: Bool?
+    @Published private(set) var serverRelayCredentialRecoveryRequired = false
     @Published var userAlert: UserAlert?
     @Published var isRefreshing = false
     @Published private(set) var isLoadingServerSyncData = false
@@ -658,6 +659,7 @@ final class CompanionModel: ObservableObject {
         }
         serverURL = persistedConnection.pair.serverURL
         serverToken = persistedConnection.pair.clientToken
+        serverRelayCredentialRecoveryRequired = persistedConnection.recoveryMessage != nil
         shouldUpdateNoticeNotes = UserDefaults.standard.object(forKey: Self.shouldUpdateNoticeNotesKey) as? Bool ?? true
         resolvedCalendarChangeIDs = Self.loadResolvedCalendarChangeIDs()
         mailDashboardItems = Self.loadMailDashboardItems()
@@ -4557,6 +4559,7 @@ final class CompanionModel: ObservableObject {
             }
         }
         commitServerRelayConnection(serverURL: nextServerURL, serverToken: nextServerToken)
+        serverRelayCredentialRecoveryRequired = false
         connectionMessage = "서버 연결 정보를 안전하게 저장했습니다. 최신 요약을 바로 불러옵니다."
         connectionSucceeded = nil
         errorMessage = ""
@@ -4659,6 +4662,7 @@ final class CompanionModel: ObservableObject {
     func clearServerRelayConnectionInfo() async {
         guard await persistServerRelayConnection(serverURL: "", serverToken: "") else { return }
         commitServerRelayConnection(serverURL: "", serverToken: "")
+        serverRelayCredentialRecoveryRequired = false
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
         errorMessage = ""
@@ -8115,6 +8119,7 @@ private struct CompanionSettingsScreen: View {
             }
             ServerRelayConnectionPanel(
                 isConfigured: model.serverRelayConfigured,
+                recoveryRequired: model.serverRelayCredentialRecoveryRequired,
                 hasUnsavedChanges: connectionDraftsHaveChanges,
                 connectionMessage: model.connectionMessage,
                 connectionSucceeded: model.connectionSucceeded,
@@ -9166,6 +9171,7 @@ private struct RemoteRunningStatusBanner: View {
 
 private struct ServerRelayConnectionPanel: View {
     var isConfigured: Bool
+    var recoveryRequired: Bool
     var hasUnsavedChanges: Bool
     var connectionMessage: String
     var connectionSucceeded: Bool?
@@ -9195,24 +9201,24 @@ private struct ServerRelayConnectionPanel: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: isConfigured ? "checkmark.circle.fill" : "server.rack")
+                    Image(systemName: connectionStateSymbol)
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText)
+                        .foregroundStyle(connectionStateTint)
                         .frame(width: 44, height: 44)
                         .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
                     VStack(alignment: .leading, spacing: 2) {
                         Text("서버 릴레이")
                             .font(.headline)
-                        Text(hasUnsavedChanges ? "저장하지 않은 변경이 있습니다." : isConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요.")
+                        Text(connectionStateDetail)
                             .font(.caption)
                             .foregroundStyle(Color.klmsSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                     VStack(alignment: .trailing, spacing: 5) {
-                        Text(hasUnsavedChanges ? "저장 필요" : isConfigured ? "저장됨" : "미설정")
+                        Text(connectionStateText)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(Color.klmsSecondaryText)
+                            .foregroundStyle(connectionStateTint)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 5)
                             .background(Color.klmsSubtleCardBackground, in: Capsule())
@@ -9222,7 +9228,7 @@ private struct ServerRelayConnectionPanel: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
-            .accessibilityLabel("서버 릴레이 \(hasUnsavedChanges ? "저장 필요" : isConfigured ? "저장됨" : "미설정") \(isExpanded ? "펼쳐짐" : "접힘")")
+            .accessibilityLabel("서버 릴레이 \(connectionStateText) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
             .accessibilityIdentifier("server-relay-disclosure")
 
@@ -9239,8 +9245,8 @@ private struct ServerRelayConnectionPanel: View {
                         title: "서버 연결 정보",
                         detail: "서버 URL과 클라이언트 토큰을 관리합니다.",
                         systemImage: "link",
-                        statusText: hasUnsavedChanges ? "저장 필요" : isConfigured ? "저장됨" : "미설정",
-                        statusTint: hasUnsavedChanges ? Color.klmsWarningForeground : isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText
+                        statusText: connectionStateText,
+                        statusTint: connectionStateTint
                     ) {
                         CompanionConnectionInput(
                             title: "서버 URL",
@@ -9317,7 +9323,7 @@ private struct ServerRelayConnectionPanel: View {
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
-                        .disabled(!isConfigured && serverURL.isEmpty && serverToken.isEmpty)
+                        .disabled(!recoveryRequired && !isConfigured && serverURL.isEmpty && serverToken.isEmpty)
                     }
 
                     RemotePrivacyNote()
@@ -9330,6 +9336,30 @@ private struct ServerRelayConnectionPanel: View {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
+    }
+
+    private var connectionStateText: String {
+        if recoveryRequired { return "복구 필요" }
+        if hasUnsavedChanges { return "저장 필요" }
+        return isConfigured ? "저장됨" : "미설정"
+    }
+
+    private var connectionStateDetail: String {
+        if recoveryRequired {
+            return "저장소 복구가 필요합니다. 다시 저장하거나 지울 수 있습니다."
+        }
+        if hasUnsavedChanges { return "저장하지 않은 변경이 있습니다." }
+        return isConfigured ? "연결 정보가 저장되어 있습니다." : "연결 정보를 붙여넣어 주세요."
+    }
+
+    private var connectionStateSymbol: String {
+        if recoveryRequired { return "exclamationmark.triangle.fill" }
+        return isConfigured ? "checkmark.circle.fill" : "server.rack"
+    }
+
+    private var connectionStateTint: Color {
+        if recoveryRequired || hasUnsavedChanges { return Color.klmsWarningForeground }
+        return isConfigured ? Color.klmsSuccessForeground : Color.klmsSecondaryText
     }
 
     private func connectionButton(

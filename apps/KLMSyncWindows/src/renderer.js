@@ -100,6 +100,11 @@ const ITEM_RENDER_INCREMENT = 120;
 const REALTIME_BATCH_DELAY_MS = 100;
 const REALTIME_RETRY_MIN_MS = 250;
 const REALTIME_RETRY_MAX_MS = 2_000;
+const MAX_CONNECTION_PASTE_LENGTH = 200_000;
+const STATUS_PREVIEW_GRAPHEME_LIMIT = 160;
+const statusPreviewSegmenter = typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter("ko", { granularity: "grapheme" })
+  : null;
 let searchRenderTimer = null;
 let realtimeFlushTimer = null;
 let realtimeRefreshRunning = false;
@@ -159,6 +164,7 @@ function bindEvents() {
   $("clearConnectionButton").addEventListener("click", clearConnection);
   $("pasteClipboardButton").addEventListener("click", pasteConnectionFromClipboard);
   $("parseConnectionButton").addEventListener("click", parseConnectionText);
+  $("connectionPaste").addEventListener("paste", rejectOversizedConnectionPaste);
   $("refreshButton").addEventListener("click", () => refreshAll());
   $("primarySyncButton").addEventListener("click", () => runOrCancelCommand("fullSync"));
   $("updateNoticeNotes")?.addEventListener("change", (event) => {
@@ -423,7 +429,11 @@ function sidebarFocusableElements() {
 
 async function pasteConnectionFromClipboard() {
   try {
-    const text = await window.klmsWindows.readClipboardText();
+    const clipboardResult = await window.klmsWindows.readClipboardText();
+    if (clipboardResult?.oversized) {
+      throw new Error(`연결 정보는 ${clipboardResult.maxLength.toLocaleString("ko-KR")}자 이하만 붙여넣을 수 있습니다.`);
+    }
+    const text = typeof clipboardResult === "string" ? clipboardResult : clipboardResult?.text || "";
     $("connectionPaste").value = text || "";
     const parsed = parseConnectionText();
     if (parsed.token) {
@@ -436,6 +446,10 @@ async function pasteConnectionFromClipboard() {
 
 function parseConnectionText() {
   const text = $("connectionPaste").value;
+  if (text.length > MAX_CONNECTION_PASTE_LENGTH) {
+    showError(new Error(`연결 정보는 ${MAX_CONNECTION_PASTE_LENGTH.toLocaleString("ko-KR")}자 이하만 읽을 수 있습니다.`));
+    return { url: "", token: "" };
+  }
   const parsed = parseConnectionInfo(text);
   if (parsed.url) {
     $("relayURL").value = parsed.url;
@@ -449,10 +463,17 @@ function parseConnectionText() {
 
 async function clearConsumedCredentialClipboardText(pastedConnectionText, tokenDraft) {
   const pastedConnection = parseConnectionInfo(pastedConnectionText);
-  const consumedText = pastedConnection.token ? pastedConnectionText : tokenDraft;
-  if (!consumedText || (!pastedConnection.token && !tokenDraft)) return false;
+  const candidates = [tokenDraft, pastedConnection.token ? pastedConnectionText : ""]
+    .filter((value, index, values) => value && values.indexOf(value) === index);
+  for (const candidate of candidates) {
+    if (await tryClearClipboardTextIfUnchanged(candidate)) return true;
+  }
+  return false;
+}
+
+async function tryClearClipboardTextIfUnchanged(candidate) {
   try {
-    const result = await window.klmsWindows.clearClipboardTextIfUnchanged(consumedText);
+    const result = await window.klmsWindows.clearClipboardTextIfUnchanged(candidate);
     return result?.cleared === true;
   } catch {
     return false;
@@ -460,6 +481,9 @@ async function clearConsumedCredentialClipboardText(pastedConnectionText, tokenD
 }
 
 function parseConnectionInfo(text) {
+  if (typeof text !== "string" || text.length > MAX_CONNECTION_PASTE_LENGTH) {
+    return { url: "", token: "" };
+  }
   const url = text.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "";
   const token = text.match(/(?:클라이언트\s*토큰|client\s*(?:relay\s*)?token|iphone\s*토큰|windows\s*토큰)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
     || text.match(/(?:토큰|token)\s*[:=]\s*([A-Za-z0-9._-]{12,})/i)?.[1]
@@ -469,6 +493,13 @@ function parseConnectionInfo(text) {
     url: url.replace(/[),.]+$/, ""),
     token
   };
+}
+
+function rejectOversizedConnectionPaste(event) {
+  const text = event.clipboardData?.getData("text/plain") || "";
+  if (text.length <= MAX_CONNECTION_PASTE_LENGTH) return;
+  event.preventDefault();
+  showError(new Error(`연결 정보는 ${MAX_CONNECTION_PASTE_LENGTH.toLocaleString("ko-KR")}자 이하만 붙여넣을 수 있습니다.`));
 }
 
 async function refreshAll(options = {}) {
@@ -1858,15 +1889,17 @@ function renderHeader() {
   $("phaseLabel").textContent = phaseLabel(connectionOnlyPhase ? state.connectionPhase : phase);
   $("statusTitle").textContent = statusTitle();
   const subtitle = statusSubtitle();
+  const subtitlePreview = boundedStatusPreview(subtitle);
   const subtitleElement = $("statusSubtitle");
   const disclosure = $("statusMessageDisclosure");
-  subtitleElement.textContent = subtitle;
+  subtitleElement.textContent = subtitlePreview;
   subtitleElement.setAttribute("aria-label", subtitle);
   subtitleElement.title = subtitle;
   $("statusFullMessage").textContent = subtitle;
   window.requestAnimationFrame(() => {
     if (subtitleElement.getAttribute("aria-label") !== subtitle) return;
-    const isTruncated = subtitleElement.scrollHeight > subtitleElement.clientHeight + 1;
+    const isTruncated = subtitlePreview !== subtitle
+      || subtitleElement.scrollHeight > subtitleElement.clientHeight + 1;
     disclosure.classList.toggle("hidden", !isTruncated);
     if (!isTruncated) disclosure.open = false;
   });
@@ -2710,6 +2743,15 @@ function statusSubtitle() {
     error: "서버 URL, HTTPS 설정과 클라이언트 토큰을 확인해 주세요.",
     connected: "대기 중인 서버 요청이 없습니다."
   }[state.connectionPhase] || "서버 상태를 불러오고 있습니다.";
+}
+
+function boundedStatusPreview(value) {
+  const text = String(value || "");
+  const graphemes = statusPreviewSegmenter
+    ? Array.from(statusPreviewSegmenter.segment(text), (entry) => entry.segment)
+    : Array.from(text);
+  if (graphemes.length <= STATUS_PREVIEW_GRAPHEME_LIMIT) return text;
+  return `${graphemes.slice(0, STATUS_PREVIEW_GRAPHEME_LIMIT).join("")}…`;
 }
 
 function runningPhaseDetail() {

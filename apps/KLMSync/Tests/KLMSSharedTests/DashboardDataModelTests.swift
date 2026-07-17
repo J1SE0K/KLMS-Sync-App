@@ -3549,7 +3549,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(relayConnectionPanel.contains("withAnimation(.easeInOut(duration: 0.08))"))
         XCTAssertFalse(relayConnectionPanel.contains(".transition(.opacity)"))
         XCTAssertTrue(relayConnectionPanel.contains(".buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))"))
-        XCTAssertTrue(relayConnectionPanel.contains(".accessibilityLabel(\"서버 릴레이 \\(hasUnsavedChanges ? \"저장 필요\" : isConfigured ? \"저장됨\" : \"미설정\") \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(relayConnectionPanel.contains(".accessibilityLabel(\"서버 릴레이 \\(connectionStateText) \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
+        XCTAssertTrue(relayConnectionPanel.contains("if recoveryRequired { return \"복구 필요\" }"))
+        XCTAssertTrue(relayConnectionPanel.contains("다시 저장하거나 지울 수 있습니다."))
         XCTAssertTrue(relayConnectionPanel.contains("CompanionSettingsSubsectionCard("))
         XCTAssertTrue(relayConnectionPanel.contains("title: \"서버 연결 정보\""))
         XCTAssertTrue(relayConnectionPanel.contains("title: \"연결 확인\""))
@@ -8040,6 +8042,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(initializer.contains("initialValue: persistedConnection.encodedPair"))
         XCTAssertTrue(initializer.contains("serverURL = persistedConnection.pair.serverURL"))
         XCTAssertTrue(initializer.contains("serverToken = persistedConnection.pair.clientToken"))
+        XCTAssertTrue(initializer.contains("serverRelayCredentialRecoveryRequired = persistedConnection.recoveryMessage != nil"))
         XCTAssertTrue(initializer.contains("if let message = persistedConnection.recoveryMessage"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.string(forKey: klmsServerRelayTokenDefaultsKey)"))
         XCTAssertTrue(loadMigratingConnection.contains("account: klmsServerRelayConnectionKeychainAccount"))
@@ -8090,6 +8093,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(trimmedToken"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(token"))
         XCTAssertFalse(companionModel.contains("UserDefaults.standard.set(nextServerURL"))
+        XCTAssertTrue(companionModel.contains("@Published private(set) var serverRelayCredentialRecoveryRequired = false"))
+        XCTAssertTrue(ios.contains("recoveryRequired: model.serverRelayCredentialRecoveryRequired"))
+        XCTAssertTrue(ios.contains("var recoveryRequired: Bool"))
+        XCTAssertTrue(companionModel.contains("serverRelayCredentialRecoveryRequired = false"))
+        XCTAssertTrue(ios.contains(".disabled(!recoveryRequired && !isConfigured && serverURL.isEmpty && serverToken.isEmpty)"))
     }
 
     func testMacServerConnectionRejectsUnboundLegacyAndAppliesCompositeAtomically() throws {

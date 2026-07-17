@@ -471,6 +471,7 @@ body.viewport-resizing .sidebar {
 
 #syncStatusRegion {
   overflow-x: clip;
+  padding-inline-end: 12px;
 }
 
 .topbar h2 {
@@ -1018,9 +1019,11 @@ body.viewport-resizing .sidebar {
 }
 
 #statusSubtitle {
-  display: block;
-  max-block-size: 6em;
+  display: -webkit-box;
+  max-inline-size: 100%;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
   line-height: 1.5;
   white-space: normal;
   word-break: normal;
@@ -1239,10 +1242,6 @@ body.viewport-resizing .sidebar {
     font-size: 22px;
   }
 
-  #statusSubtitle {
-    max-inline-size: calc(100% - 14px);
-  }
-
   .topbar-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -1324,10 +1323,6 @@ body.viewport-resizing .sidebar {
 
   .sidebar-toggle > span:last-child {
     display: none;
-  }
-
-  #statusSubtitle {
-    max-inline-size: calc(100% - 10px);
   }
 
   .list-pane,
