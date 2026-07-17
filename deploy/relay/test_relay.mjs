@@ -417,6 +417,47 @@ try {
   assert.match(hostilePageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
   assert.doesNotMatch(hostilePageHTML, /<img src=x onerror=/);
 
+  const disguisedSVG = await createUploadedFile(
+    "file-disguised-svg",
+    "diagram.png",
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>globalThis.__klmsXSS=true</script></svg>',
+    "image/svg+xml"
+  );
+  const disguisedSVGPreviewURL = new URL(disguisedSVG.downloadURL);
+  disguisedSVGPreviewURL.searchParams.set("preview", "1");
+  disguisedSVGPreviewURL.searchParams.set("raw", "1");
+  const disguisedSVGPreview = await fetch(disguisedSVGPreviewURL);
+  assert.equal(disguisedSVGPreview.status, 200);
+  assert.match(disguisedSVGPreview.headers.get("Content-Type"), /^text\/plain/);
+  assert.doesNotMatch(disguisedSVGPreview.headers.get("Content-Type"), /svg/i);
+  assert.match(disguisedSVGPreview.headers.get("Content-Security-Policy") || "", /sandbox/);
+  assert.match(disguisedSVGPreview.headers.get("Content-Security-Policy") || "", /default-src 'none'/);
+  assert.equal(disguisedSVGPreview.headers.get("X-Content-Type-Options"), "nosniff");
+
+  const disguisedSVGFilename = await createUploadedFile(
+    "file-disguised-svg-filename",
+    "diagram.svg",
+    '<svg xmlns="http://www.w3.org/2000/svg"><script>globalThis.__klmsXSS=true</script></svg>',
+    "image/png"
+  );
+  const disguisedSVGFilenamePreviewURL = new URL(disguisedSVGFilename.downloadURL);
+  disguisedSVGFilenamePreviewURL.searchParams.set("preview", "1");
+  disguisedSVGFilenamePreviewURL.searchParams.set("raw", "1");
+  const disguisedSVGFilenamePreview = await fetch(disguisedSVGFilenamePreviewURL);
+  assert.match(disguisedSVGFilenamePreview.headers.get("Content-Type"), /^text\/plain/);
+  assert.match(disguisedSVGFilenamePreview.headers.get("Content-Security-Policy") || "", /sandbox/);
+  {
+    const quotaDB = new DatabaseSync(dbPath);
+    try {
+      const quotaKey = `fileAccessQuota:${new Date().toISOString().slice(0, 10)}`;
+      const quota = JSON.parse(quotaDB.prepare("SELECT value FROM meta WHERE key = ?").get(quotaKey)?.value || "{}");
+      quota.downloadCount = 0;
+      quotaDB.prepare("UPDATE meta SET value = ? WHERE key = ?").run(JSON.stringify(quota), quotaKey);
+    } finally {
+      quotaDB.close();
+    }
+  }
+
   let runtimeOrphanDirectory;
   {
     const orphanRequestID = crypto.randomUUID();
@@ -429,13 +470,12 @@ try {
     runtimeOrphanDirectory = path.dirname(orphanPath);
     await fs.mkdir(runtimeOrphanDirectory, { recursive: true });
     await fs.writeFile(orphanPath, "orphan", "utf8");
-    await request("/v1/status");
-    await waitForPathRemoval(orphanPath);
+    assert.equal((await request("/v1/status")).status, 200);
     await new Promise((resolve) => setTimeout(resolve, 25));
     assert.equal(
-      (await fs.stat(runtimeOrphanDirectory)).isDirectory(),
-      true,
-      "runtime orphan cleanup must not remove directories that a concurrent upload can claim"
+      await fs.readFile(orphanPath, "utf8"),
+      "orphan",
+      "runtime cleanup must defer stale-snapshot object sweeps until the next safe startup"
     );
   }
 

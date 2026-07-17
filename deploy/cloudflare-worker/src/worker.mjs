@@ -29,6 +29,30 @@ const DEFAULT_DAILY_FILE_DOWNLOADS = 100;
 const DEFAULT_FILE_DOWNLOADS_PER_LINK = 3;
 const DEFAULT_FILE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024;
+const SAFE_INLINE_IMAGE_CONTENT_TYPES = new Set([
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const SAFE_INLINE_AUDIO_CONTENT_TYPES = new Set([
+  "audio/aac",
+  "audio/flac",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/webm",
+  "audio/x-wav",
+]);
+const SAFE_INLINE_VIDEO_CONTENT_TYPES = new Set([
+  "video/mp4",
+  "video/ogg",
+  "video/quicktime",
+  "video/webm",
+]);
 const FILE_UPLOAD_CLAIM_LEASE_MS = 15 * 60 * 1000;
 const FILE_DOWNLOAD_RESERVATION_LEASE_MS = 10 * 60 * 1000;
 const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
@@ -505,7 +529,7 @@ async function fileLogClearFastPathResponse(request, env, scope) {
         await env.RELAY_FILES.delete(candidate.objectKey);
         return { ...candidate, deleted: true };
       } catch (error) {
-        console.error("failed to delete file access object while clearing logs", candidate.objectKey, error);
+        console.error("failed to delete file access object while clearing logs", { requestID: candidate.id }, error);
         return { ...candidate, deleted: false };
       }
     }));
@@ -588,7 +612,7 @@ async function coordinatedMaintenance(env) {
       await env.RELAY_FILES.delete(candidate.objectKey);
       return { ...candidate, deleted: true };
     } catch (error) {
-      console.error("failed to delete interrupted upload object", candidate.objectKey, error);
+      console.error("failed to delete interrupted upload object", { requestID: candidate.id }, error);
       return { ...candidate, deleted: false };
     }
   }));
@@ -611,7 +635,7 @@ async function coordinatedMaintenance(env) {
       await env.RELAY_FILES.delete(candidate.objectKey);
       return { ...candidate, deleted: true };
     } catch (error) {
-      console.error("failed to delete expired file object", candidate.objectKey, error);
+      console.error("failed to delete expired file object", { requestID: candidate.id }, error);
       return { ...candidate, deleted: false };
     }
   }));
@@ -3185,7 +3209,7 @@ async function uploadFileAccess(env, request, id, _ctx = null) {
         await env.RELAY_FILES.delete(objectKey);
         objectDeleted = true;
       } catch (error) {
-        console.error("failed to clean up uncommitted upload object", objectKey, error);
+        console.error("failed to clean up uncommitted upload object", { requestID }, error);
       }
     }
     if (!finalized) {
@@ -3794,6 +3818,9 @@ function fileAccessObjectResponse(fileRequest, object, { disposition = "attachme
   headers.set("Referrer-Policy", "no-referrer");
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  if (disposition === "inline") {
+    headers.set("Content-Security-Policy", "sandbox; default-src 'none'; frame-ancestors 'self'");
+  }
   if (Number.isFinite(Number(fileRequest.sizeBytes))) {
     headers.set("Content-Length", String(Number(fileRequest.sizeBytes)));
   }
@@ -6062,17 +6089,19 @@ function filePreviewDetails(
     label: "",
     message: "이 형식은 브라우저에서 바로 볼 수 없어 다운로드만 지원합니다.",
   };
-  if (contentType === "application/pdf") {
+  if (contentType === "image/svg+xml" || extension === "svg") {
+    preview = { available: true, kind: "text", label: "텍스트", contentType: "text/plain; charset=utf-8", message: "" };
+  } else if (contentType === "application/pdf") {
     preview = { available: true, kind: "pdf", label: "PDF", contentType, message: "" };
-  } else if (contentType.startsWith("image/") && extension !== "svg") {
+  } else if (SAFE_INLINE_IMAGE_CONTENT_TYPES.has(contentType)) {
     preview = { available: true, kind: "image", label: "이미지", contentType, message: "" };
-  } else if (contentType.startsWith("audio/")) {
+  } else if (SAFE_INLINE_AUDIO_CONTENT_TYPES.has(contentType)) {
     preview = { available: true, kind: "audio", label: "오디오", contentType, message: "" };
-  } else if (contentType.startsWith("video/")) {
+  } else if (SAFE_INLINE_VIDEO_CONTENT_TYPES.has(contentType)) {
     preview = { available: true, kind: "video", label: "동영상", contentType, message: "" };
   } else if (
     contentType.startsWith("text/")
-    || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "log", "svg"].includes(extension)
+    || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "log"].includes(extension)
   ) {
     preview = { available: true, kind: "text", label: "텍스트", contentType: "text/plain; charset=utf-8", message: "" };
   }

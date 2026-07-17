@@ -1420,6 +1420,8 @@ async function runSmoke() {
     assert.equal(rawPreviewResponse.status, 200);
     assert.match(rawPreviewResponse.headers.get("Content-Disposition"), /^inline;/);
     assert.match(rawPreviewResponse.headers.get("Content-Type"), /^text\/plain/);
+    assert.match(rawPreviewResponse.headers.get("Content-Security-Policy") || "", /sandbox/);
+    assert.match(rawPreviewResponse.headers.get("Content-Security-Policy") || "", /default-src 'none'/);
     assert.equal(await rawPreviewResponse.text(), "hello file");
 
     const downloadURL = new URL(uploaded.downloadURL);
@@ -1675,6 +1677,35 @@ async function runSmoke() {
     const pageHTML = await pageResponse.text();
     assert.match(pageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
     assert.doesNotMatch(pageHTML, /<img src=x onerror=/);
+  }
+  {
+    for (const file of [
+      {
+        itemID: "file-disguised-svg-mime",
+        itemTitle: "diagram.png",
+        contentType: "image/svg+xml",
+      },
+      {
+        itemID: "file-disguised-svg-filename",
+        itemTitle: "diagram.svg",
+        contentType: "image/png",
+      },
+    ]) {
+      const disguisedSVG = await createUploadedFile({
+        ...file,
+        body: '<svg xmlns="http://www.w3.org/2000/svg"><script>globalThis.__klmsXSS=true</script></svg>',
+      });
+      const previewURL = new URL(disguisedSVG.downloadURL);
+      previewURL.searchParams.set("preview", "1");
+      previewURL.searchParams.set("raw", "1");
+      const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+      assert.equal(previewResponse.status, 200);
+      assert.match(previewResponse.headers.get("Content-Type"), /^text\/plain/);
+      assert.doesNotMatch(previewResponse.headers.get("Content-Type"), /svg/i);
+      assert.match(previewResponse.headers.get("Content-Security-Policy") || "", /sandbox/);
+      assert.match(previewResponse.headers.get("Content-Security-Policy") || "", /default-src 'none'/);
+      assert.equal(previewResponse.headers.get("X-Content-Type-Options"), "nosniff");
+    }
   }
   {
     const png = await createUploadedFile({

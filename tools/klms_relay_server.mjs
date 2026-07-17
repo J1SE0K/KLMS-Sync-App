@@ -51,6 +51,30 @@ const DEFAULT_DAILY_FILE_DOWNLOADS = 100;
 const DEFAULT_FILE_DOWNLOADS_PER_LINK = 3;
 const DEFAULT_FILE_PREVIEW_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_TEXT_FILE_PREVIEW_MAX_BYTES = 512 * 1024;
+const SAFE_INLINE_IMAGE_CONTENT_TYPES = new Set([
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+const SAFE_INLINE_AUDIO_CONTENT_TYPES = new Set([
+  "audio/aac",
+  "audio/flac",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/webm",
+  "audio/x-wav",
+]);
+const SAFE_INLINE_VIDEO_CONTENT_TYPES = new Set([
+  "video/mp4",
+  "video/ogg",
+  "video/quicktime",
+  "video/webm",
+]);
 const STALE_PENDING_COMMAND_MS = 60 * 60 * 1000;
 const STALE_RUNNING_COMMAND_MS = 2 * 60 * 1000;
 const STALE_PENDING_ITEM_ACTION_MS = 60 * 60 * 1000;
@@ -247,7 +271,7 @@ const activeFileUploadClaims = new Set();
 const db = new DatabaseSync(DB_PATH);
 initDatabase();
 recoverStaleFileDownloadReservations({ notify: false });
-await recoverInterruptedFileUploads({ recoverDeletionClaims: true, pruneEmptyDirectories: true });
+await recoverInterruptedFileUploads({ recoverDeletionClaims: true, sweepUnreferencedObjects: true });
 let state = loadState();
 const realtimeClients = new Set();
 const authorizedRequestRateWindows = new Map();
@@ -3388,7 +3412,7 @@ function expireStaleFileAccessRequests() {
 
 async function recoverInterruptedFileUploads({
   recoverDeletionClaims = false,
-  pruneEmptyDirectories = false,
+  sweepUnreferencedObjects = false,
 } = {}) {
   const interrupted = db.prepare(`
     SELECT id, upload_claim, pending_object_key, reserved_upload_bytes, reserved_upload_quota_key
@@ -3453,10 +3477,13 @@ async function recoverInterruptedFileUploads({
       }
     }
   }
-  await cleanupUnreferencedFileObjects({ pruneEmptyDirectories });
+  // The unreferenced-object scan snapshots the database before walking the
+  // filesystem. Run it only before listen(), when no upload can create a new
+  // referenced object after that snapshot.
+  if (sweepUnreferencedObjects) await cleanupUnreferencedFileObjects();
 }
 
-async function cleanupUnreferencedFileObjects({ pruneEmptyDirectories = false } = {}) {
+async function cleanupUnreferencedFileObjects() {
   const storageRoot = path.join(FILE_DIR, "file-access");
   let requestDirectories;
   try {
@@ -3491,9 +3518,7 @@ async function cleanupUnreferencedFileObjects({ pruneEmptyDirectories = false } 
         if (error?.code !== "ENOENT") console.error("failed to remove unreferenced file object", error);
       });
     }
-    // At runtime an upload can reserve this directory after the reference snapshot
-    // but before its first file write. Directory pruning is safe only before listen().
-    if (pruneEmptyDirectories) await fs.rmdir(directoryPath).catch(() => {});
+    await fs.rmdir(directoryPath).catch(() => {});
   }
 }
 
@@ -4006,7 +4031,7 @@ function rawPreviewActionURL(url) {
 }
 
 function sendLocalFileObject(response, fileRequest, data, { disposition = "attachment", preview = null } = {}) {
-  response.writeHead(200, {
+  const headers = {
     "Content-Type": effectiveFileContentType(fileRequest, { disposition, preview }),
     "Content-Disposition": contentDisposition(fileRequest.itemTitle || "KLMS file", disposition),
     "Content-Length": String(data.length),
@@ -4014,7 +4039,11 @@ function sendLocalFileObject(response, fileRequest, data, { disposition = "attac
     "Referrer-Policy": "no-referrer",
     "X-Content-Type-Options": "nosniff",
     "Cross-Origin-Resource-Policy": "same-origin",
-  });
+  };
+  if (disposition === "inline") {
+    headers["Content-Security-Policy"] = "sandbox; default-src 'none'; frame-ancestors 'self'";
+  }
+  response.writeHead(200, headers);
   response.end(data);
 }
 
@@ -5735,17 +5764,19 @@ function filePreviewDetails(
     label: "",
     message: "이 형식은 브라우저에서 바로 볼 수 없어 다운로드만 지원합니다.",
   };
-  if (contentType === "application/pdf") {
+  if (contentType === "image/svg+xml" || extension === "svg") {
+    preview = { available: true, kind: "text", label: "텍스트", contentType: "text/plain; charset=utf-8", message: "" };
+  } else if (contentType === "application/pdf") {
     preview = { available: true, kind: "pdf", label: "PDF", contentType, message: "" };
-  } else if (contentType.startsWith("image/") && extension !== "svg") {
+  } else if (SAFE_INLINE_IMAGE_CONTENT_TYPES.has(contentType)) {
     preview = { available: true, kind: "image", label: "이미지", contentType, message: "" };
-  } else if (contentType.startsWith("audio/")) {
+  } else if (SAFE_INLINE_AUDIO_CONTENT_TYPES.has(contentType)) {
     preview = { available: true, kind: "audio", label: "오디오", contentType, message: "" };
-  } else if (contentType.startsWith("video/")) {
+  } else if (SAFE_INLINE_VIDEO_CONTENT_TYPES.has(contentType)) {
     preview = { available: true, kind: "video", label: "동영상", contentType, message: "" };
   } else if (
     contentType.startsWith("text/")
-    || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "log", "svg"].includes(extension)
+    || ["txt", "md", "markdown", "csv", "tsv", "json", "xml", "log"].includes(extension)
   ) {
     preview = { available: true, kind: "text", label: "텍스트", contentType: "text/plain; charset=utf-8", message: "" };
   }
