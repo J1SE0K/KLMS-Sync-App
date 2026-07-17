@@ -670,13 +670,9 @@ final class KLMSMacModel: ObservableObject {
     @discardableResult
     private static func persistServerRelayConnection(_ connection: PersistedServerRelayConnection) -> Bool {
         if connection == emptyServerRelayConnection {
-            LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)
-            guard LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil else {
-                return false
-            }
-            removeLegacyServerRelayCredentials()
-            return true
+            return deleteAllServerRelayCredentials()
         }
+        guard deleteLegacyServerRelayKeychainCredentials() else { return false }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(connection),
@@ -687,18 +683,41 @@ final class KLMSMacModel: ObservableObject {
               ) == connection else {
             return false
         }
-        removeLegacyServerRelayCredentials()
+        removeLegacyServerRelayDefaults()
         return true
     }
 
-    private static func removeLegacyServerRelayCredentials() {
-        LocalRemoteTokenStore.delete(account: "server-relay-client-mac")
-        LocalRemoteTokenStore.delete(account: "server-relay-worker-mac")
-        LocalRemoteTokenStore.delete(account: "server-relay-mac")
+    private static func deleteAllServerRelayCredentials() -> Bool {
+        guard deleteLegacyServerRelayKeychainCredentials(),
+              LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount) else {
+            return false
+        }
+        removeLegacyServerRelayDefaults()
+        return true
+    }
+
+    private static func deleteLegacyServerRelayKeychainCredentials() -> Bool {
+        var deletedEverywhere = true
+        for account in ["server-relay-client-mac", "server-relay-worker-mac", "server-relay-mac"] {
+            if !LocalRemoteTokenStore.delete(account: account) {
+                deletedEverywhere = false
+            }
+        }
+        return deletedEverywhere
+    }
+
+    private static func removeLegacyServerRelayDefaults() {
         UserDefaults.standard.removeObject(forKey: serverRelayURLKey)
         UserDefaults.standard.removeObject(forKey: serverRelayClientTokenKey)
         UserDefaults.standard.removeObject(forKey: serverRelayWorkerTokenKey)
         UserDefaults.standard.removeObject(forKey: deprecatedServerRelayTokenKey)
+    }
+
+    @discardableResult
+    private static func removeLegacyServerRelayCredentials() -> Bool {
+        guard deleteLegacyServerRelayKeychainCredentials() else { return false }
+        removeLegacyServerRelayDefaults()
+        return true
     }
 
     private static func relayTokenFingerprint(_ token: String) -> String {

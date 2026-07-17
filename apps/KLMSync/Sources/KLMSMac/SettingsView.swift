@@ -915,9 +915,7 @@ struct SettingsView: View {
         }
         serverRelayURLDraft = draft.serverURL
         serverRelayClientTokenDraft = draft.clientToken
-        if let workerToken = draft.workerToken {
-            serverRelayWorkerTokenDraft = workerToken
-        }
+        serverRelayWorkerTokenDraft = draft.workerToken ?? ""
     }
 
     private func settingsForm<Content: View>(@ViewBuilder content: () -> Content) -> some View {

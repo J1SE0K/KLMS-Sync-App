@@ -936,7 +936,8 @@ protocol LocalRemoteTokenKeychainBackend {
     @discardableResult
     func save(_ token: String, account: String, service: String) -> Bool
 
-    func delete(account: String, service: String)
+    @discardableResult
+    func delete(account: String, service: String) -> Bool
 }
 
 private struct SecurityLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychainBackend {
@@ -991,14 +992,18 @@ private struct SecurityLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychain
         #endif
     }
 
-    func delete(account: String, service: String) {
+    @discardableResult
+    func delete(account: String, service: String) -> Bool {
         #if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
+        #else
+        return false
         #endif
     }
 }
@@ -1040,7 +1045,7 @@ public enum LocalRemoteTokenStore {
             guard save(token, account: account, service: service, backend: backend) else {
                 return token
             }
-            backend.delete(account: account, service: legacyService)
+            _ = backend.delete(account: account, service: legacyService)
             return token
         }
         return nil
@@ -1065,21 +1070,26 @@ public enum LocalRemoteTokenStore {
     ) -> Bool {
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else {
-            backend.delete(account: account, service: service)
+            _ = backend.delete(account: account, service: service)
             return false
         }
         return backend.save(trimmedToken, account: account, service: service)
     }
 
-    public static func delete(account: String) {
+    @discardableResult
+    public static func delete(account: String) -> Bool {
         delete(account: account, backend: SecurityLocalRemoteTokenKeychainBackend())
     }
 
-    static func delete(account: String, backend: LocalRemoteTokenKeychainBackend) {
-        backend.delete(account: account, service: service)
+    @discardableResult
+    static func delete(account: String, backend: LocalRemoteTokenKeychainBackend) -> Bool {
+        var deletedEverywhere = backend.delete(account: account, service: service)
         for legacyService in legacyServices {
-            backend.delete(account: account, service: legacyService)
+            if !backend.delete(account: account, service: legacyService) {
+                deletedEverywhere = false
+            }
         }
+        return deletedEverywhere
     }
 
     private static func normalizedToken(_ token: String?) -> String? {

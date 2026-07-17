@@ -9,19 +9,29 @@ private final class FakeLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychai
 
     var storage: [Key: String]
     var failingSaveServices: Set<String>
+    var failingLoadKeys: Set<Key>
+    var failingDeleteKeys: Set<Key>
     private(set) var deletedKeys: [Key]
 
     init(
         storage: [Key: String] = [:],
-        failingSaveServices: Set<String> = []
+        failingSaveServices: Set<String> = [],
+        failingLoadKeys: Set<Key> = [],
+        failingDeleteKeys: Set<Key> = []
     ) {
         self.storage = storage
         self.failingSaveServices = failingSaveServices
+        self.failingLoadKeys = failingLoadKeys
+        self.failingDeleteKeys = failingDeleteKeys
         deletedKeys = []
     }
 
     func load(account: String, service: String) -> String? {
-        storage[Key(account: account, service: service)]
+        let key = Key(account: account, service: service)
+        guard !failingLoadKeys.contains(key) else {
+            return nil
+        }
+        return storage[key]
     }
 
     @discardableResult
@@ -33,10 +43,14 @@ private final class FakeLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychai
         return true
     }
 
-    func delete(account: String, service: String) {
+    func delete(account: String, service: String) -> Bool {
         let key = Key(account: account, service: service)
         deletedKeys.append(key)
+        guard !failingDeleteKeys.contains(key) else {
+            return false
+        }
         storage.removeValue(forKey: key)
+        return true
     }
 }
 
@@ -678,6 +692,44 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
         XCTAssertNil(backend.storage[currentKey])
         XCTAssertFalse(backend.deletedKeys.contains(legacyKey))
+    }
+
+    func testLocalRemoteTokenStoreDeleteRequiresEveryServiceDeletion() throws {
+        let account = "server-relay-connection-mac"
+        let currentKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: LocalRemoteTokenStore.serviceForTesting
+        )
+        let legacyKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: try XCTUnwrap(LocalRemoteTokenStore.legacyServicesForTesting.first)
+        )
+        let backend = FakeLocalRemoteTokenKeychainBackend(
+            storage: [currentKey: "current", legacyKey: "legacy"],
+            failingDeleteKeys: [legacyKey]
+        )
+
+        XCTAssertFalse(LocalRemoteTokenStore.delete(account: account, backend: backend))
+        XCTAssertNil(backend.storage[currentKey])
+        XCTAssertEqual(backend.storage[legacyKey], "legacy")
+        XCTAssertEqual(Set(backend.deletedKeys), [currentKey, legacyKey])
+    }
+
+    func testLocalRemoteTokenStoreDeleteDoesNotTreatAmbiguousReadFailureAsVerification() {
+        let account = "server-relay-connection-mac"
+        let currentKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: LocalRemoteTokenStore.serviceForTesting
+        )
+        let backend = FakeLocalRemoteTokenKeychainBackend(
+            storage: [currentKey: "current"],
+            failingLoadKeys: [currentKey],
+            failingDeleteKeys: [currentKey]
+        )
+
+        XCTAssertNil(backend.load(account: account, service: currentKey.service))
+        XCTAssertFalse(LocalRemoteTokenStore.delete(account: account, backend: backend))
+        XCTAssertEqual(backend.storage[currentKey], "current")
     }
 
     func testServerRelaySyncDataRoundTripWithoutRawURLs() throws {

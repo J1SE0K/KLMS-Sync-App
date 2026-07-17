@@ -8108,6 +8108,11 @@ final class DashboardDataModelTests: XCTestCase {
             in: mac,
             description: "Mac explicit relay connection clear"
         )
+        let deleteAllCredentials = try sourceBody(
+            after: "private static func deleteAllServerRelayCredentials() -> Bool",
+            in: mac,
+            description: "Mac verified relay credential deletion"
+        )
         let canClearConnection = try sourceBody(
             after: "var serverRelayConnectionCanBeCleared: Bool",
             in: mac,
@@ -8122,6 +8127,11 @@ final class DashboardDataModelTests: XCTestCase {
             after: "private func saveServerRelayConnectionDraft()",
             in: settings,
             description: "Mac relay connection draft save"
+        )
+        let pasteDraft = try sourceBody(
+            after: "private func pasteServerRelayConnectionDraft()",
+            in: settings,
+            description: "Mac relay connection draft paste"
         )
 
         XCTAssertTrue(initializer.contains("let credentialPersistenceFailed ="))
@@ -8138,10 +8148,11 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.serverRelayURLKey)"))
         XCTAssertFalse(initializer.contains("UserDefaults.standard.removeObject(forKey: Self.deprecatedServerRelayTokenKey)"))
         XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount)"))
-        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)"))
-        XCTAssertTrue(persistConnection.contains("LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil"))
+        XCTAssertTrue(persistConnection.contains("deleteAllServerRelayCredentials()"))
+        XCTAssertTrue(persistConnection.contains("deleteLegacyServerRelayKeychainCredentials()"))
         XCTAssertTrue(persistConnection.contains("decodeServerRelayConnection("))
-        XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayCredentials()"))
+        XCTAssertTrue(persistConnection.contains("removeLegacyServerRelayDefaults()"))
+        XCTAssertFalse(persistConnection.contains("LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) == nil"))
         XCTAssertTrue(normalizeConnection.contains("UnboundServerRelayCredentialFragments("))
         XCTAssertTrue(normalizeConnection.contains("guard fragments.populationState != .partial else"))
         XCTAssertTrue(applyConnection.contains("guard fragments.populationState == .complete else"))
@@ -8167,6 +8178,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(settings.contains("model.clearServerRelayConnection()"))
         XCTAssertTrue(settings.contains("confirmationDialog("))
         XCTAssertTrue(settings.contains("Button(\"연결 정보 삭제\", role: .destructive)"))
+        XCTAssertTrue(pasteDraft.contains("serverRelayWorkerTokenDraft = draft.workerToken ?? \"\""))
+        XCTAssertFalse(pasteDraft.contains("if let workerToken = draft.workerToken"))
         XCTAssertFalse(settings.contains("model.setServerRelayURL"))
         XCTAssertFalse(settings.contains("model.setServerRelayClientToken"))
         XCTAssertFalse(settings.contains("model.setServerRelayWorkerToken"))
@@ -8181,6 +8194,9 @@ final class DashboardDataModelTests: XCTestCase {
         let deleted = try XCTUnwrap(clearConnection.range(of: "Self.persistServerRelayConnection(Self.emptyServerRelayConnection)"))
         let clearedRecovery = try XCTUnwrap(clearConnection.range(of: "serverRelayCredentialRecoveryRequired = false"))
         XCTAssertLessThan(deleted.lowerBound, clearedRecovery.lowerBound)
+        XCTAssertTrue(deleteAllCredentials.contains("deleteLegacyServerRelayKeychainCredentials()"))
+        XCTAssertTrue(deleteAllCredentials.contains("LocalRemoteTokenStore.delete(account: serverRelayConnectionAccount)"))
+        XCTAssertTrue(deleteAllCredentials.contains("removeLegacyServerRelayDefaults()"))
     }
 
     func testMacAuthCodeBannerExposesOneDigitAwareVoiceOverElement() throws {
