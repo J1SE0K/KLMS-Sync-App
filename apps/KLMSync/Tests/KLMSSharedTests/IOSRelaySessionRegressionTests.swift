@@ -302,8 +302,9 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertTrue(reconciliation.contains("if overlay.missingLookupCount == 0"))
         XCTAssertTrue(source.contains("markItemActionSubmissionOutcomeUnknown(&overlay"))
         XCTAssertTrue(source.contains("isDefinitiveItemActionSubmissionFailure(error)"))
-        XCTAssertFalse(source.contains("resolutionAttemptCount < 3"))
-        XCTAssertTrue(source.contains("overlay.resolutionAttemptCount = min(overlay.resolutionAttemptCount + 1, 6)"))
+        XCTAssertTrue(source.contains("private static let itemActionResolutionMaximumAttempts = 6"))
+        XCTAssertTrue(source.contains("overlay.resolutionAttemptCount < Self.itemActionResolutionMaximumAttempts"))
+        XCTAssertTrue(source.contains("overlay.resolutionAttemptCount += 1"))
         XCTAssertTrue(source.contains("let delaySeconds = min(30,"))
         XCTAssertTrue(source.contains("private func invalidateItemActionEndpointOwners()"))
         XCTAssertGreaterThanOrEqual(
@@ -311,6 +312,10 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
             8
         )
         XCTAssertTrue(reconciliation.contains("rollbackItemActionMutation(overlay)"))
+        XCTAssertTrue(reconciliation.contains("overlay.resolutionAttemptCount >= Self.itemActionResolutionMaximumAttempts"))
+        XCTAssertTrue(reconciliation.contains("failPendingItemActionResolution("))
+        XCTAssertTrue(source.contains("private func failPendingItemActionResolution("))
+        XCTAssertTrue(source.contains("schedulePostActionRefresh(\n            scope: .itemActionServerState"))
         XCTAssertTrue(itemActionSubmission.contains("guard var overlay = pendingItemActionOverlaysByID.removeValue(forKey: action.id) else"))
         XCTAssertTrue(itemActionSubmission.contains("if savedAction.status.isFailedLike"))
         XCTAssertTrue(itemActionSubmission.contains("connectionSucceeded = false"))

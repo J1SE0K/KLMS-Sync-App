@@ -332,6 +332,7 @@ final class CompanionModel: ObservableObject {
     private var sharedRunLogsClearPending = false
     private var lastTerminalCommandID: UUID?
     private let syncDataStaleInterval: TimeInterval = 45
+    private static let itemActionResolutionMaximumAttempts = 6
     private var latestFileAccessRequestByItemID: [String: ServerRelayFileAccessRequest] = [:]
     private var activeItemActionByItemID: [String: ServerRelayItemAction] = [:]
     private var activeCalendarActionByID: [String: ServerRelayItemAction] = [:]
@@ -2388,10 +2389,11 @@ final class CompanionModel: ObservableObject {
 
     private func scheduleItemActionResolutionRefresh(for id: UUID) {
         guard var overlay = pendingItemActionOverlaysByID[id],
-              overlay.submissionPhase != .submitting else {
+              overlay.submissionPhase != .submitting,
+              overlay.resolutionAttemptCount < Self.itemActionResolutionMaximumAttempts else {
             return
         }
-        overlay.resolutionAttemptCount = min(overlay.resolutionAttemptCount + 1, 6)
+        overlay.resolutionAttemptCount += 1
         pendingItemActionOverlaysByID[id] = overlay
         let lookupVersion = overlay.lookupVersion
         let delaySeconds = min(30, 1 << max(0, overlay.resolutionAttemptCount - 1))
@@ -2538,6 +2540,29 @@ final class CompanionModel: ObservableObject {
         if syncItemsChanged || mailItemsChanged {
             persistCurrentServerSyncData()
         }
+    }
+
+    private func failPendingItemActionResolution(
+        id: UUID,
+        overlay: PendingItemActionOverlay,
+        message: String
+    ) -> ServerRelayItemAction {
+        pendingItemActionOverlaysByID.removeValue(forKey: id)
+        itemActionResolutionTasksByID.removeValue(forKey: id)?.cancel()
+        var failedAction = overlay.action
+        failedAction.status = .failed
+        failedAction.updatedAt = Date()
+        failedAction.message = message
+        rollbackItemActionMutation(overlay)
+        connectionMessage = message
+        connectionSucceeded = false
+        errorMessage = message
+        syncDataNeedsRefresh = true
+        schedulePostActionRefresh(
+            scope: .itemActionServerState,
+            delayNanoseconds: 250_000_000
+        )
+        return failedAction
     }
 
     private func rollbackCalendarResolutionMutation(
@@ -4414,20 +4439,25 @@ final class CompanionModel: ObservableObject {
                     scheduleItemActionResolutionRefresh(for: id)
                     continue
                 }
-                pendingItemActionOverlaysByID.removeValue(forKey: id)
-                itemActionResolutionTasksByID.removeValue(forKey: id)?.cancel()
-                overlay.action.status = .failed
-                overlay.action.updatedAt = Date()
-                overlay.action.message = "서버에서 요청 기록을 찾지 못했습니다. 현재 화면을 되돌렸으니 다시 시도해 주세요."
-                rollbackItemActionMutation(overlay)
-                nextByID[id] = overlay.action
-                connectionMessage = overlay.action.message
-                connectionSucceeded = false
+                nextByID[id] = failPendingItemActionResolution(
+                    id: id,
+                    overlay: overlay,
+                    message: "서버에서 요청 기록을 찾지 못했습니다. 현재 화면을 되돌렸으니 다시 시도해 주세요."
+                )
             case let .unavailable(lookupVersion):
-                guard pendingItemActionOverlaysByID[id]?.lookupVersion == lookupVersion else {
+                guard let overlay = pendingItemActionOverlaysByID[id],
+                      overlay.lookupVersion == lookupVersion else {
                     continue
                 }
-                scheduleItemActionResolutionRefresh(for: id)
+                if overlay.resolutionAttemptCount >= Self.itemActionResolutionMaximumAttempts {
+                    nextByID[id] = failPendingItemActionResolution(
+                        id: id,
+                        overlay: overlay,
+                        message: "서버 응답을 여러 번 확인했지만 요청 결과를 확인하지 못했습니다. 화면을 원래 상태로 되돌렸으며 서버 상태를 다시 불러옵니다."
+                    )
+                } else {
+                    scheduleItemActionResolutionRefresh(for: id)
+                }
             }
         }
         for (id, overlay) in pendingItemActionOverlaysByID where nextByID[id] == nil {
