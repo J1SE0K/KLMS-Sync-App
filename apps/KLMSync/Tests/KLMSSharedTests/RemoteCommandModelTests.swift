@@ -10,6 +10,7 @@ private final class FakeLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychai
     var storage: [Key: String]
     var failingSaveServices: Set<String>
     var failingLoadKeys: Set<Key>
+    var failingLoadAfterSaveServices: Set<String>
     var failingDeleteKeys: Set<Key>
     private(set) var saveAttempts: [Key]
     private(set) var deletedKeys: [Key]
@@ -18,11 +19,13 @@ private final class FakeLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychai
         storage: [Key: String] = [:],
         failingSaveServices: Set<String> = [],
         failingLoadKeys: Set<Key> = [],
+        failingLoadAfterSaveServices: Set<String> = [],
         failingDeleteKeys: Set<Key> = []
     ) {
         self.storage = storage
         self.failingSaveServices = failingSaveServices
         self.failingLoadKeys = failingLoadKeys
+        self.failingLoadAfterSaveServices = failingLoadAfterSaveServices
         self.failingDeleteKeys = failingDeleteKeys
         saveAttempts = []
         deletedKeys = []
@@ -30,7 +33,9 @@ private final class FakeLocalRemoteTokenKeychainBackend: LocalRemoteTokenKeychai
 
     func load(account: String, service: String) -> LocalRemoteTokenKeychainLoadResult {
         let key = Key(account: account, service: service)
-        guard !failingLoadKeys.contains(key) else {
+        let failsAfterSave = failingLoadAfterSaveServices.contains(service)
+            && saveAttempts.contains(key)
+        guard !failingLoadKeys.contains(key), !failsAfterSave else {
             return .failure
         }
         guard let token = storage[key] else {
@@ -600,6 +605,8 @@ final class RemoteCommandModelTests: XCTestCase {
 
         XCTAssertNil(ServerRelayConnectionInfo.parse(urlText: text))
         let blockedURLs = [
+            "https://alice:password@example.com/relay",
+            "https://alice@example.com/relay",
             "https://127.0.0.1:18484",
             "https://0.0.0.0",
             "https://10.20.30.40",
@@ -625,6 +632,20 @@ final class RemoteCommandModelTests: XCTestCase {
     func testServerRelayCommandStoreRejectsPrivateURLByDefault() {
         XCTAssertThrowsError(
             try ServerRelayCommandStore(urlText: "https://127.0.0.1:18484", token: "token")
+        ) { error in
+            guard case ServerRelayClientError.invalidURL = error else {
+                return XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
+    func testServerRelayCommandStoreRejectsUserInfoFromDirectURLInitializer() throws {
+        let credentialURL = try XCTUnwrap(
+            URL(string: "https://alice:password@example.com/relay")
+        )
+
+        XCTAssertThrowsError(
+            try ServerRelayCommandStore(baseURL: credentialURL, token: "token")
         ) { error in
             guard case ServerRelayClientError.invalidURL = error else {
                 return XCTFail("unexpected error: \(error)")
@@ -669,7 +690,7 @@ final class RemoteCommandModelTests: XCTestCase {
 
         let token = LocalRemoteTokenStore.load(account: account, backend: backend)
 
-        XCTAssertEqual(token, "migrated-token")
+        XCTAssertEqual(token, .migrated("migrated-token"))
         XCTAssertEqual(backend.storage[currentKey], "migrated-token")
         XCTAssertEqual(backend.storage[legacyKey], "  migrated-token  ")
         XCTAssertTrue(backend.deletedKeys.isEmpty)
@@ -697,10 +718,36 @@ final class RemoteCommandModelTests: XCTestCase {
 
         let token = LocalRemoteTokenStore.load(account: account, backend: backend)
 
-        XCTAssertEqual(token, "legacy-token")
+        XCTAssertEqual(token, .migrationFailed)
         XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
         XCTAssertNil(backend.storage[currentKey])
         XCTAssertFalse(backend.deletedKeys.contains(legacyKey))
+    }
+
+    func testLocalRemoteTokenStorePreservesLegacyTokenWhenMigrationReadBackFails() throws {
+        let account = "server-relay-ios"
+        let currentService = LocalRemoteTokenStore.serviceForTesting
+        let legacyService = try XCTUnwrap(LocalRemoteTokenStore.legacyServicesForTesting.first)
+        let legacyKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: legacyService
+        )
+        let currentKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: currentService
+        )
+        let backend = FakeLocalRemoteTokenKeychainBackend(
+            storage: [legacyKey: "legacy-token"],
+            failingLoadAfterSaveServices: [currentService]
+        )
+
+        XCTAssertEqual(
+            LocalRemoteTokenStore.load(account: account, backend: backend),
+            .migrationFailed
+        )
+        XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
+        XCTAssertEqual(backend.storage[currentKey], "legacy-token")
+        XCTAssertTrue(backend.deletedKeys.isEmpty)
     }
 
     func testLocalRemoteTokenStoreRetriesLegacyCleanupAfterVerifiedMigration() throws {
@@ -720,7 +767,10 @@ final class RemoteCommandModelTests: XCTestCase {
             failingDeleteKeys: [legacyKey]
         )
 
-        XCTAssertEqual(LocalRemoteTokenStore.load(account: account, backend: backend), "legacy-token")
+        XCTAssertEqual(
+            LocalRemoteTokenStore.load(account: account, backend: backend),
+            .migrated("legacy-token")
+        )
         XCTAssertEqual(backend.storage[currentKey], "legacy-token")
         XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
         XCTAssertTrue(backend.deletedKeys.isEmpty)
@@ -730,7 +780,10 @@ final class RemoteCommandModelTests: XCTestCase {
 
         backend.failingDeleteKeys.remove(legacyKey)
 
-        XCTAssertEqual(LocalRemoteTokenStore.load(account: account, backend: backend), "legacy-token")
+        XCTAssertEqual(
+            LocalRemoteTokenStore.load(account: account, backend: backend),
+            .current("legacy-token")
+        )
         XCTAssertEqual(backend.storage[legacyKey], "legacy-token")
         XCTAssertTrue(LocalRemoteTokenStore.deleteLegacyServices(account: account, backend: backend))
         XCTAssertNil(backend.storage[legacyKey])
@@ -757,7 +810,10 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(backend.storage[legacyKey], "legacy")
         XCTAssertEqual(backend.deletedKeys, [legacyKey])
 
-        XCTAssertEqual(LocalRemoteTokenStore.load(account: account, backend: backend), "current")
+        XCTAssertEqual(
+            LocalRemoteTokenStore.load(account: account, backend: backend),
+            .current("current")
+        )
         XCTAssertEqual(backend.storage[currentKey], "current")
         XCTAssertEqual(backend.storage[legacyKey], "legacy")
     }
@@ -794,9 +850,31 @@ final class RemoteCommandModelTests: XCTestCase {
             failingLoadKeys: [currentKey]
         )
 
-        XCTAssertNil(LocalRemoteTokenStore.load(account: account, backend: backend))
+        XCTAssertEqual(
+            LocalRemoteTokenStore.load(account: account, backend: backend),
+            .readFailed
+        )
         XCTAssertEqual(backend.storage[currentKey], "verified-current")
         XCTAssertEqual(backend.storage[legacyKey], "stale-legacy")
+        XCTAssertTrue(backend.saveAttempts.isEmpty)
+        XCTAssertTrue(backend.deletedKeys.isEmpty)
+    }
+
+    func testLocalRemoteTokenStoreReportsInvalidCurrentValueAsReadFailure() {
+        let account = "server-relay-connection-mac"
+        let currentKey = FakeLocalRemoteTokenKeychainBackend.Key(
+            account: account,
+            service: LocalRemoteTokenStore.serviceForTesting
+        )
+        let backend = FakeLocalRemoteTokenKeychainBackend(
+            storage: [currentKey: " \n\t "]
+        )
+
+        XCTAssertEqual(
+            LocalRemoteTokenStore.load(account: account, backend: backend),
+            .readFailed
+        )
+        XCTAssertEqual(backend.storage[currentKey], " \n\t ")
         XCTAssertTrue(backend.saveAttempts.isEmpty)
         XCTAssertTrue(backend.deletedKeys.isEmpty)
     }

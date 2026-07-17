@@ -571,30 +571,44 @@ final class KLMSMacModel: ObservableObject {
         let storedRelayURL = UserDefaults.standard.string(forKey: Self.serverRelayURLKey) ?? ""
         LocalRemoteTokenStore.delete(account: "mac")
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)
-        let persistedConnectionPayload = LocalRemoteTokenStore.load(account: Self.serverRelayConnectionAccount)
+        let persistedConnectionLoad = LocalRemoteTokenStore.load(account: Self.serverRelayConnectionAccount)
+        let persistedConnectionPayload = persistedConnectionLoad.value
         let persistedConnection = persistedConnectionPayload.flatMap(Self.decodeServerRelayConnection)
-        let storedClientToken = LocalRemoteTokenStore.load(account: "server-relay-client-mac")
-        let storedWorkerToken = LocalRemoteTokenStore.load(account: "server-relay-worker-mac")
-        let secureLegacyWorkerToken = LocalRemoteTokenStore.load(account: "server-relay-mac")
+        let storedClientTokenLoad = LocalRemoteTokenStore.load(account: "server-relay-client-mac")
+        let storedWorkerTokenLoad = LocalRemoteTokenStore.load(account: "server-relay-worker-mac")
+        let secureLegacyWorkerTokenLoad = LocalRemoteTokenStore.load(account: "server-relay-mac")
         let legacyClientToken = UserDefaults.standard.string(forKey: Self.serverRelayClientTokenKey)
         let legacyWorkerToken = UserDefaults.standard.string(forKey: Self.serverRelayWorkerTokenKey)
             ?? UserDefaults.standard.string(forKey: Self.deprecatedServerRelayTokenKey)
-        let clientCandidate = (storedClientToken ?? legacyClientToken)?
+        let clientCandidate = (storedClientTokenLoad.value ?? legacyClientToken)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let workerCandidate = (storedWorkerToken ?? legacyWorkerToken ?? secureLegacyWorkerToken)?
+        let workerCandidate = (
+            storedWorkerTokenLoad.value
+                ?? legacyWorkerToken
+                ?? secureLegacyWorkerTokenLoad.value
+        )?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let legacyFragments = UnboundServerRelayCredentialFragments(
             serverURL: storedRelayURL,
             clientToken: clientCandidate,
             workerToken: workerCandidate
         )
+        let legacyCredentialLoads = [
+            storedClientTokenLoad,
+            storedWorkerTokenLoad,
+            secureLegacyWorkerTokenLoad,
+        ]
+        let legacyCredentialLoadFailed = legacyCredentialLoads.contains(where: \.requiresRecovery)
+        let legacyCredentialMigrationFailed = legacyCredentialLoads.contains(.migrationFailed)
         let legacyRequiresManualReentry = persistedConnection == nil
             && legacyFragments.requiresManualReentry
         let activeConnection = persistedConnection ?? Self.emptyServerRelayConnection
         serverRelayURL = activeConnection.serverURL
         serverRelayClientToken = activeConnection.clientToken
         serverRelayWorkerToken = activeConnection.workerToken
-        let credentialPersistenceFailed = (persistedConnectionPayload != nil && persistedConnection == nil)
+        let credentialPersistenceFailed = persistedConnectionLoad.requiresRecovery
+            || legacyCredentialLoadFailed
+            || (persistedConnectionPayload != nil && persistedConnection == nil)
             || legacyRequiresManualReentry
         serverRelayCredentialRecoveryRequired = credentialPersistenceFailed
         self.paths = paths
@@ -610,7 +624,13 @@ final class KLMSMacModel: ObservableObject {
             serverRelayWorkerToken = ""
             serverRelayEnabled = false
             UserDefaults.standard.set(false, forKey: Self.serverRelayEnabledKey)
-            if legacyRequiresManualReentry {
+            if persistedConnectionLoad == .migrationFailed {
+                serverRelayStatusMessage = "이전 보안 저장소의 서버 연결 정보를 최신 키체인으로 옮기지 못했습니다. 기존 정보는 보존했습니다. 잠시 후 앱을 다시 열거나 설정에서 URL과 토큰을 함께 저장해 주세요."
+            } else if legacyCredentialMigrationFailed {
+                serverRelayStatusMessage = "이전 키체인의 서버 토큰을 최신 보안 저장소로 옮기지 못해 연결을 껐습니다. 기존 정보는 보존했습니다. 잠시 후 앱을 다시 열거나 설정에서 연결 정보를 함께 저장해 주세요."
+            } else if persistedConnectionLoad == .readFailed || legacyCredentialLoadFailed {
+                serverRelayStatusMessage = "키체인의 서버 연결 정보를 읽지 못해 연결을 껐습니다. 기존 정보는 변경하지 않았습니다. 잠시 후 앱을 다시 열거나 설정에서 연결 정보를 확인해 주세요."
+            } else if legacyRequiresManualReentry {
                 serverRelayStatusMessage = "이전 서버 URL과 토큰이 함께 저장됐는지 확인할 수 없어 연결을 껐습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
             } else {
                 serverRelayStatusMessage = "저장된 서버 연결 정보를 안전하게 읽지 못해 연결을 껐습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
@@ -688,9 +708,10 @@ final class KLMSMacModel: ObservableObject {
         guard let data = try? encoder.encode(connection),
               let payload = String(data: data, encoding: .utf8),
               LocalRemoteTokenStore.save(payload, account: serverRelayConnectionAccount),
-              decodeServerRelayConnection(
-                LocalRemoteTokenStore.load(account: serverRelayConnectionAccount) ?? ""
-              ) == connection else {
+              case let .current(storedPayload) = LocalRemoteTokenStore.load(
+                account: serverRelayConnectionAccount
+              ),
+              decodeServerRelayConnection(storedPayload) == connection else {
             return .failed
         }
         let legacyCleanupCompleted = removeLegacyServerRelayCredentials()

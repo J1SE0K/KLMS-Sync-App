@@ -936,6 +936,32 @@ enum LocalRemoteTokenKeychainLoadResult: Equatable {
     case failure
 }
 
+public enum LocalRemoteTokenLoadResult: Equatable, Sendable {
+    case current(String)
+    case migrated(String)
+    case notFound
+    case readFailed
+    case migrationFailed
+
+    public var value: String? {
+        switch self {
+        case let .current(value), let .migrated(value):
+            value
+        case .notFound, .readFailed, .migrationFailed:
+            nil
+        }
+    }
+
+    public var requiresRecovery: Bool {
+        switch self {
+        case .readFailed, .migrationFailed:
+            true
+        case .current, .migrated, .notFound:
+            false
+        }
+    }
+}
+
 protocol LocalRemoteTokenKeychainBackend {
     func load(account: String, service: String) -> LocalRemoteTokenKeychainLoadResult
 
@@ -1041,16 +1067,22 @@ public enum LocalRemoteTokenStore {
         legacyServices
     }
 
-    public static func load(account: String) -> String? {
+    public static func load(account: String) -> LocalRemoteTokenLoadResult {
         load(account: account, backend: SecurityLocalRemoteTokenKeychainBackend())
     }
 
-    static func load(account: String, backend: LocalRemoteTokenKeychainBackend) -> String? {
+    static func load(
+        account: String,
+        backend: LocalRemoteTokenKeychainBackend
+    ) -> LocalRemoteTokenLoadResult {
         switch backend.load(account: account, service: service) {
         case let .value(storedToken):
-            return normalizedToken(storedToken)
+            guard let token = normalizedToken(storedToken) else {
+                return .readFailed
+            }
+            return .current(token)
         case .failure:
-            return nil
+            return .readFailed
         case .notFound:
             break
         }
@@ -1059,24 +1091,24 @@ public enum LocalRemoteTokenStore {
             switch backend.load(account: account, service: legacyService) {
             case let .value(storedToken):
                 guard let normalized = normalizedToken(storedToken) else {
-                    return nil
+                    return .readFailed
                 }
                 token = normalized
             case .failure:
-                return nil
+                return .readFailed
             case .notFound:
                 continue
             }
             guard save(token, account: account, service: service, backend: backend) else {
-                return token
+                return .migrationFailed
             }
             guard case let .value(storedToken) = backend.load(account: account, service: service),
                   normalizedToken(storedToken) == token else {
-                return nil
+                return .migrationFailed
             }
-            return token
+            return .migrated(token)
         }
-        return nil
+        return .notFound
     }
 
     @discardableResult
@@ -1533,7 +1565,9 @@ public struct ServerRelayConnectionInfo: Sendable, Equatable {
         guard var components = URLComponents(string: text),
               let scheme = components.scheme?.lowercased(),
               scheme == "https" || scheme == "http",
-              components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+              components.host?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              components.user == nil,
+              components.password == nil else {
             return nil
         }
         components.scheme = scheme
@@ -3763,7 +3797,10 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
 
     private func validateURL() throws {
         guard let scheme = baseURL.scheme?.lowercased(), !scheme.isEmpty,
-              let host = baseURL.host, !host.isEmpty else {
+              let host = baseURL.host, !host.isEmpty,
+              let components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false),
+              components.user == nil,
+              components.password == nil else {
             throw ServerRelayClientError.invalidURL
         }
         if !allowsInsecureHTTP, ServerRelayConnectionInfo.isPrivateOrLocalHost(host) {

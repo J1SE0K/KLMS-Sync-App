@@ -306,7 +306,7 @@ final class CompanionModel: ObservableObject {
     private struct PersistedServerConnection: Sendable {
         var pair: ServerRelayCredentialPair
         var generation: UInt64
-        var migrationFailed = false
+        var recoveryMessage: String?
 
         var encodedPair: String {
             (try? pair.encoded()) ?? ""
@@ -669,8 +669,7 @@ final class CompanionModel: ObservableObject {
             connectionMessage = "저장된 서버 요약을 먼저 보여주고, 최신 상태를 다시 불러옵니다."
             connectionSucceeded = nil
         }
-        if persistedConnection.migrationFailed {
-            let message = "이전 서버 URL과 클라이언트 토큰이 함께 저장됐는지 확인할 수 없어 자동으로 연결하지 않았습니다. 연결 정보를 함께 다시 입력해 주세요."
+        if let message = persistedConnection.recoveryMessage {
             connectionMessage = message
             connectionSucceeded = false
             errorMessage = message
@@ -6227,7 +6226,7 @@ final class CompanionModel: ObservableObject {
                 encodedEnvelope,
                 account: klmsServerRelayConnectionKeychainAccount
               ),
-              let storedEnvelopeText = LocalRemoteTokenStore.load(
+              case let .current(storedEnvelopeText) = LocalRemoteTokenStore.load(
                 account: klmsServerRelayConnectionKeychainAccount
               ),
               let storedEnvelope = VersionedCredentialEnvelope.decode(storedEnvelopeText),
@@ -6244,8 +6243,11 @@ final class CompanionModel: ObservableObject {
 
     nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage() -> PersistedServerConnection {
         let minimumGeneration = loadServerTokenPersistenceGeneration()
-        if let storedConnection = LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount),
-           !storedConnection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let currentConnectionLoad = LocalRemoteTokenStore.load(
+            account: klmsServerRelayConnectionKeychainAccount
+        )
+        switch currentConnectionLoad {
+        case let .current(storedConnection), let .migrated(storedConnection):
             guard let envelope = VersionedCredentialEnvelope.acceptedEnvelope(
                 from: storedConnection,
                 minimumGeneration: minimumGeneration
@@ -6253,19 +6255,58 @@ final class CompanionModel: ObservableObject {
                 return PersistedServerConnection(
                     pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
                     generation: minimumGeneration,
-                    migrationFailed: true
+                    recoveryMessage: "저장된 서버 연결 정보를 안전하게 해석하지 못했습니다. 기존 정보는 변경하지 않았습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
                 )
             }
             storeServerTokenPersistenceGeneration(envelope.generation)
             _ = removeLegacyServerRelayConnectionStorage()
-            return PersistedServerConnection(pair: pair, generation: envelope.generation)
+            return PersistedServerConnection(
+                pair: pair,
+                generation: envelope.generation,
+                recoveryMessage: nil
+            )
+        case .readFailed:
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                recoveryMessage: "키체인의 서버 연결 정보를 읽지 못해 연결을 중지했습니다. 기존 정보는 변경하지 않았습니다. 잠시 후 앱을 다시 열거나 설정에서 연결 정보를 확인해 주세요."
+            )
+        case .migrationFailed:
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                recoveryMessage: "이전 보안 저장소의 서버 연결 정보를 최신 키체인으로 옮기지 못했습니다. 기존 정보는 보존했습니다. 잠시 후 앱을 다시 열거나 설정에서 URL과 토큰을 함께 저장해 주세요."
+            )
+        case .notFound:
+            break
         }
 
         let legacyServerURL = UserDefaults.standard.string(forKey: klmsServerRelayURLDefaultsKey) ?? ""
         let legacyDefaultsToken = UserDefaults.standard.string(
             forKey: klmsServerRelayTokenDefaultsKey
         ) ?? ""
-        let storedLegacyToken = LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount) ?? ""
+        let legacyTokenLoad = LocalRemoteTokenStore.load(
+            account: klmsLegacyServerRelayTokenKeychainAccount
+        )
+        let storedLegacyToken: String
+        switch legacyTokenLoad {
+        case let .current(token), let .migrated(token):
+            storedLegacyToken = token
+        case .notFound:
+            storedLegacyToken = ""
+        case .readFailed:
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                recoveryMessage: "이전 키체인의 서버 토큰을 읽지 못해 연결을 중지했습니다. 기존 정보는 변경하지 않았습니다. 잠시 후 앱을 다시 열거나 설정에서 연결 정보를 확인해 주세요."
+            )
+        case .migrationFailed:
+            return PersistedServerConnection(
+                pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
+                generation: minimumGeneration,
+                recoveryMessage: "이전 키체인의 서버 토큰을 최신 보안 저장소로 옮기지 못했습니다. 기존 정보는 보존했습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
+            )
+        }
         let legacyToken = storedLegacyToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? legacyDefaultsToken
             : storedLegacyToken
@@ -6278,12 +6319,13 @@ final class CompanionModel: ObservableObject {
             return PersistedServerConnection(
                 pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
                 generation: minimumGeneration,
-                migrationFailed: true
+                recoveryMessage: "이전 서버 URL과 토큰이 한 연결 정보로 함께 저장됐는지 확인할 수 없어 연결을 중지했습니다. 기존 정보는 보존했습니다. 설정에서 URL과 토큰을 함께 다시 저장해 주세요."
             )
         }
         return PersistedServerConnection(
             pair: ServerRelayCredentialPair(serverURL: "", clientToken: ""),
-            generation: minimumGeneration
+            generation: minimumGeneration,
+            recoveryMessage: nil
         )
     }
 

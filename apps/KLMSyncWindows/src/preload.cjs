@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("klmsWindows", {
   clearConfig: () => ipcRenderer.invoke("config:clear"),
   readClipboardText: () => ipcRenderer.invoke("clipboard:readText"),
   writeClipboardText: (text) => ipcRenderer.invoke("clipboard:writeText", text),
+  clearClipboardTextIfUnchanged: (text) => ipcRenderer.invoke("clipboard:clearTextIfUnchanged", text),
   relayRequest: (request) => ipcRenderer.invoke("relay:request", request),
   startRelayEvents: (request) => ipcRenderer.invoke("relay:socketStart", request),
   stopRelayEvents: () => ipcRenderer.invoke("relay:socketStop"),

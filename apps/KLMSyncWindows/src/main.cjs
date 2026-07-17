@@ -111,6 +111,16 @@ function registerIPC() {
     clipboard.writeText(text, "clipboard");
     return { written: true };
   });
+  registerTrustedIPCHandler("clipboard:clearTextIfUnchanged", async (value) => {
+    if (typeof value !== "string" || value.length === 0 || value.length > 200_000) {
+      return { cleared: false };
+    }
+    if (clipboard.readText("clipboard") !== value) {
+      return { cleared: false };
+    }
+    clipboard.clear("clipboard");
+    return { cleared: true };
+  });
   registerTrustedIPCHandler("relay:request", async (request) => relayRequest(request || {}));
   registerTrustedIPCHandler("relay:socketStart", async (request) => startRelayEventSocket(request || {}));
   registerTrustedIPCHandler("relay:socketStop", async () => stopRelayEventSocket());

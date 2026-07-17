@@ -208,11 +208,14 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
             from: "nonisolated private static func loadServerRelayConnectionMigratingLegacyStorage",
             to: "nonisolated private static func normalizedServerRelayCredentialPair("
         )
-        XCTAssertTrue(migration.contains("LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount)"))
-        XCTAssertTrue(migration.contains("LocalRemoteTokenStore.load(account: klmsLegacyServerRelayTokenKeychainAccount)"))
+        XCTAssertTrue(migration.contains("account: klmsServerRelayConnectionKeychainAccount"))
+        XCTAssertTrue(migration.contains("account: klmsLegacyServerRelayTokenKeychainAccount"))
         XCTAssertTrue(migration.contains("UnboundServerRelayCredentialFragments("))
         XCTAssertTrue(migration.contains("legacyFragments.requiresManualReentry"))
-        XCTAssertTrue(migration.contains("migrationFailed: true"))
+        XCTAssertTrue(migration.contains("case let .current(storedConnection), let .migrated(storedConnection):"))
+        XCTAssertTrue(migration.contains("case .readFailed:"))
+        XCTAssertTrue(migration.contains("case .migrationFailed:"))
+        XCTAssertTrue(migration.contains("recoveryMessage:"))
         XCTAssertFalse(migration.contains("persistServerRelayConnectionEnvelope("))
         XCTAssertFalse(migration.contains("normalizedServerRelayCredentialPair(\n            serverURL: trimmedLegacyURL"))
         XCTAssertFalse(migration.contains("UserDefaults.standard.removeObject"))
@@ -227,6 +230,7 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         )
         let save = try XCTUnwrap(envelopePersistence.range(of: "LocalRemoteTokenStore.save("))
         let readBack = try XCTUnwrap(envelopePersistence.range(of: "LocalRemoteTokenStore.load("))
+        XCTAssertTrue(envelopePersistence.contains("case let .current(storedEnvelopeText)"))
         let savedCleanup = try XCTUnwrap(
             envelopePersistence.range(
                 of: "_ = removeLegacyServerRelayConnectionStorage()",

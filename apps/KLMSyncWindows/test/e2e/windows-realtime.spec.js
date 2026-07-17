@@ -68,6 +68,43 @@ test("an unconfigured profile never presents itself as connected", async () => {
   ))).toBe("#ffffff");
 });
 
+test("pasted credentials leave the clipboard only when it is still unchanged", async () => {
+  const credentialText = `서버 URL: ${relay.url}\n클라이언트 토큰: ${TEST_TOKEN}`;
+  await electronApp.evaluate(
+    ({ clipboard }, value) => clipboard.writeText(value, "clipboard"),
+    credentialText
+  );
+
+  await page.locator("#pasteClipboardButton").click();
+
+  await expect(page.locator("#relayURL")).toHaveValue(relay.url);
+  await expect(page.locator("#relayToken")).toHaveValue(TEST_TOKEN);
+  await expect(page.locator("#connectionPaste")).toHaveValue(credentialText);
+  expect(
+    await electronApp.evaluate(({ clipboard }) => clipboard.readText("clipboard"))
+  ).toBe("");
+
+  const newerClipboardText = "newer-user-value";
+  await electronApp.evaluate(
+    ({ clipboard }, value) => clipboard.writeText(value, "clipboard"),
+    newerClipboardText
+  );
+  expect(
+    await page.evaluate(
+      (value) => window.klmsWindows.clearClipboardTextIfUnchanged(value),
+      credentialText
+    )
+  ).toEqual({ cleared: false });
+  expect(
+    await electronApp.evaluate(({ clipboard }) => clipboard.readText("clipboard"))
+  ).toBe(newerClipboardText);
+
+  await page.locator("#relayURL").fill("");
+  await page.locator("#relayToken").fill("");
+  await page.locator("#connectionPaste").fill("");
+  await electronApp.evaluate(({ clipboard }) => clipboard.clear("clipboard"));
+});
+
 test("WebSocket changes render immediately and responsive resize preserves selection without polling", async () => {
   await page.locator("#relayURL").fill(relay.url);
   await page.locator("#relayToken").fill(TEST_TOKEN);

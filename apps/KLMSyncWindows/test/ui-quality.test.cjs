@@ -44,14 +44,21 @@ test("dynamic status, alerts, toast and text inputs have explicit accessible nam
   assert.match(html, /<label[^>]*for="searchInput"/);
 });
 
-test("renderer receives only a boolean token state and clears pasted credentials after save", () => {
+test("renderer receives only a boolean token state and conditionally clears consumed credentials", () => {
   const main = read("src/main.cjs");
+  const preload = read("src/preload.cjs");
   const renderer = read("src/renderer.js");
 
   assert.doesNotMatch(main, /tokenPreview/);
   assert.match(main, /hasToken:\s*token\.length > 0/);
   assert.match(renderer, /relayToken"\)\.placeholder = config\.hasToken \? "저장됨"/);
   assert.match(renderer, /connectionPaste"\)\.value = ""/);
+  assert.match(main, /registerTrustedIPCHandler\("clipboard:clearTextIfUnchanged"/);
+  assert.match(main, /clipboard\.readText\("clipboard"\) !== value/);
+  assert.match(main, /clipboard\.clear\("clipboard"\)/);
+  assert.match(preload, /clearClipboardTextIfUnchanged: \(text\) => ipcRenderer\.invoke\("clipboard:clearTextIfUnchanged", text\)/);
+  assert.match(renderer, /await window\.klmsWindows\.clearClipboardTextIfUnchanged\(text\)/);
+  assert.match(renderer, /clearConsumedCredentialClipboardText\(pastedConnectionText, tokenDraft\)/);
 });
 
 test("responsive data surfaces wrap and forced-color selections use system highlight colors", () => {

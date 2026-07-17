@@ -236,12 +236,15 @@ async function loadConfig() {
 }
 
 async function saveConnection(options = {}) {
+  const pastedConnectionText = $("connectionPaste").value;
+  const tokenDraft = $("relayToken").value;
   try {
     setBusy(true);
     const config = await window.klmsWindows.saveConfig({
       relayURL: $("relayURL").value,
-      token: $("relayToken").value
+      token: tokenDraft
     });
+    await clearConsumedCredentialClipboardText(pastedConnectionText, tokenDraft);
     $("relayToken").value = "";
     $("connectionPaste").value = "";
     $("relayToken").placeholder = config.hasToken ? "저장됨" : "처음 연결하거나 바꿀 때만 입력";
@@ -275,9 +278,12 @@ async function checkConnection() {
 }
 
 async function clearConnection() {
+  const pastedConnectionText = $("connectionPaste").value;
+  const tokenDraft = $("relayToken").value;
   try {
     setBusy(true);
     const config = await window.klmsWindows.clearConfig();
+    await clearConsumedCredentialClipboardText(pastedConnectionText, tokenDraft);
     $("relayURL").value = config.relayURL || "";
     $("relayToken").value = "";
     $("relayToken").placeholder = "처음 연결하거나 바꿀 때만 입력";
@@ -419,7 +425,10 @@ async function pasteConnectionFromClipboard() {
   try {
     const text = await window.klmsWindows.readClipboardText();
     $("connectionPaste").value = text || "";
-    parseConnectionText();
+    const parsed = parseConnectionText();
+    if (parsed.token) {
+      await window.klmsWindows.clearClipboardTextIfUnchanged(text);
+    }
   } catch (error) {
     showError(error);
   }
@@ -435,6 +444,19 @@ function parseConnectionText() {
     $("relayToken").value = parsed.token;
   }
   toast(parsed.url && parsed.token ? "연결 정보를 읽었습니다." : "주소나 클라이언트 토큰을 찾지 못했습니다.");
+  return parsed;
+}
+
+async function clearConsumedCredentialClipboardText(pastedConnectionText, tokenDraft) {
+  const pastedConnection = parseConnectionInfo(pastedConnectionText);
+  const consumedText = pastedConnection.token ? pastedConnectionText : tokenDraft;
+  if (!consumedText || (!pastedConnection.token && !tokenDraft)) return false;
+  try {
+    const result = await window.klmsWindows.clearClipboardTextIfUnchanged(consumedText);
+    return result?.cleared === true;
+  } catch {
+    return false;
+  }
 }
 
 function parseConnectionInfo(text) {

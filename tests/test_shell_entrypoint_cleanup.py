@@ -1989,10 +1989,14 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteTokenKey)", model)
         self.assertIn("pasteboardClearTask", model)
         self.assertIn('klmsServerRelayConnectionKeychainAccount = "server-relay-ios-connection-v1"', ios_app)
-        self.assertIn(
-            "LocalRemoteTokenStore.load(account: klmsServerRelayConnectionKeychainAccount)",
-            ios_app,
-        )
+        self.assertIn("account: klmsServerRelayConnectionKeychainAccount", ios_app)
+        self.assertIn("public enum LocalRemoteTokenLoadResult: Equatable", shared)
+        self.assertIn("case readFailed", shared)
+        self.assertIn("case migrationFailed", shared)
+        self.assertIn("persistedConnectionLoad.requiresRecovery", model)
+        self.assertIn("case let .current(storedPayload) = LocalRemoteTokenStore.load(", model)
+        self.assertIn("case let .current(storedEnvelopeText) = LocalRemoteTokenStore.load(", ios_app)
+        self.assertIn("if let message = persistedConnection.recoveryMessage", ios_app)
         self.assertIn("persistServerRelayConnectionEnvelope", ios_app)
         self.assertIn("removeLegacyServerRelayConnectionStorage() -> Bool", ios_app)
         self.assertIn("LegacyCredentialCleanupPolicy.perform(", ios_app)
