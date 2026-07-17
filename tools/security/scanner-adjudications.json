@@ -3,7 +3,7 @@
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
     "expectedFindings": 40,
-    "coordinatesSha256": "90ea7a5477c0456c39418a3d4c8a8f34d4b3c772fcc9277d601c4b7c394d06fd",
+    "coordinatesSha256": "320a4a3c7b76f9b79f1f7f7240b00de6e27ec401474b7f90e06aaeffb6ad63dc",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
