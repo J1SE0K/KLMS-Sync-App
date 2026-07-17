@@ -146,7 +146,23 @@ function fetchPage(windowRef, tab, targetUrl, options) {
   }
 
   navigateFetchTab(windowRef, tab, targetUrl);
-  return waitForPage(tab, options.waitSeconds, options.minWaitSeconds, options.stablePolls);
+  const navigationPage = waitForPage(
+    tab,
+    options.waitSeconds,
+    options.minWaitSeconds,
+    options.stablePolls
+  );
+  if (navigationPage.status != null) {
+    return navigationPage;
+  }
+  if (!canUseXHR(tab, targetUrl)) {
+    throw new Error(`Safari navigation did not expose HTTP status for ${targetUrl}`);
+  }
+  try {
+    return fetchPageViaXHR(tab, targetUrl);
+  } catch (error) {
+    throw new Error(`Safari navigation transport verification failed for ${targetUrl}: ${error}`);
+  }
 }
 
 function canUseXHR(tab, targetUrl) {
@@ -314,11 +330,11 @@ function waitForPage(tab, waitSeconds, minWaitSeconds, stablePolls) {
     }
 
     if (Date.now() >= minWaitDeadline && latest.html && latest.url && stableCount >= stablePolls) {
-      return latest;
+      return { ...latest, status: readNavigationStatus(tab) };
     }
   }
 
-  return latest;
+  return { ...latest, status: readNavigationStatus(tab) };
 }
 
 function readTab(tab) {
@@ -328,6 +344,20 @@ function readTab(tab) {
     status: null,
     html: safeString(() => tab.source()),
   };
+}
+
+function readNavigationStatus(tab) {
+  const script = `
+(() => {
+  const entries = performance.getEntriesByType("navigation");
+  const entry = entries.length ? entries[entries.length - 1] : null;
+  const status = Number(entry && entry.responseStatus);
+  return Number.isFinite(status) && status > 0 ? String(status) : "";
+})();
+`;
+  const raw = safeString(() => Application("/Applications/Safari.app").doJavaScript(script, { in: tab }));
+  const status = Number(raw);
+  return Number.isFinite(status) && status > 0 ? status : null;
 }
 
 function resolveFetchWindow(

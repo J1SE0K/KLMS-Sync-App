@@ -22,6 +22,17 @@ class FetchPagesBackendTests(unittest.TestCase):
         self.assertIn("function isExactKlmsHttpsUrl(url)", text)
         self.assertNotIn('currentUrl.includes("klms.kaist.ac.kr")', text)
 
+    def test_safari_navigation_preserves_transport_status_or_verifies_with_xhr(self) -> None:
+        text = (PROJECT_DIR / "src" / "js" / "fetch_pages_with_safari.js").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("status: readNavigationStatus(tab)", text)
+        self.assertIn('performance.getEntriesByType("navigation")', text)
+        self.assertIn("if (navigationPage.status != null)", text)
+        self.assertIn("return fetchPageViaXHR(tab, targetUrl)", text)
+        self.assertNotIn("navigateFetchTab(windowRef, tab, targetUrl);\n  return waitForPage", text)
+
     def test_load_previous_pages_discards_oversized_cache(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "pages.json"
