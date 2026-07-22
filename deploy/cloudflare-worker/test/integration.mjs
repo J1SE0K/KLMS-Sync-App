@@ -549,6 +549,32 @@ async function stopDev() {
     await onceExit(child);
   }
   if (dev === child) dev = null;
+  await waitForServerStopped();
+}
+
+async function waitForServerStopped() {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (!await portIsAcceptingConnections()) return;
+    await delay(25);
+  }
+  throw new Error(`wrangler child still accepts connections on ${baseURL} after shutdown`);
+}
+
+function portIsAcceptingConnections() {
+  return new Promise((resolve) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    let settled = false;
+    const finish = (listening) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(listening);
+    };
+    socket.once("connect", () => finish(true));
+    socket.once("error", () => finish(false));
+    socket.setTimeout(250, () => finish(false));
+  });
 }
 
 async function createFileRequest(itemID) {
