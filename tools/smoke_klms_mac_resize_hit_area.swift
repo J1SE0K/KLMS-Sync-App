@@ -72,6 +72,11 @@ private func runProbe() throws {
         try setPoint(CGPoint(x: 120, y: 120), on: window, attribute: kAXPositionAttribute as CFString)
         try setSize(CGSize(width: 900, height: 650), on: window, attribute: kAXSizeAttribute as CFString)
         Thread.sleep(forTimeInterval: 0.35)
+        guard waitUntilFrontmost(app: app, appElement: appElement, window: window) else {
+            throw ResizeProbeError.appNotFrontmost(
+                NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
+            )
+        }
         let position = try pointValue(window, kAXPositionAttribute as CFString)
         let before = try sizeValue(window, kAXSizeAttribute as CFString)
         let start = CGPoint(
@@ -98,16 +103,24 @@ private func waitUntilFrontmost(
     window: AXUIElement
 ) -> Bool {
     let deadline = Date().addingTimeInterval(3.0)
+    var frontmostStableSince: Date?
     repeat {
         app.unhide()
         app.activate(options: [.activateAllWindows])
         AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
         if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
-            Thread.sleep(forTimeInterval: 0.2)
-            return true
+            let now = Date()
+            if let frontmostStableSince,
+               now.timeIntervalSince(frontmostStableSince) >= 0.25 {
+                return true
+            } else if frontmostStableSince == nil {
+                frontmostStableSince = now
+            }
+        } else {
+            frontmostStableSince = nil
         }
-        Thread.sleep(forTimeInterval: 0.1)
+        Thread.sleep(forTimeInterval: 0.05)
     } while Date() < deadline
     return false
 }

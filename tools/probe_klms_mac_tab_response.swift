@@ -175,8 +175,11 @@ private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElem
 
     let deadline = Date().addingTimeInterval(min(1.5, timeout))
     repeat {
-        if hasUsableAccessibilityWindow(in: appElement)
-            || NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+        app.unhide()
+        app.activate(options: [.activateAllWindows])
+        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
+        if isFrontmost, hasUsableAccessibilityWindow(in: appElement) {
             return
         }
         Thread.sleep(forTimeInterval: 0.05)
