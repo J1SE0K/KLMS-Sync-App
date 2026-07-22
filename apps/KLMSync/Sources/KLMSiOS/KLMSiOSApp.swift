@@ -6482,7 +6482,7 @@ private enum CompanionAppSection: String, CaseIterable, Identifiable, Hashable {
 }
 
 private enum CompanionWorkstationMetrics {
-    static let minimumSplitWidth: CGFloat = 1040
+    static let navigationRailWidth: CGFloat = 65
     static let sidebarWidth: CGFloat = 224
     static let horizontalPadding: CGFloat = 22
     static let topPadding: CGFloat = 14
@@ -6702,31 +6702,13 @@ private struct CompanionAdaptiveRootView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             CompanionStableSectionPane(section: currentSection, model: model, openSection: select)
-                .padding(
-                    .leading,
-                    layoutMode == .wide ? CompanionWorkstationMetrics.sidebarWidth + 1 : 0
-                )
+                .padding(.leading, navigationWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            if layoutMode == .wide {
-                HStack(spacing: 0) {
-                    WorkstationSidebar(selectedSection: $selectedSection)
-                        .frame(
-                            minWidth: CompanionWorkstationMetrics.sidebarWidth,
-                            idealWidth: CompanionWorkstationMetrics.sidebarWidth,
-                            maxWidth: CompanionWorkstationMetrics.sidebarWidth,
-                            alignment: .topLeading
-                        )
-                        .fixedSize(horizontal: true, vertical: false)
-                    Rectangle()
-                        .fill(Color.klmsBorder)
-                        .frame(width: 1)
-                }
-                .frame(maxHeight: .infinity, alignment: .topLeading)
-            }
+            navigationSurface
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if layoutMode != .wide {
+            if layoutMode == .compact {
                 CompanionCompactTabBar(selectedSection: sectionBinding)
                     .id("compact-tab-\(layoutMode.rawValue)")
                     .padding(.horizontal, 16)
@@ -6741,6 +6723,55 @@ private struct CompanionAdaptiveRootView: View {
             label: "KLMS layout root",
             enabled: model.usesUITestFrameMarkers
         )
+    }
+
+    private var navigationWidth: CGFloat {
+        switch layoutMode {
+        case .compact:
+            return 0
+        case .medium:
+            return CompanionWorkstationMetrics.navigationRailWidth + 1
+        case .wide:
+            return CompanionWorkstationMetrics.sidebarWidth + 1
+        }
+    }
+
+    @ViewBuilder
+    private var navigationSurface: some View {
+        switch layoutMode {
+        case .compact:
+            EmptyView()
+        case .medium:
+            HStack(spacing: 0) {
+                WorkstationNavigationRail(selectedSection: $selectedSection)
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.navigationRailWidth,
+                        idealWidth: CompanionWorkstationMetrics.navigationRailWidth,
+                        maxWidth: CompanionWorkstationMetrics.navigationRailWidth,
+                        alignment: .topLeading
+                    )
+                    .fixedSize(horizontal: true, vertical: false)
+                Rectangle()
+                    .fill(Color.klmsBorder)
+                    .frame(width: 1)
+            }
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+        case .wide:
+            HStack(spacing: 0) {
+                WorkstationSidebar(selectedSection: $selectedSection)
+                    .frame(
+                        minWidth: CompanionWorkstationMetrics.sidebarWidth,
+                        idealWidth: CompanionWorkstationMetrics.sidebarWidth,
+                        maxWidth: CompanionWorkstationMetrics.sidebarWidth,
+                        alignment: .topLeading
+                    )
+                    .fixedSize(horizontal: true, vertical: false)
+                Rectangle()
+                    .fill(Color.klmsBorder)
+                    .frame(width: 1)
+            }
+            .frame(maxHeight: .infinity, alignment: .topLeading)
+        }
     }
 
     private var currentSection: CompanionAppSection {
@@ -6761,42 +6792,6 @@ private struct CompanionAdaptiveRootView: View {
         withTransaction(transaction) {
             selectedSection = section
         }
-    }
-}
-
-private struct CompanionTabRootView: View {
-    @ObservedObject var model: CompanionModel
-    @Binding var selectedSection: CompanionAppSection?
-
-    var body: some View {
-        CompanionStableSectionPane(section: currentSection, model: model) { section in
-            guard selectedSection != section else { return }
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                selectedSection = section
-            }
-        }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                CompanionCompactTabBar(selectedSection: sectionBinding)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 7)
-                    .padding(.bottom, 8)
-                    .background(Color.klmsScreenBackground)
-            }
-            .background(Color.klmsScreenBackground.ignoresSafeArea())
-    }
-
-    private var currentSection: CompanionAppSection {
-        selectedSection ?? .status
-    }
-
-    private var sectionBinding: Binding<CompanionAppSection> {
-        Binding(
-            get: { selectedSection ?? .status },
-            set: { selectedSection = $0 }
-        )
     }
 }
 
@@ -6876,40 +6871,62 @@ private struct CompanionCompactTabBar: View {
     }
 }
 
-private struct CompanionSplitRootView: View {
-    @ObservedObject var model: CompanionModel
+private struct WorkstationNavigationRail: View {
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
-        HStack(spacing: 0) {
-            WorkstationSidebar(selectedSection: $selectedSection)
-                .frame(
-                    minWidth: CompanionWorkstationMetrics.sidebarWidth,
-                    idealWidth: CompanionWorkstationMetrics.sidebarWidth,
-                    maxWidth: CompanionWorkstationMetrics.sidebarWidth,
-                    alignment: .topLeading
-                )
-                .fixedSize(horizontal: true, vertical: false)
-                .layoutPriority(2)
-            Rectangle()
-                .fill(Color.klmsBorder)
-                .frame(width: 1)
-            CompanionStableSectionPane(section: currentSection, model: model) { section in
-                guard selectedSection != section else { return }
-                var transaction = Transaction()
-                transaction.animation = nil
-                withTransaction(transaction) {
-                    selectedSection = section
-                }
+        VStack(spacing: 4) {
+            ForEach(CompanionAppSection.workstationSections) { section in
+                railButton(section)
             }
-                .layoutPriority(1)
+
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color.klmsScreenBackground.ignoresSafeArea())
+        .padding(.horizontal, 10)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.klmsCardBackground.opacity(0.72))
     }
 
-    private var currentSection: CompanionAppSection {
-        selectedSection ?? .status
+    private func railButton(_ section: CompanionAppSection) -> some View {
+        Button {
+            guard selectedSection != section else { return }
+            var transaction = Transaction()
+            transaction.animation = nil
+            withTransaction(transaction) {
+                selectedSection = section
+            }
+        } label: {
+            let isSelected = selectedSection == section
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        isSelected
+                            ? Color.klmsSelectedBackground.opacity(0.92)
+                            : Color.klmsSubtleCardBackground.opacity(0.30)
+                    )
+                Image(systemName: section.systemImage)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
+            }
+            .frame(width: 44, height: 44)
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
+                    .frame(width: 3, height: 24)
+                    .padding(.leading, 2)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.klmsBorder.opacity(0.40), lineWidth: 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .accessibilityLabel(section.title)
+        .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
+        .accessibilityHint("\(section.title) 작업 공간으로 이동합니다.")
+        .accessibilityIdentifier("companion-rail-\(section.rawValue)")
     }
 }
 
@@ -8209,10 +8226,11 @@ private struct CompanionImmediateSettingsPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("바로 반영되는 설정")
                         .font(.headline)
-                    Text("화면 모드는 이 기기에 바로 적용되고, 공지\u{00A0}메모\u{00A0}설정은\u{00A0}서버에\u{00A0}저장됩니다.")
+                    Text("화면 모드는 바로 적용됩니다.\n공지 메모는 서버에 저장됩니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("immediate-settings-summary-copy")
                 }
                 Spacer(minLength: 0)
             }
@@ -8221,7 +8239,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
                     statusText: effectiveAppearanceMode.title,
-                    detail: "기기 설정을 따르거나, KLMS Sync에서만 라이트/다크\u{00A0}모드를 고정합니다."
+                    detail: "기기 설정을 따릅니다.\n또는 앱 화면 모드를 선택합니다."
                 ) {
                     CompanionAppearanceModeSelector(
                         selectedMode: effectiveAppearanceMode,
@@ -16173,10 +16191,11 @@ private struct RemoteCalendarActionPanel: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("캘린더 일정")
                         .font(.caption.weight(.semibold))
-                    Text("일정별 등록·수정·삭제는 아래 항목에서 처리합니다. 전체\u{00A0}상태\u{00A0}검사는 진단 화면에서 실행하세요.")
+                    Text("일정 변경은 아래에서 처리합니다.\n전체 검사는 진단 화면에서 실행합니다.")
                         .font(.caption2)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("calendar-action-help-copy")
                 }
                 Spacer(minLength: 0)
             }

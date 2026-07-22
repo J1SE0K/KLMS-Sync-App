@@ -60,15 +60,17 @@ final class KLMSiOSUITests: XCTestCase {
         XCUIDevice.shared.orientation = isPad ? .portrait : .landscapeRight
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
 
-        let resizedNavigation = identifiedElement("companion-compact-tab-history", in: app)
-        XCTAssertTrue(resizedNavigation.waitForExistence(timeout: 8), "Compact/medium navigation did not appear after resizing.")
+        let resizedPrefix = "companion-rail"
+        let resizedNavigation = identifiedElement("\(resizedPrefix)-history", in: app)
+        XCTAssertTrue(resizedNavigation.waitForExistence(timeout: 8), "Expected resized navigation did not appear.")
         XCTAssertTrue(historySection.exists, "The selected log section was reset while crossing a layout breakpoint.")
         XCTAssertEqual(resizedNavigation.value as? String, "선택됨")
+        attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-medium-navigation-rail")
         let resizedPrimarySync = identifiedElement("dashboard-primary-full-sync", in: app)
         XCTAssertFalse(resizedPrimarySync.waitForExistence(timeout: 1), "The primary full-sync action must remain hidden outside the dashboard after resizing.")
 
-        let settingsNavigation = identifiedElement("companion-compact-tab-settings", in: app)
-        XCTAssertTrue(settingsNavigation.waitForExistence(timeout: 8), "Compact settings navigation is missing.")
+        let settingsNavigation = identifiedElement("\(resizedPrefix)-settings", in: app)
+        XCTAssertTrue(settingsNavigation.waitForExistence(timeout: 8), "Resized settings navigation is missing.")
         settingsNavigation.tap()
         let settingsSection = identifiedElement("companion-section-settings", in: app)
         XCTAssertTrue(settingsSection.waitForExistence(timeout: 8), "The settings section did not open.")
@@ -77,8 +79,8 @@ final class KLMSiOSUITests: XCTestCase {
             "The primary full-sync action must not appear in settings."
         )
 
-        let dashboardNavigation = identifiedElement("companion-compact-tab-status", in: app)
-        XCTAssertTrue(dashboardNavigation.waitForExistence(timeout: 8), "Compact dashboard navigation is missing.")
+        let dashboardNavigation = identifiedElement("\(resizedPrefix)-status", in: app)
+        XCTAssertTrue(dashboardNavigation.waitForExistence(timeout: 8), "Resized dashboard navigation is missing.")
         dashboardNavigation.tap()
         let dashboardSection = identifiedElement("companion-section-status", in: app)
         XCTAssertTrue(dashboardSection.waitForExistence(timeout: 8), "The dashboard section did not reopen.")
@@ -98,6 +100,7 @@ final class KLMSiOSUITests: XCTestCase {
             XCTAssertTrue(restoredWideNavigation.waitForExistence(timeout: 8), "Wide sidebar did not return after resizing.")
             XCTAssertTrue(dashboardSection.exists, "The selected dashboard section was reset when returning to wide layout.")
             XCTAssertEqual(restoredWideNavigation.value as? String, "선택됨")
+            attachScreenshot(named: "klms-ipad-wide-navigation-sidebar")
             let restoredPrimarySync = identifiedElement("dashboard-primary-full-sync", in: app)
             let restoredSyncSection = identifiedElement("dashboard-sync-section", in: app)
             XCTAssertTrue(restoredPrimarySync.waitForExistence(timeout: 8), "The primary full-sync action disappeared when returning to wide layout.")
@@ -149,10 +152,10 @@ final class KLMSiOSUITests: XCTestCase {
         XCUIDevice.shared.orientation = .portrait
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
         for section in majorSectionIDs {
-            let compactNavigation = identifiedElement("companion-compact-tab-\(section)", in: app)
-            XCTAssertTrue(compactNavigation.waitForExistence(timeout: 8), "Compact navigation is missing for \(section).")
-            assertMinimumHitTarget(compactNavigation)
-            assertHorizontallyContained(compactNavigation, in: app.windows.firstMatch)
+            let railNavigation = identifiedElement("companion-rail-\(section)", in: app)
+            XCTAssertTrue(railNavigation.waitForExistence(timeout: 8), "Medium-width rail navigation is missing for \(section).")
+            assertMinimumHitTarget(railNavigation)
+            assertHorizontallyContained(railNavigation, in: app.windows.firstMatch)
         }
     }
 
@@ -199,6 +202,92 @@ final class KLMSiOSUITests: XCTestCase {
             }
             app.terminate()
         }
+    }
+
+    @MainActor
+    func testNavigationStagesAtExactAdaptiveBoundaries() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("Exact adaptive-width injection needs an iPad landscape canvas.")
+        }
+        XCUIDevice.shared.orientation = .landscapeRight
+
+        let boundaries: [(width: Int, prefix: String)] = [
+            (719, "companion-compact-tab"),
+            (720, "companion-rail"),
+            (1_039, "companion-rail"),
+            (1_040, "companion-sidebar"),
+        ]
+        for boundary in boundaries {
+            let app = XCUIApplication()
+            app.launchArguments = [
+                "KLMS_UI_TEST_CAPTURE",
+                "KLMS_UI_TEST_LAYOUT_WIDTH=\(boundary.width)",
+            ]
+            app.launch()
+            XCTAssertTrue(app.wait(for: .runningForeground, timeout: 12))
+
+            let layoutRoot = identifiedElement("companion-layout-root", in: app)
+            XCTAssertTrue(layoutRoot.waitForExistence(timeout: 8))
+            XCTAssertEqual(layoutRoot.frame.width, CGFloat(boundary.width), accuracy: 1.5)
+
+            let navigation = identifiedElement("\(boundary.prefix)-history", in: app)
+            XCTAssertTrue(navigation.waitForExistence(timeout: 8), "Missing \(boundary.prefix) at \(boundary.width)pt.")
+            assertMinimumHitTarget(navigation)
+            assertHorizontallyContained(navigation, in: layoutRoot)
+            navigation.tap()
+            XCTAssertTrue(identifiedElement("companion-section-history", in: app).waitForExistence(timeout: 8))
+            XCTAssertEqual(navigation.value as? String, "선택됨")
+            attachScreenshot(named: "klms-ipad-navigation-\(boundary.width)-\(boundary.prefix)")
+
+            for unexpectedPrefix in ["companion-compact-tab", "companion-rail", "companion-sidebar"]
+                where unexpectedPrefix != boundary.prefix {
+                XCTAssertFalse(
+                    identifiedElement("\(unexpectedPrefix)-history", in: app).waitForExistence(timeout: 0.25),
+                    "Only one navigation presentation may exist at \(boundary.width)pt."
+                )
+            }
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testKoreanGuidanceKeepsCompleteClausesContained() throws {
+        guard UIDevice.current.userInterfaceIdiom == .phone else {
+            throw XCTSkip("The reported Korean wrapping regressions are specific to the narrow iPhone layout.")
+        }
+        XCUIDevice.shared.orientation = .portrait
+        let app = XCUIApplication()
+        app.launchArguments = ["KLMS_UI_TEST_CAPTURE"]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 12))
+
+        let settingsNavigation = identifiedElement("companion-compact-tab-settings", in: app)
+        XCTAssertTrue(settingsNavigation.waitForExistence(timeout: 8))
+        settingsNavigation.tap()
+        let settingsSection = identifiedElement("companion-section-settings", in: app)
+        XCTAssertTrue(settingsSection.waitForExistence(timeout: 8))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let settingsCopy = identifiedElement("immediate-settings-summary-copy", in: app)
+        XCTAssertTrue(settingsCopy.waitForExistence(timeout: 8))
+        XCTAssertTrue(settingsCopy.label.contains("화면 모드는 바로 적용됩니다."))
+        XCTAssertTrue(settingsCopy.label.contains("공지 메모는 서버에 저장됩니다."))
+        XCTAssertGreaterThan(settingsCopy.frame.height, 24)
+        assertHorizontallyContained(settingsCopy, in: settingsSection)
+        attachScreenshot(named: "klms-iphone-settings-korean-copy")
+
+        let calendarNavigation = identifiedElement("companion-compact-tab-calendar", in: app)
+        XCTAssertTrue(calendarNavigation.waitForExistence(timeout: 8))
+        calendarNavigation.tap()
+        let calendarSection = identifiedElement("companion-section-calendar", in: app)
+        XCTAssertTrue(calendarSection.waitForExistence(timeout: 8))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let calendarCopy = identifiedElement("calendar-action-help-copy", in: app)
+        XCTAssertTrue(calendarCopy.waitForExistence(timeout: 8))
+        XCTAssertTrue(calendarCopy.label.contains("일정 변경은 아래에서 처리합니다."))
+        XCTAssertTrue(calendarCopy.label.contains("전체 검사는 진단 화면에서 실행합니다."))
+        XCTAssertGreaterThan(calendarCopy.frame.height, 24)
+        assertHorizontallyContained(calendarCopy, in: calendarSection)
+        attachScreenshot(named: "klms-iphone-calendar-korean-copy")
     }
 
     @MainActor

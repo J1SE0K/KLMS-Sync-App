@@ -10,6 +10,8 @@ TEST_IDENTIFIERS=(
   "KLMSiOSUITests/KLMSiOSUITests/testAdaptiveLayoutPreservesSectionAcrossResize"
   "KLMSiOSUITests/KLMSiOSUITests/testAllMajorSectionsRemainReachableAndHorizontallyContained"
   "KLMSiOSUITests/KLMSiOSUITests/testWorkstationUsesVerticalFallbackAtNarrowWideBoundary"
+  "KLMSiOSUITests/KLMSiOSUITests/testNavigationStagesAtExactAdaptiveBoundaries"
+  "KLMSiOSUITests/KLMSiOSUITests/testKoreanGuidanceKeepsCompleteClausesContained"
   "KLMSiOSUITests/KLMSiOSUITests/testAX5KeepsSyncActionsAndCompactNavigationReachable"
   "KLMSiOSUITests/KLMSiOSUITests/testHistoryClearActionsStayCompactAndRequireConfirmation"
   "KLMSiOSUITests/KLMSiOSUITests/testLargeDatasetPerformanceLazySearchAndSelectionPreservation"
