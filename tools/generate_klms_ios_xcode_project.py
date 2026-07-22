@@ -36,6 +36,8 @@ SHARED_SOURCES = [
     "KLMSEngineCommand.swift",
     "KLMSPaths.swift",
     "LiveStatePolicies.swift",
+    "RelayFileDownloadPolicy.swift",
+    "RelaySnapshotStream.swift",
     "RemoteCommandModels.swift",
     "StateModels.swift",
     "StatusModels.swift",
