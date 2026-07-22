@@ -115,7 +115,7 @@
       }
     ],
     "expectedFindings": 24,
-    "coordinatesSha256": "5b750ed48f80e110a44fa48d9d19e3bdb207d5f87b05db8720aa3c3cb316e797",
+    "coordinatesSha256": "7a37f0390d7b8da42216c5ef4da19d8aeabc7a5cbf95eb6fa8e7925a522cb680",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
