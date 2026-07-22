@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
-    "expectedFindings": 40,
-    "coordinatesSha256": "14d5c1e9a6fdc7c3967176ff02a229fb07b242a6cfa9c6826d3682204825a05e",
+    "expectedFindings": 43,
+    "coordinatesSha256": "929476dc828d89ccd8ecbb412952e9f88b768a2c05bc7bafe4aa7ae12158019a",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -52,6 +52,12 @@
         "path": "tools/generate_release_evidence_receipt.py",
         "expectedCount": 2,
         "reason": "The current Python interpreter invokes repository-owned payload and app-provenance verifiers through argv arrays without a shell; their paths, candidate revision, source tree, executable digests, and verifier JSON are all validated before the receipt is accepted."
+      },
+      {
+        "rule": "python.lang.security.audit.insecure-file-permissions",
+        "path": "src/python/managed_course_file_roots.py",
+        "expectedCount": 3,
+        "reason": "Mode 0700 intentionally restricts managed course-file and recovery directories to the current user; it protects downloaded academic content and is stricter than the scanner's generic 0644 recommendation."
       },
       {
         "rule": "python.lang.security.audit.insecure-file-permissions",
@@ -115,7 +121,7 @@
       }
     ],
     "expectedFindings": 24,
-    "coordinatesSha256": "7a37f0390d7b8da42216c5ef4da19d8aeabc7a5cbf95eb6fa8e7925a522cb680",
+    "coordinatesSha256": "5805b90af920a78f54c90283815bafc9ed49e37c44fcb51ad307f381c5b4a106",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
