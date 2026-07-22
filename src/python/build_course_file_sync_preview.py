@@ -8,6 +8,8 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+from managed_course_file_roots import IGNORED_MANAGED_FILES
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
@@ -195,7 +197,7 @@ def current_output_files(root: Path) -> dict[str, str]:
         if not path.is_file():
             continue
         relative_path = path.relative_to(root).as_posix()
-        if relative_path in {"README.md", ".DS_Store"}:
+        if relative_path in {*IGNORED_MANAGED_FILES, ".DS_Store"}:
             continue
         files[canonical_relative_path(relative_path)] = relative_path
     return files

@@ -5,8 +5,16 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import stat
 from typing import Any
 import unicodedata
+
+from managed_course_file_roots import (
+    IGNORED_MANAGED_FILES,
+    prepare_managed_root,
+    recover_file,
+    validate_relative_path,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,6 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--backup-manifest")
     parser.add_argument("--tracked-relative-paths-json")
+    parser.add_argument("--recovery-root")
+    parser.add_argument("--root-purpose", default="course-files")
     return parser
 
 
@@ -26,7 +36,13 @@ def canonical_relative_path(value: str) -> str:
 def main() -> int:
     args = build_parser().parse_args()
     manifest_path = Path(args.manifest_json)
-    root = Path(args.root).resolve()
+    root = prepare_managed_root(
+        args.root,
+        args.root_purpose,
+        allow_unmarked=args.dry_run,
+    )
+    if not args.dry_run and not args.recovery_root:
+        raise SystemExit("--recovery-root is required for content-backed pruning")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, list):
         raise SystemExit(f"Manifest must be a JSON array: {manifest_path}")
@@ -38,29 +54,29 @@ def main() -> int:
     actual_files_before = 0
 
     for path in sorted(root.rglob("*")):
-        if not path.is_file():
+        if path.is_symlink():
+            raise SystemExit(f"Refusing to prune a managed root containing a symlink: {path}")
+        if path.is_dir():
             continue
         relative_path = path.relative_to(root).as_posix()
-        if relative_path == "README.md":
+        if relative_path in IGNORED_MANAGED_FILES:
             continue
+        metadata = path.lstat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise SystemExit(f"Refusing to prune a non-regular managed entry: {path}")
         actual_files_before += 1
         if canonical_relative_path(relative_path) in tracked_paths:
             continue
         deleted_files.append(relative_path)
-        try:
-            stat = path.stat()
-            deleted_file_entries.append(
-                {
-                    "relative_path": relative_path,
-                    "absolute_path": str(path),
-                    "size": stat.st_size,
-                    "mtime": stat.st_mtime,
-                }
-            )
-        except OSError:
-            deleted_file_entries.append({"relative_path": relative_path, "absolute_path": str(path)})
+        entry: dict[str, Any] = {
+            "relative_path": relative_path,
+            "absolute_path": str(path),
+            "size": metadata.st_size,
+            "mtime": metadata.st_mtime,
+        }
         if not args.dry_run:
-            path.unlink()
+            entry.update(recover_file(path, root, relative_path, args.recovery_root))
+        deleted_file_entries.append(entry)
 
     deleted_dirs: list[str] = []
     if not args.dry_run:
@@ -79,7 +95,7 @@ def main() -> int:
     actual_files_after = sum(
         1
         for path in root.rglob("*")
-        if path.is_file() and path.relative_to(root).as_posix() != "README.md"
+        if path.is_file() and path.relative_to(root).as_posix() not in IGNORED_MANAGED_FILES
     )
 
     backup_manifest_path = ""
@@ -121,13 +137,13 @@ def load_tracked_paths(args: argparse.Namespace, manifest: list[Any]) -> set[str
         if not isinstance(values, list):
             raise SystemExit(f"tracked_relative_paths must be a list: {preview_path}")
         return {
-            canonical_relative_path(Path(str(value)).as_posix())
+            canonical_relative_path(validate_relative_path(value).as_posix())
             for value in values
             if str(value or "").strip()
         }
 
     return {
-        canonical_relative_path(Path(str(item["relative_path"])).as_posix())
+        canonical_relative_path(validate_relative_path(item["relative_path"]).as_posix())
         for item in manifest
         if isinstance(item, dict) and item.get("relative_path")
     }

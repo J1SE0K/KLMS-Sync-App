@@ -8,6 +8,26 @@ from pathlib import Path
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = PROJECT_DIR / "src" / "python" / "cleanup_old_term_course_files.py"
+ROOT_HELPER = PROJECT_DIR / "src" / "python" / "managed_course_file_roots.py"
+
+
+def initialize_root(root: Path) -> None:
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT_HELPER),
+            "--root",
+            str(root),
+            "--purpose",
+            "course-files",
+            "--approved-root",
+            str(root),
+            "--initialize",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 class OldTermCourseFileCleanupTests(unittest.TestCase):
@@ -21,6 +41,7 @@ class OldTermCourseFileCleanupTests(unittest.TestCase):
             old_file.parent.mkdir(parents=True)
             current_file.write_text("current", encoding="utf-8")
             old_file.write_text("old", encoding="utf-8")
+            initialize_root(output_root)
 
             manifest_path = root / "manifest.json"
             terms_path = root / "academic_terms.json"
@@ -69,6 +90,8 @@ class OldTermCourseFileCleanupTests(unittest.TestCase):
                     str(terms_path),
                     "--output-json",
                     str(result_path),
+                    "--root",
+                    str(output_root),
                     "--trash-root",
                     str(trash_root),
                 ],
@@ -93,6 +116,7 @@ class OldTermCourseFileCleanupTests(unittest.TestCase):
             file_path = root / "course_files" / "old.pdf"
             file_path.parent.mkdir(parents=True)
             file_path.write_text("old", encoding="utf-8")
+            initialize_root(file_path.parent)
 
             manifest_path = root / "manifest.json"
             terms_path = root / "academic_terms.json"
@@ -122,6 +146,8 @@ class OldTermCourseFileCleanupTests(unittest.TestCase):
                     str(terms_path),
                     "--output-json",
                     str(result_path),
+                    "--root",
+                    str(file_path.parent),
                 ],
                 check=True,
                 cwd=PROJECT_DIR,
@@ -134,6 +160,59 @@ class OldTermCourseFileCleanupTests(unittest.TestCase):
             self.assertTrue(file_path.exists())
             self.assertEqual(result["status"], "skipped")
             self.assertEqual(result["reason"], "current-term-courses-unavailable")
+
+    def test_rejects_manifest_path_outside_managed_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output_root = root / "course_files"
+            output_root.mkdir()
+            initialize_root(output_root)
+            outside = root / "outside.pdf"
+            outside.write_text("keep", encoding="utf-8")
+            manifest_path = root / "manifest.json"
+            terms_path = root / "academic_terms.json"
+            result_path = root / "old_term_cleanup.json"
+            manifest_path.write_text(
+                json.dumps(
+                    [{
+                        "course": "old course",
+                        "relative_path": "../outside.pdf",
+                        "absolute_path": str(outside),
+                    }]
+                ),
+                encoding="utf-8",
+            )
+            terms_path.write_text(
+                json.dumps({
+                    "selected_year": 2026,
+                    "selected_semester": "여름학기",
+                    "courses": [{"title": "current course"}],
+                }),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--manifest-json",
+                    str(manifest_path),
+                    "--academic-terms-json",
+                    str(terms_path),
+                    "--output-json",
+                    str(result_path),
+                    "--root",
+                    str(output_root),
+                    "--trash-root",
+                    str(root / "trash"),
+                ],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("escapes its root", result.stderr)
+            self.assertEqual(outside.read_text(encoding="utf-8"), "keep")
 
 
 if __name__ == "__main__":

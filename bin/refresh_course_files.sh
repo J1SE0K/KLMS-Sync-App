@@ -143,6 +143,31 @@ if is_truthy "$FILE_DRY_RUN"; then
   QUARANTINE_REPORT_JSON="$WORK_CACHE_DIR/course_file_quarantine_report.json"
 fi
 
+managed_root_mode_args=(--initialize)
+if is_truthy "$FILE_DRY_RUN"; then
+  managed_root_mode_args=(--allow-unmarked)
+fi
+managed_root_protection_args=(
+  --protected-root "$HOME"
+  --protected-root "$KLMS_DATA_DIR"
+  --protected-root "$RUNTIME_DIR"
+  --protected-root "$FILE_DOWNLOAD_WORK_ROOT"
+)
+python3 "$KLMS_PYTHON_DIR/managed_course_file_roots.py" \
+  --root "$OUTPUT_ROOT" \
+  --purpose course-files \
+  --approved-root "$KLMS_DATA_DIR/course_files" \
+  "${managed_root_protection_args[@]}" \
+  "${managed_root_mode_args[@]}" \
+  >/dev/null
+python3 "$KLMS_PYTHON_DIR/managed_course_file_roots.py" \
+  --root "$DOWNLOAD_ARCHIVE_ROOT" \
+  --purpose course-files-archive \
+  --approved-root "$FILE_DOWNLOAD_WORK_ROOT/KLMS Files" \
+  "${managed_root_protection_args[@]}" \
+  "${managed_root_mode_args[@]}" \
+  >/dev/null
+
 mkdir -p "$CACHE_DIR" "$WORK_CACHE_DIR" "$TMP_DIR" "$PRUNE_BACKUP_DIR"
 
 cleanup_legacy_scoped_file_result_artifacts() {
@@ -1236,7 +1261,8 @@ manifest_path = Path(sys.argv[1])
 output_root = Path(sys.argv[2])
 manifest = json.loads(manifest_path.read_text(encoding="utf-8")) if manifest_path.exists() else []
 tracked = len(manifest) if isinstance(manifest, list) else 0
-actual_files = sum(1 for path in output_root.rglob("*") if path.is_file() and path.name != ".DS_Store")
+ignored_names = {".DS_Store", ".klms-sync-managed-root.json", "README.md"}
+actual_files = sum(1 for path in output_root.rglob("*") if path.is_file() and path.name not in ignored_names)
 
 if tracked == 0 and actual_files > 0:
     raise SystemExit(
@@ -1255,6 +1281,7 @@ if is_truthy "$FILE_CLEANUP_OLD_TERM_FILES"; then
     --manifest-json "$MANIFEST_JSON" \
     --academic-terms-json "$ACADEMIC_TERM_CATALOG_JSON" \
     --output-json "$OLD_TERM_CLEANUP_RESULT_JSON" \
+    --root "$OUTPUT_ROOT" \
     "${old_term_cleanup_args[@]}"
   old_term_removed_count="$(
     python3 - "$OLD_TERM_CLEANUP_RESULT_JSON" <<'PY'
@@ -1422,6 +1449,8 @@ prune_started_epoch="$(date +%s)"
 prune_backup_args=()
 archive_prune_backup_args=()
 prune_timestamp="$(date +%Y%m%d-%H%M%S)"
+prune_recovery_root="$PRUNE_BACKUP_DIR/${prune_timestamp}_course_files"
+archive_prune_recovery_root="$PRUNE_BACKUP_DIR/${prune_timestamp}_archive"
 if is_truthy "$FILE_PRUNE_BACKUP_ENABLED"; then
   prune_backup_args=(--backup-manifest "$PRUNE_BACKUP_DIR/${prune_timestamp}_course_files.json")
   archive_prune_backup_args=(--backup-manifest "$PRUNE_BACKUP_DIR/${prune_timestamp}_archive.json")
@@ -1437,6 +1466,8 @@ fi
 python3 "$KLMS_PYTHON_DIR/prune_course_files.py" \
   --manifest-json "$MANIFEST_JSON" \
   --root "$OUTPUT_ROOT" \
+  --root-purpose course-files \
+  --recovery-root "$prune_recovery_root" \
   "${prune_backup_args[@]}" \
   "${prune_tracking_args[@]}" \
   "${prune_dry_run_args[@]}" \
@@ -1448,6 +1479,8 @@ archive_prune_started_epoch="$(date +%s)"
 python3 "$KLMS_PYTHON_DIR/prune_course_files.py" \
   --manifest-json "$MANIFEST_JSON" \
   --root "$DOWNLOAD_ARCHIVE_ROOT" \
+  --root-purpose course-files-archive \
+  --recovery-root "$archive_prune_recovery_root" \
   "${archive_prune_backup_args[@]}" \
   "${prune_tracking_args[@]}" \
   "${prune_dry_run_args[@]}" \

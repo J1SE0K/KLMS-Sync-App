@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 import unicodedata
+
+from managed_course_file_roots import (
+    managed_member,
+    prepare_managed_root,
+    recover_file,
+    validate_relative_path,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-json", required=True)
     parser.add_argument("--academic-terms-json", required=True)
     parser.add_argument("--output-json", required=True)
+    parser.add_argument("--root", required=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--trash-root")
     return parser
@@ -66,33 +73,16 @@ def course_is_current(course: str, current_course_keys: set[str]) -> bool:
     return any(key == current or key.startswith(current) or current.startswith(key) for current in current_course_keys)
 
 
-def unique_destination(path: Path) -> Path:
-    if not path.exists():
-        return path
-    stem = path.stem
-    suffix = path.suffix
-    parent = path.parent
-    index = 2
-    while True:
-        candidate = parent / f"{stem} {index}{suffix}"
-        if not candidate.exists():
-            return candidate
-        index += 1
-
-
-def move_to_trash(path: Path, relative_path: str, trash_root: Path, dry_run: bool) -> str:
-    destination = unique_destination(trash_root / relative_path)
-    if not dry_run:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(path), str(destination))
-    return str(destination)
-
-
 def main() -> int:
     args = build_parser().parse_args()
     manifest_path = Path(args.manifest_json)
     terms_path = Path(args.academic_terms_json)
     output_path = Path(args.output_json)
+    root = prepare_managed_root(
+        args.root,
+        "course-files",
+        allow_unmarked=args.dry_run,
+    )
     trash_root = Path(args.trash_root).expanduser() if args.trash_root else (
         Path.home()
         / ".Trash"
@@ -131,25 +121,32 @@ def main() -> int:
     for item in manifest:
         if not isinstance(item, dict):
             continue
+        relative = validate_relative_path(item.get("relative_path") or item.get("filename"))
+        path = managed_member(root, relative)
+        normalized_item = {
+            **item,
+            "relative_path": relative.as_posix(),
+            "absolute_path": str(path),
+        }
         course = str(item.get("course") or "")
         if course_is_current(course, current_courses):
-            kept.append(item)
+            kept.append(normalized_item)
             continue
 
-        absolute_path = str(item.get("absolute_path") or "").strip()
-        relative_path = str(item.get("relative_path") or item.get("filename") or absolute_path).strip()
-        path = Path(absolute_path) if absolute_path else None
-        exists = bool(path and path.is_file())
-        destination = ""
-        if exists and relative_path:
-            destination = move_to_trash(path, relative_path, trash_root, args.dry_run)
+        exists = path.exists() or path.is_symlink()
+        recovery: dict[str, Any] = {}
+        if exists:
+            managed_member(root, relative, must_exist=True)
+            if not args.dry_run:
+                recovery = recover_file(path, root, relative, trash_root)
         removed.append(
             {
                 "course": course,
                 "filename": item.get("filename") or "",
-                "relative_path": relative_path,
-                "absolute_path": absolute_path,
-                "trash_path": destination,
+                "relative_path": relative.as_posix(),
+                "absolute_path": str(path),
+                "trash_path": recovery.get("recovery_path", ""),
+                "sha256": recovery.get("sha256", ""),
                 "file_existed": exists,
             }
         )
