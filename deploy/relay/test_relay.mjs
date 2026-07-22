@@ -129,7 +129,7 @@ try {
   );
   assert.equal(
     (await fetch(`${baseURL}/v1/file-access/00000000-0000-4000-8000-000000000001/download?ticket=short`)).status,
-    403
+    400
   );
 
   const initialStatus = await jsonRequest("/v1/status");
@@ -214,11 +214,40 @@ try {
   assert.equal(changed.revision, hello.revision + 1);
   assert.deepEqual(changed.scopes, ["status", "commands", "requestLog"]);
   assert.equal(changed.requiresSnapshot, false);
+  const changedSnapshot = await receiveRealtimeSnapshot(socket, await socket.next());
+  assert.equal(changedSnapshot.revision, changed.revision);
+  assert.equal(changedSnapshot.commands.commands[0].status, "running");
+
+  const burstResponses = await Promise.all(Array.from({ length: 8 }, (_, index) => request("/v1/status", {
+    method: "POST",
+    role: "worker",
+    body: {
+      status: { assignments: index + 1, phase: "idle" },
+      running: false,
+      message: `burst-${index + 1}`,
+    },
+  })));
+  assert.equal(burstResponses.every((response) => response.status === 200), true);
+  const burstTarget = await jsonRequest("/v1/status");
+  let burstRevision = changed.revision;
+  let burstDeliveryCount = 0;
+  while (burstRevision < burstTarget.revision) {
+    const burstEvent = await socket.next();
+    assert.ok(["state", "coalesced"].includes(burstEvent.reason));
+    assert.ok(burstEvent.revision > burstRevision);
+    assert.ok(burstEvent.revision <= burstTarget.revision);
+    const burstSnapshot = await receiveRealtimeSnapshot(socket, await socket.next());
+    assert.equal(burstSnapshot.revision, burstEvent.revision);
+    burstRevision = burstEvent.revision;
+    burstDeliveryCount += 1;
+  }
+  assert.equal(burstRevision, burstTarget.revision);
+  assert.equal(burstDeliveryCount, 2, "eight unacknowledged updates must coalesce into one bounded follow-up stream");
 
   socket.send({ type: "ping" });
   const pong = await socket.next();
   assert.equal(pong.type, "pong");
-  assert.equal(pong.revision, changed.revision);
+  assert.equal(pong.revision, burstTarget.revision);
   socket.close();
 
   await jsonRequest(`/v1/commands/${command.id}`, {
@@ -254,8 +283,11 @@ try {
     });
     const syncChanged = await realtime.next();
     assert.equal(syncChanged.reason, "sync-data");
-    assert.equal(syncChanged.requiresSnapshot, true);
+    assert.equal(syncChanged.requiresSnapshot, false);
     assert.equal(syncChanged.revision, syncHello.revision + 1);
+    const streamedSync = await receiveRealtimeSnapshot(realtime, await realtime.next());
+    assert.equal(streamedSync.revision, syncChanged.revision);
+    assert.equal(streamedSync.syncData.runLogs[0].status, "실패 7");
     assert.equal(syncResponse.revision, syncChanged.revision, "snapshot revision must match its committed event");
     assert.equal(syncResponse.runLogs[0].commandTitle, "전체 동기화");
     assert.equal(syncResponse.runLogs[0].status, "실패 7");
@@ -376,7 +408,7 @@ try {
   assert.equal(storedObjects.length, 1, "concurrent uploads must create exactly one object");
   const previewPageURL = new URL(uploaded.downloadURL);
   previewPageURL.searchParams.set("preview", "1");
-  const previewPageResponse = await fetch(previewPageURL);
+  const previewPageResponse = await fetch(previewPageURL, { headers: downloadHeaders(uploaded) });
   assert.equal(previewPageResponse.status, 200);
   const previewPageCSP = previewPageResponse.headers.get("Content-Security-Policy") || "";
   assert.doesNotMatch(previewPageCSP, /script-src[^;]*'unsafe-inline'/);
@@ -397,7 +429,7 @@ try {
   );
   const pdfPreviewURL = new URL(pdfPreview.downloadURL);
   pdfPreviewURL.searchParams.set("preview", "1");
-  const pdfPreviewResponse = await fetch(pdfPreviewURL);
+  const pdfPreviewResponse = await fetch(pdfPreviewURL, { headers: downloadHeaders(pdfPreview) });
   assert.equal(pdfPreviewResponse.status, 200);
   const pdfPreviewHTML = await pdfPreviewResponse.text();
   assert.match(pdfPreviewHTML, /브라우저의 내장 PDF 도구/);
@@ -411,7 +443,9 @@ try {
     "escaped",
     "text/plain"
   );
-  const hostilePageResponse = await fetch(hostilePreview.downloadURL);
+  const hostilePageURL = new URL(hostilePreview.downloadURL);
+  hostilePageURL.searchParams.set("page", "1");
+  const hostilePageResponse = await fetch(hostilePageURL, { headers: downloadHeaders(hostilePreview) });
   assert.equal(hostilePageResponse.status, 200);
   const hostilePageHTML = await hostilePageResponse.text();
   assert.match(hostilePageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
@@ -426,7 +460,7 @@ try {
   const disguisedSVGPreviewURL = new URL(disguisedSVG.downloadURL);
   disguisedSVGPreviewURL.searchParams.set("preview", "1");
   disguisedSVGPreviewURL.searchParams.set("raw", "1");
-  const disguisedSVGPreview = await fetch(disguisedSVGPreviewURL);
+  const disguisedSVGPreview = await fetch(disguisedSVGPreviewURL, { headers: downloadHeaders(disguisedSVG) });
   assert.equal(disguisedSVGPreview.status, 200);
   assert.match(disguisedSVGPreview.headers.get("Content-Type"), /^text\/plain/);
   assert.doesNotMatch(disguisedSVGPreview.headers.get("Content-Type"), /svg/i);
@@ -443,7 +477,9 @@ try {
   const disguisedSVGFilenamePreviewURL = new URL(disguisedSVGFilename.downloadURL);
   disguisedSVGFilenamePreviewURL.searchParams.set("preview", "1");
   disguisedSVGFilenamePreviewURL.searchParams.set("raw", "1");
-  const disguisedSVGFilenamePreview = await fetch(disguisedSVGFilenamePreviewURL);
+  const disguisedSVGFilenamePreview = await fetch(disguisedSVGFilenamePreviewURL, {
+    headers: downloadHeaders(disguisedSVGFilename),
+  });
   assert.match(disguisedSVGFilenamePreview.headers.get("Content-Type"), /^text\/plain/);
   assert.match(disguisedSVGFilenamePreview.headers.get("Content-Security-Policy") || "", /sandbox/);
   {
@@ -588,10 +624,11 @@ try {
     }
   }
 
-  const downloadURL = new URL(uploaded.downloadURL);
-  downloadURL.searchParams.set("download", "1");
   const readsBeforeRace = relayTestFileObjectReadCount();
-  const downloads = await Promise.all(Array.from({ length: 12 }, () => fetch(downloadURL)));
+  const downloads = await Promise.all(Array.from(
+    { length: 12 },
+    () => fetch(uploaded.downloadURL, { headers: downloadHeaders(uploaded) })
+  ));
   assert.equal(downloads.filter((response) => response.status === 200).length, 1);
   assert.equal(downloads.filter((response) => response.status === 429).length, 11);
   assert.equal(
@@ -617,9 +654,9 @@ try {
     } finally {
       failureDB.close();
     }
-    const failedReadURL = new URL(failedReadFile.downloadURL);
-    failedReadURL.searchParams.set("download", "1");
-    assert.equal((await fetch(failedReadURL)).status, 404);
+    assert.equal((await fetch(failedReadFile.downloadURL, {
+      headers: downloadHeaders(failedReadFile),
+    })).status, 404);
     const releasedDB = new DatabaseSync(dbPath, { readOnly: true });
     try {
       const row = releasedDB.prepare(`
@@ -638,7 +675,9 @@ try {
     }
     await fs.mkdir(path.dirname(objectPath), { recursive: true });
     await fs.writeFile(objectPath, "recoverable-body", "utf8");
-    assert.equal((await fetch(failedReadURL)).status, 200, "released quota must permit a later successful retry");
+    assert.equal((await fetch(failedReadFile.downloadURL, {
+      headers: downloadHeaders(failedReadFile),
+    })).status, 200, "released quota must permit a later successful retry");
   }
 
   const staleReservationFile = await createUploadedFile("file-stale-download", "stale-download.txt", "stale-body");
@@ -704,9 +743,9 @@ try {
     } finally {
       quotaDB.close();
     }
-    const activeDownloadURL = new URL(protectedDownloadFile.downloadURL);
-    activeDownloadURL.searchParams.set("download", "1");
-    const activeDownload = fetch(activeDownloadURL);
+    const activeDownload = fetch(protectedDownloadFile.downloadURL, {
+      headers: downloadHeaders(protectedDownloadFile),
+    });
     await waitForDownloadReservation(protectedDownloadFile.id);
     const clearDuringDownload = await request("/v1/logs?scope=fileAccess", {
       method: "DELETE",
@@ -782,9 +821,9 @@ try {
       },
     });
     assert.equal(patchDuringClear.status, 409);
-    const downloadDuringClearURL = new URL(slowClearFile.downloadURL);
-    downloadDuringClearURL.searchParams.set("download", "1");
-    const downloadDuringClear = await fetch(downloadDuringClearURL);
+    const downloadDuringClear = await fetch(slowClearFile.downloadURL, {
+      headers: downloadHeaders(slowClearFile),
+    });
     assert.equal(downloadDuringClear.status, 409);
     const clearResponse = await clearPromise;
     assert.equal(clearResponse.status, 200, await clearResponse.text());
@@ -1180,8 +1219,9 @@ try {
     const publicResult = await publicUpload.json();
     assert.match(
       publicResult.downloadURL,
-      new RegExp(`^https://relay\\.example\\.test/relay/v1/file-access/${publicRequest.id}/download\\?ticket=`)
+      new RegExp(`^https://relay\\.example\\.test/relay/v1/file-access/${publicRequest.id}/download$`)
     );
+    assert.match(publicResult.downloadCapability, /^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/);
     publicURLChild.kill("SIGTERM");
     await onceExit(publicURLChild);
     publicURLChild = null;
@@ -1314,22 +1354,21 @@ try {
       });
       assert.equal(uploadResponse.status, 200);
       const uploaded = await uploadResponse.json();
-      const fakeTicketURL = new URL(uploaded.downloadURL);
-      fakeTicketURL.searchParams.set("ticket", "a".repeat(64));
-      assert.equal((await fetch(fakeTicketURL)).status, 403);
-      assert.equal((await fetch(fakeTicketURL)).status, 403);
-      assert.equal((await fetch(fakeTicketURL)).status, 403);
+      const fakeCapabilityHeaders = downloadHeaders(uploaded, "a".repeat(64));
+      assert.equal((await fetch(uploaded.downloadURL, { headers: fakeCapabilityHeaders })).status, 403);
+      assert.equal((await fetch(uploaded.downloadURL, { headers: fakeCapabilityHeaders })).status, 403);
+      assert.equal((await fetch(uploaded.downloadURL, { headers: fakeCapabilityHeaders })).status, 403);
       const lookupDB = new DatabaseSync(rateLimitDBPath, { readOnly: true });
       const lookupCount = () => Number(
         lookupDB.prepare("SELECT value FROM meta WHERE key = 'testPublicDownloadLookupCount'").get()?.value || 0,
       );
       assert.equal(lookupCount(), 3);
       for (let attempt = 0; attempt < 25; attempt += 1) {
-        assert.equal((await fetch(fakeTicketURL)).status, 429);
+        assert.equal((await fetch(uploaded.downloadURL, { headers: fakeCapabilityHeaders })).status, 429);
       }
       assert.equal(lookupCount(), 3, "rate-limited fake tickets must not perform SQLite lookups");
       assert.equal(
-        (await fetch(uploaded.downloadURL)).status,
+        (await fetch(uploaded.downloadURL, { headers: downloadHeaders(uploaded) })).status,
         429,
         "the source ingress budget must protect valid links from an active fake-ticket flood",
       );
@@ -1484,6 +1523,10 @@ async function createUploadedFile(itemID, itemTitle, rawBody, contentType = "tex
   });
   assert.equal(upload.status, 200, await upload.clone().text());
   return upload.json();
+}
+
+function downloadHeaders(fileRequest, capability = fileRequest.downloadCapability) {
+  return { Authorization: `Bearer ${capability}` };
 }
 
 function startStalledUpload(id, totalBytes) {
@@ -1777,6 +1820,57 @@ function encodeMaskedWebSocketFrame(text) {
   const masked = Buffer.from(payload);
   for (let index = 0; index < masked.length; index += 1) masked[index] ^= mask[index % 4];
   return Buffer.concat([header, mask, masked]);
+}
+
+async function receiveRealtimeSnapshot(socket, begin) {
+  assert.equal(begin.type, "snapshot-begin");
+  assert.equal(begin.version, 1);
+  assert.match(begin.sessionID, /^[0-9a-f-]{36}$/i);
+  assert.match(begin.streamID, /^[0-9a-f-]{36}$/i);
+  assert.ok(begin.chunkCount > 0 && begin.chunkCount <= 254);
+  assert.equal(begin.reservedFrames, begin.chunkCount + 2);
+  assert.ok(Number.parseInt(begin.totalPayloadBytes, 16) <= 8 * 1024 * 1024);
+  assert.ok(Number.parseInt(begin.reservedWireBytes, 16) <= 8 * 1024 * 1024);
+  socket.send({
+    version: 1,
+    type: "snapshot-ready",
+    sessionID: begin.sessionID,
+    streamID: begin.streamID,
+    revision: begin.revision,
+    reservedFrames: begin.reservedFrames,
+    reservedWireBytes: begin.reservedWireBytes,
+  });
+  const chunks = [];
+  let wireBytes = Buffer.byteLength(JSON.stringify(begin));
+  for (let index = 0; index < begin.chunkCount; index += 1) {
+    const chunk = await socket.next();
+    assert.equal(chunk.type, "snapshot-chunk");
+    assert.equal(chunk.sessionID, begin.sessionID);
+    assert.equal(chunk.streamID, begin.streamID);
+    assert.equal(chunk.revision, begin.revision);
+    assert.deepEqual(chunk.scopes, begin.scopes);
+    assert.equal(chunk.index, index);
+    assert.equal(chunk.chunkCount, begin.chunkCount);
+    assert.equal(chunk.payloadSHA256, begin.payloadSHA256);
+    const bytes = Buffer.from(chunk.payload, "base64");
+    assert.equal(bytes.toString("base64"), chunk.payload);
+    assert.equal(bytes.length, Number.parseInt(chunk.payloadBytes, 16));
+    chunks.push(bytes);
+    wireBytes += Buffer.byteLength(JSON.stringify(chunk));
+  }
+  const end = await socket.next();
+  wireBytes += Buffer.byteLength(JSON.stringify(end));
+  assert.equal(end.type, "snapshot-end");
+  assert.equal(end.index, begin.chunkCount);
+  assert.equal(end.payloadSHA256, begin.payloadSHA256);
+  assert.equal(wireBytes, Number.parseInt(begin.reservedWireBytes, 16));
+  const payload = Buffer.concat(chunks);
+  assert.equal(payload.length, Number.parseInt(begin.totalPayloadBytes, 16));
+  assert.equal(crypto.createHash("sha256").update(payload).digest("hex"), begin.payloadSHA256);
+  const decoded = JSON.parse(payload.toString("utf8"));
+  assert.equal(decoded.revision, begin.revision);
+  assert.deepEqual(decoded.scopes, begin.scopes);
+  return decoded;
 }
 
 function onceExit(process) {

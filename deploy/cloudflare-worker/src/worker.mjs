@@ -7,6 +7,10 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const MIN_RELAY_TOKEN_BYTES = 32;
 const MAX_REALTIME_CONNECTIONS = 32;
 const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
+const MAX_REALTIME_FRAME_BYTES = 64 * 1024;
+const MAX_REALTIME_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+const MAX_REALTIME_SNAPSHOT_CHUNKS = 254;
+const REALTIME_SNAPSHOT_CHUNK_BYTES = 43 * 1024;
 const DEFAULT_REQUESTS_PER_MINUTE = 600;
 const DEFAULT_PUBLIC_DOWNLOADS_PER_MINUTE = 60;
 const MAX_AUTHORIZED_REQUEST_RATE_WINDOWS = 64;
@@ -193,6 +197,8 @@ export class RelayRealtimeRoom {
   constructor(state, env) {
     this.state = state;
     this.env = env;
+    this.pendingSnapshots = new Map();
+    this.operationTail = Promise.resolve();
   }
 
   async fetch(request) {
@@ -208,9 +214,17 @@ export class RelayRealtimeRoom {
       }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
+      const sessionID = crypto.randomUUID();
+      const publicBaseURL = String(request.headers.get("X-KLMS-Public-Base-URL") || "").trim();
       server.serializeAttachment({
         role,
+        sessionID,
+        publicBaseURL,
         connectedAt: new Date().toISOString(),
+        outboundSequence: 0,
+        pendingSnapshot: null,
+        queuedBroadcast: null,
+        queuedManualRequest: null,
       });
       this.state.acceptWebSocket(server);
       let revision = 0;
@@ -226,20 +240,25 @@ export class RelayRealtimeRoom {
         requiresSnapshot: false,
         sentAt: new Date().toISOString(),
         role,
+        sessionID,
       })));
       return new Response(null, { status: 101, webSocket: client });
     }
 
     if (request.method === "POST" && url.pathname === "/broadcast") {
       const body = await readJSON(request);
-      this.broadcast(normalizeRelayEventEnvelope(body));
+      await this.enqueue(() => this.broadcast(normalizeRelayEventEnvelope(body)));
       return sendJSON(200, { ok: true, connections: this.state.getWebSockets().length });
     }
 
     return sendJSON(404, { error: "not found" });
   }
 
-  async webSocketMessage(webSocket, message) {
+  webSocketMessage(webSocket, message) {
+    return this.enqueue(() => this.handleWebSocketMessage(webSocket, message));
+  }
+
+  async handleWebSocketMessage(webSocket, message) {
     if (typeof message !== "string") {
       webSocket.close(1003, "text messages only");
       return;
@@ -249,12 +268,18 @@ export class RelayRealtimeRoom {
       return;
     }
     const text = String(message || "");
+    let parsed = null;
     let isPing = text === "ping";
     if (!isPing) {
       try {
-        isPing = JSON.parse(text)?.type === "ping";
-      } catch {}
+        parsed = JSON.parse(text);
+        isPing = parsed?.type === "ping";
+      } catch {
+        webSocket.close(1002, "invalid JSON message");
+        return;
+      }
     }
+    const attachment = webSocket.deserializeAttachment() || {};
     if (isPing) {
       let revision = 0;
       try {
@@ -268,23 +293,208 @@ export class RelayRealtimeRoom {
         delta: {},
         requiresSnapshot: false,
         sentAt: new Date().toISOString(),
+        sessionID: attachment.sessionID,
       })));
+      return;
+    }
+    if (parsed?.type === "snapshot-ready") {
+      await this.handleSnapshotReady(webSocket, attachment, parsed);
+      return;
+    }
+    if (parsed?.type === "snapshot-request") {
+      await this.prepareSnapshot(webSocket, attachment, {
+        scopes: parsed.scopes,
+        requestID: parsed.requestID,
+        requestedRevision: parsed.revision,
+      });
+      return;
+    }
+    webSocket.close(1002, "unsupported message");
+  }
+
+  async webSocketClose(webSocket) {
+    this.pendingSnapshots.delete(webSocket);
+  }
+  async webSocketError(webSocket) {
+    this.pendingSnapshots.delete(webSocket);
+  }
+
+  enqueue(task) {
+    const result = this.operationTail.then(task, task);
+    this.operationTail = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async broadcast(payload) {
+    for (const webSocket of this.state.getWebSockets()) {
+      try {
+        const attachment = webSocket.deserializeAttachment() || {};
+        if (attachment.pendingSnapshot) {
+          this.queueBroadcast(webSocket, attachment, payload);
+        } else {
+          await this.startBroadcastSnapshot(webSocket, attachment, payload);
+        }
+      } catch (error) {
+        try {
+          webSocket.close(realtimeSnapshotCloseCode(error), error?.message || "snapshot preparation failed");
+        } catch (_closeError) {}
+      }
     }
   }
 
-  async webSocketClose() {}
-  async webSocketError() {}
-
-  broadcast(payload) {
-    const message = JSON.stringify(payload);
-    for (const webSocket of this.state.getWebSockets()) {
-      try {
-        webSocket.send(message);
-      } catch (_error) {
-        try {
-          webSocket.close(1011, "send failed");
-        } catch (_closeError) {}
+  async prepareSnapshot(webSocket, attachment, { scopes, requestID, requestedRevision }) {
+    if (!normalizeUUIDText(attachment.sessionID)
+        || !normalizeUUIDText(requestID)
+        || !Number.isSafeInteger(requestedRevision)
+        || requestedRevision < 0) {
+      webSocket.close(1002, "invalid snapshot request");
+      return;
+    }
+    const normalizedScopes = normalizedRealtimeScopes(scopes, { allowEmpty: false });
+    if (!normalizedScopes) {
+      webSocket.close(1002, "invalid snapshot scopes");
+      return;
+    }
+    const request = {
+      scopes: normalizedScopes,
+      requestID,
+      requestedRevision,
+      sequence: Number(attachment.outboundSequence || 0) + 1,
+    };
+    attachment.outboundSequence = request.sequence;
+    if (attachment.pendingSnapshot) {
+      if (attachment.queuedManualRequest) {
+        webSocket.close(1013, "snapshot request queue capacity exceeded");
+        return;
       }
+      attachment.queuedManualRequest = request;
+      webSocket.serializeAttachment(attachment);
+      return;
+    }
+    await this.startManualSnapshot(webSocket, attachment, request);
+  }
+
+  async startManualSnapshot(webSocket, attachment, request) {
+    try {
+      const prepared = await prepareCloudflareRealtimeSnapshot(this.env, attachment, {
+        scopes: request.scopes,
+        requestID: request.requestID,
+        minimumRevision: request.requestedRevision,
+      });
+      this.reserveSnapshot(webSocket, attachment, prepared);
+      webSocket.send(prepared.beginFrame);
+    } catch (error) {
+      webSocket.close(realtimeSnapshotCloseCode(error), error?.message || "snapshot preparation failed");
+    }
+  }
+
+  async handleSnapshotReady(webSocket, attachment, message) {
+    let pending = this.pendingSnapshots.get(webSocket);
+    if (!pending && attachment.pendingSnapshot) {
+      try {
+        pending = await recoverCloudflareRealtimeSnapshot(
+          this.env,
+          attachment,
+          attachment.pendingSnapshot,
+        );
+        this.pendingSnapshots.set(webSocket, pending);
+      } catch (error) {
+        webSocket.close(realtimeSnapshotCloseCode(error), error?.message || "snapshot recovery failed");
+        return;
+      }
+    }
+    if (!pending
+        || message?.version !== REALTIME_EVENT_VERSION
+        || message?.sessionID !== attachment.sessionID
+        || message?.streamID !== pending.streamID
+        || message?.revision !== pending.revision
+        || message?.reservedFrames !== pending.reservedFrames
+        || message?.reservedWireBytes !== pending.reservedWireBytes) {
+      webSocket.close(1002, "snapshot ready mismatch");
+      return;
+    }
+    this.pendingSnapshots.delete(webSocket);
+    try {
+      for (const frameText of pending.dataFrames) webSocket.send(frameText);
+    } catch (_error) {
+      webSocket.close(1013, "snapshot queue capacity exceeded");
+      return;
+    }
+    const currentAttachment = webSocket.deserializeAttachment() || attachment;
+    currentAttachment.pendingSnapshot = null;
+    webSocket.serializeAttachment(currentAttachment);
+    await this.drainSnapshotQueue(webSocket, currentAttachment);
+  }
+
+  async startBroadcastSnapshot(webSocket, attachment, payload) {
+    const prepared = await prepareCloudflareRealtimeSnapshot(this.env, attachment, {
+      scopes: payload.scopes,
+      requestID: null,
+      minimumRevision: payload.revision,
+    });
+    const event = {
+      ...payload,
+      revision: prepared.revision,
+      scopes: prepared.scopes,
+      requiresSnapshot: false,
+      sessionID: attachment.sessionID,
+    };
+    this.reserveSnapshot(webSocket, attachment, prepared);
+    webSocket.send(JSON.stringify(event));
+    webSocket.send(prepared.beginFrame);
+  }
+
+  reserveSnapshot(webSocket, attachment, prepared) {
+    this.pendingSnapshots.set(webSocket, prepared);
+    attachment.pendingSnapshot = realtimeSnapshotDescriptor(prepared);
+    webSocket.serializeAttachment(attachment);
+  }
+
+  queueBroadcast(webSocket, attachment, payload) {
+    const scopes = normalizedRealtimeScopes(payload.scopes, { allowEmpty: false });
+    if (!scopes) throw realtimeSnapshotError(1002, "invalid snapshot event");
+    if (!attachment.queuedBroadcast) {
+      attachment.outboundSequence = Number(attachment.outboundSequence || 0) + 1;
+      attachment.queuedBroadcast = {
+        event: { ...payload, scopes },
+        sequence: attachment.outboundSequence,
+        count: 1,
+      };
+    } else {
+      const mergedScopes = normalizedRealtimeScopes([
+        ...attachment.queuedBroadcast.event.scopes,
+        ...scopes,
+      ], { allowEmpty: false });
+      attachment.queuedBroadcast.event = {
+        ...payload,
+        reason: "coalesced",
+        scopes: mergedScopes,
+      };
+      attachment.queuedBroadcast.count += 1;
+    }
+    webSocket.serializeAttachment(attachment);
+  }
+
+  async drainSnapshotQueue(webSocket, attachment) {
+    if (attachment.pendingSnapshot) return;
+    const broadcast = attachment.queuedBroadcast;
+    const manual = attachment.queuedManualRequest;
+    if (manual && (!broadcast || manual.sequence < broadcast.sequence)) {
+      attachment.queuedManualRequest = null;
+      webSocket.serializeAttachment(attachment);
+      await this.startManualSnapshot(webSocket, attachment, manual);
+      return;
+    }
+    if (broadcast) {
+      attachment.queuedBroadcast = null;
+      webSocket.serializeAttachment(attachment);
+      await this.startBroadcastSnapshot(webSocket, attachment, broadcast.event);
+      return;
+    }
+    if (manual) {
+      attachment.queuedManualRequest = null;
+      webSocket.serializeAttachment(attachment);
+      await this.startManualSnapshot(webSocket, attachment, manual);
     }
   }
 }
@@ -481,7 +691,10 @@ async function fileUploadFastPathResponse(request, env, ctx, id) {
 async function fileDownloadFastPathResponse(request, env, ctx, id) {
   try {
     if (!await consumePublicDownloadIngressRateLimit(request, env)) return rateLimitResponse();
-    const validTicket = validDownloadTicket(new URL(request.url).searchParams.get("ticket"));
+    if (new URL(request.url).searchParams.has("ticket")) {
+      return sendJSON(400, { error: "download credentials are not accepted in URLs" });
+    }
+    const validTicket = validDownloadTicket(downloadCapabilityFromRequest(request));
     if (!validTicket) {
       return fileAccessDownloadPage({
         request,
@@ -764,7 +977,13 @@ async function route(request, env, ctx = null) {
     if (!room) {
       return sendJSON(501, { error: "realtime not configured" });
     }
-    return room.fetch(new Request("https://klms-sync-relay.internal/connect" + url.search, request));
+    const headers = new Headers(request.headers);
+    const publicBasePath = url.pathname.slice(0, -"/v1/events".length);
+    headers.set("X-KLMS-Public-Base-URL", `${url.origin}${publicBasePath}`);
+    return room.fetch(new Request("https://klms-sync-relay.internal/connect" + url.search, {
+      method: "GET",
+      headers,
+    }));
   }
 
   if (request.method === "GET" && pathname === "/v1/events/poll") {
@@ -774,7 +993,10 @@ async function route(request, env, ctx = null) {
   const downloadMatch = pathname.match(/^\/v1\/file-access\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/download$/);
   if (request.method === "GET" && downloadMatch) {
     if (!await consumePublicDownloadIngressRateLimit(request, env)) return rateLimitResponse();
-    if (!validDownloadTicket(url.searchParams.get("ticket"))) {
+    if (url.searchParams.has("ticket")) {
+      return sendJSON(400, { error: "download credentials are not accepted in URLs" });
+    }
+    if (!validDownloadTicket(downloadCapabilityFromRequest(request))) {
       return fileAccessDownloadPage({
         request,
         status: 401,
@@ -1463,6 +1685,12 @@ function validDownloadTicket(value) {
   return /^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/.test(String(value || "").trim());
 }
 
+function downloadCapabilityFromRequest(request) {
+  const authorization = String(request?.headers?.get?.("Authorization") || "").trim();
+  const match = authorization.match(/^Bearer ([A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/);
+  return match?.[1] || "";
+}
+
 function requestRateLimitAddress(request) {
   return String(request.headers.get("CF-Connecting-IP") || "unknown").trim().slice(0, 128);
 }
@@ -1650,7 +1878,7 @@ async function currentRelayRevision(db) {
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 }
 
-function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, requiresSnapshot = false, sentAt, role }) {
+function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, requiresSnapshot = false, sentAt, role, sessionID }) {
   const event = {
     version: REALTIME_EVENT_VERSION,
     type,
@@ -1664,6 +1892,7 @@ function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, r
     updatedAt: sentAt || new Date().toISOString(),
   };
   if (role) event.role = role;
+  if (sessionID) event.sessionID = sessionID;
   return event;
 }
 
@@ -1695,7 +1924,270 @@ function relayScopesForReason(reason) {
 }
 
 function relayEventRequiresSnapshot(reason) {
-  return reason === "sync-data";
+  return false;
+}
+
+function normalizedRealtimeScopes(value, { allowEmpty = true } = {}) {
+  if (!Array.isArray(value)) return null;
+  const requested = new Set(value);
+  if ([...requested].some((scope) => !REALTIME_SCOPES.has(scope))) return null;
+  const scopes = [...REALTIME_SCOPES].filter((scope) => requested.has(scope));
+  return scopes.length > 0 || allowEmpty ? scopes : null;
+}
+
+async function prepareCloudflareRealtimeSnapshot(env, attachment, {
+  scopes: rawScopes,
+  requestID = null,
+  minimumRevision = 0,
+  exactRevision = null,
+  streamID = null,
+}) {
+  const scopes = normalizedRealtimeScopes(rawScopes, { allowEmpty: false });
+  if (!scopes
+      || !normalizeUUIDText(attachment?.sessionID)
+      || !parseRealtimeRole(attachment?.role)
+      || (requestID != null && !normalizeUUIDText(requestID))) {
+    throw realtimeSnapshotError(1002, "invalid snapshot binding");
+  }
+  const db = database(env);
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const revision = await currentRelayRevision(db);
+    if (revision < minimumRevision) throw realtimeSnapshotError(1002, "snapshot revision moved backwards");
+    if (exactRevision != null && revision !== exactRevision) {
+      throw realtimeSnapshotError(1013, "snapshot revision changed before ready");
+    }
+    const payload = await cloudflareRealtimeSnapshotPayload(db, env, attachment, {
+      revision,
+      scopes,
+      requestID,
+    });
+    if (await currentRelayRevision(db) !== revision) continue;
+    return encodeCloudflareRealtimeSnapshot({
+      sessionID: attachment.sessionID,
+      revision,
+      scopes,
+      requestID,
+      payload,
+      streamID,
+    });
+  }
+  throw realtimeSnapshotError(1013, "snapshot changed during preparation");
+}
+
+async function recoverCloudflareRealtimeSnapshot(env, attachment, descriptor) {
+  if (!normalizeUUIDText(descriptor?.streamID)
+      || !Number.isSafeInteger(descriptor?.revision)
+      || descriptor.revision < 0) {
+    throw realtimeSnapshotError(1002, "invalid snapshot recovery binding");
+  }
+  const prepared = await prepareCloudflareRealtimeSnapshot(env, attachment, {
+    scopes: descriptor.scopes,
+    requestID: descriptor.requestID,
+    minimumRevision: descriptor.revision,
+    exactRevision: descriptor.revision,
+    streamID: descriptor.streamID,
+  });
+  const recovered = realtimeSnapshotDescriptor(prepared);
+  const changedBinding = Object.keys(recovered).find((key) => (
+    JSON.stringify(recovered[key]) !== JSON.stringify(descriptor[key])
+  ));
+  if (changedBinding) {
+    throw realtimeSnapshotError(1013, `snapshot ${changedBinding} changed before ready`);
+  }
+  return prepared;
+}
+
+function realtimeSnapshotDescriptor(prepared) {
+  return {
+    streamID: prepared.streamID,
+    revision: prepared.revision,
+    scopes: prepared.scopes,
+    requestID: prepared.requestID,
+    chunkCount: prepared.chunkCount,
+    totalPayloadBytes: prepared.totalPayloadBytes,
+    reservedFrames: prepared.reservedFrames,
+    reservedWireBytes: prepared.reservedWireBytes,
+    payloadSHA256: prepared.payloadSHA256,
+  };
+}
+
+async function cloudflareRealtimeSnapshotPayload(db, env, attachment, { revision, scopes, requestID }) {
+  const payload = {
+    version: REALTIME_EVENT_VERSION,
+    revision,
+    scopes,
+    requestID,
+  };
+  const state = await loadState(db);
+  const publicBaseURL = String(attachment.publicBaseURL || env?.RELAY_PUBLIC_URL || "").replace(/\/$/, "");
+  let snapshotRequest;
+  try {
+    const url = new URL(`${publicBaseURL}/v1/events`);
+    if (!/^https?:$/.test(url.protocol)) throw new Error("invalid protocol");
+    snapshotRequest = new Request(url);
+  } catch {
+    throw realtimeSnapshotError(1002, "invalid public relay URL");
+  }
+  if (attachment.role === "worker") {
+    payload.workerInbox = await workerInboxResponse(db, snapshotRequest, env, state);
+    if (scopes.includes("syncData") || scopes.includes("runLogs") || scopes.includes("sharedSettings")) {
+      payload.syncData = await syncDataResponse(db, { limit: MAX_SYNC_ITEMS });
+    }
+    return payload;
+  }
+
+  const clearTimes = await displayLogClearTimes(db);
+  if (scopes.includes("status")) payload.status = relayResponse(state, { audience: "client" });
+  if (scopes.includes("commands")) {
+    payload.commands = commandListResponse(
+      state,
+      filterDisplayCommands(state.commands, clearTimes.command)
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, 8)
+    );
+  }
+  if (scopes.includes("syncData") || scopes.includes("runLogs")) {
+    payload.syncData = await syncDataResponse(db, { limit: MAX_SYNC_ITEMS });
+  }
+  if (scopes.includes("itemActions")) {
+    payload.itemActions = itemActionListResponse(
+      filterDisplayItemActions(await loadItemActions(db), clearTimes.itemActions)
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, 10)
+    );
+  }
+  if (scopes.includes("settingActions")) {
+    payload.settingActions = settingActionListResponse(
+      filterDisplaySettingActions(await loadSettingActions(db), clearTimes.settingActions)
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, 10)
+    );
+  }
+  if (scopes.includes("fileAccess")) {
+    payload.fileAccess = fileAccessListResponse(
+      filterDisplayFileAccess(
+        await loadFileAccessRequests(db, { limit: MAX_FILE_ACCESS_REQUESTS }),
+        clearTimes.fileAccess
+      ).slice(0, 20),
+      snapshotRequest,
+      env
+    );
+  }
+  if (scopes.includes("requestLog")) payload.requestLog = await requestLogResponse(db, 20);
+  if (scopes.includes("sharedSettings")) payload.sharedSettings = await sharedSettingsResponse(db);
+  return payload;
+}
+
+async function encodeCloudflareRealtimeSnapshot({ sessionID, revision, scopes, requestID, payload, streamID = null }) {
+  const encoder = new TextEncoder();
+  const payloadBytes = encoder.encode(canonicalJSONStringify(payload));
+  if (payloadBytes.byteLength > MAX_REALTIME_SNAPSHOT_BYTES) {
+    throw realtimeSnapshotError(1009, "snapshot payload too large");
+  }
+  const chunks = [];
+  for (let offset = 0; offset < payloadBytes.byteLength || (offset === 0 && chunks.length === 0); offset += REALTIME_SNAPSHOT_CHUNK_BYTES) {
+    chunks.push(payloadBytes.slice(offset, Math.min(payloadBytes.byteLength, offset + REALTIME_SNAPSHOT_CHUNK_BYTES)));
+  }
+  if (chunks.length > MAX_REALTIME_SNAPSHOT_CHUNKS) {
+    throw realtimeSnapshotError(1009, "too many snapshot chunks");
+  }
+  const digest = await crypto.subtle.digest("SHA-256", payloadBytes);
+  const payloadSHA256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  const effectiveStreamID = streamID || crypto.randomUUID();
+  if (!normalizeUUIDText(effectiveStreamID)) throw realtimeSnapshotError(1002, "invalid snapshot stream ID");
+  const totalPayloadBytes = fixedWidthHex(payloadBytes.byteLength);
+  const reservedFrames = chunks.length + 2;
+  const base = {
+    version: REALTIME_EVENT_VERSION,
+    sessionID,
+    streamID: effectiveStreamID,
+    revision,
+    scopes,
+    requestID,
+    chunkCount: chunks.length,
+    totalPayloadBytes,
+    reservedFrames,
+    reservedWireBytes: "0000000000000000",
+    payloadSHA256,
+  };
+  const frameObjects = [
+    { ...base, type: "snapshot-begin", index: -1, payloadBytes: fixedWidthHex(0) },
+    ...chunks.map((chunk, index) => ({
+      ...base,
+      type: "snapshot-chunk",
+      index,
+      payloadBytes: fixedWidthHex(chunk.byteLength),
+      payload: bytesToBase64(chunk),
+    })),
+    { ...base, type: "snapshot-end", index: chunks.length, payloadBytes: fixedWidthHex(0) },
+  ];
+  let frameTexts = frameObjects.map((frame) => JSON.stringify(frame));
+  const reservedWireBytes = fixedWidthHex(frameTexts.reduce((sum, frame) => sum + encoder.encode(frame).byteLength, 0));
+  for (const frame of frameObjects) frame.reservedWireBytes = reservedWireBytes;
+  frameTexts = frameObjects.map((frame) => JSON.stringify(frame));
+  const exactWireBytes = frameTexts.reduce((sum, frame) => sum + encoder.encode(frame).byteLength, 0);
+  if (fixedWidthHex(exactWireBytes) !== reservedWireBytes) {
+    throw realtimeSnapshotError(1002, "snapshot byte reservation changed");
+  }
+  if (exactWireBytes > MAX_REALTIME_SNAPSHOT_BYTES) {
+    throw realtimeSnapshotError(1013, "snapshot wire reservation unavailable");
+  }
+  if (frameTexts.some((frame) => encoder.encode(frame).byteLength > MAX_REALTIME_FRAME_BYTES)) {
+    throw realtimeSnapshotError(1009, "snapshot frame too large");
+  }
+  return {
+    streamID: effectiveStreamID,
+    revision,
+    scopes,
+    requestID,
+    chunkCount: chunks.length,
+    totalPayloadBytes,
+    reservedFrames,
+    reservedWireBytes,
+    payloadSHA256,
+    beginFrame: frameTexts[0],
+    dataFrames: frameTexts.slice(1),
+  };
+}
+
+function canonicalJSONStringify(value, depth = 0) {
+  if (depth > 64) throw realtimeSnapshotError(1009, "snapshot payload is too deeply nested");
+  if (value === null || typeof value !== "object") {
+    const encoded = JSON.stringify(value);
+    return encoded === undefined ? "null" : encoded;
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJSONStringify(item, depth + 1)).join(",")}]`;
+  }
+  const entries = Object.keys(value)
+    .filter((key) => value[key] !== undefined)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJSONStringify(value[key], depth + 1)}`);
+  return `{${entries.join(",")}}`;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += 1) binary += String.fromCharCode(bytes[index]);
+  return btoa(binary);
+}
+
+function fixedWidthHex(value) {
+  if (!Number.isSafeInteger(value) || value < 0) throw realtimeSnapshotError(1002, "invalid snapshot byte count");
+  return value.toString(16).padStart(16, "0");
+}
+
+function realtimeSnapshotError(closeCode, message) {
+  const error = new Error(message);
+  error.closeCode = closeCode;
+  return error;
+}
+
+function realtimeSnapshotCloseCode(error) {
+  return error?.closeCode === 1009 ? 1009 : error?.closeCode === 1013 ? 1013 : 1002;
 }
 
 function normalizedPath(pathname, env) {
@@ -1844,7 +2336,7 @@ async function loadState(db) {
     settingActions,
     running: running === "true",
     message: message || "서버 준비됨",
-    updatedAt: updatedAt || new Date().toISOString(),
+    updatedAt: updatedAt || null,
     revision,
   };
 }
@@ -3235,7 +3727,7 @@ async function uploadFileAccess(env, request, id, _ctx = null) {
 
 async function downloadFileAccess(db, env, request, id, ctx = null) {
   const url = new URL(request.url);
-  const ticket = url.searchParams.get("ticket") || "";
+  const ticket = downloadCapabilityFromRequest(request);
   const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
   const wantsRawPreview = wantsPreview && url.searchParams.has("raw");
   const fileRequest = await getFileAccessRequest(db, id);
@@ -3387,13 +3879,13 @@ async function downloadFileAccess(db, env, request, id, ctx = null) {
     }
     return fileAccessObjectResponse(fileRequest, object, { disposition: "inline", preview });
   }
-  if (!url.searchParams.has("download")) {
+  if (url.searchParams.has("page")) {
     return fileAccessDownloadPage({
       request,
       fileRequest,
       status: 200,
       title: "KLMS 파일 다운로드",
-      message: "Mac이 준비한 임시 파일 링크입니다. 미리보기로 먼저 확인하거나 바로 다운로드하세요.",
+      message: "Mac이 준비한 임시 파일입니다. 앱에서 안전하게 다운로드하세요.",
       canDownload: true,
       previewMaxBytes: limits.previewMaxBytes,
       textPreviewMaxBytes: limits.textPreviewMaxBytes,
@@ -3684,6 +4176,7 @@ function fileAccessResponseItem(fileRequest, request, env) {
     updatedAt: fileRequest.updatedAt,
     message: fileRequest.message,
     downloadURL: null,
+    downloadCapability: null,
     expiresAt: fileRequest.expiresAt || null,
     sizeBytes: Number.isFinite(Number(fileRequest.sizeBytes)) ? Number(fileRequest.sizeBytes) : null,
     downloadCount: Number.isFinite(Number(fileRequest.downloadCount)) ? Number(fileRequest.downloadCount) : 0,
@@ -3695,6 +4188,7 @@ function fileAccessResponseItem(fileRequest, request, env) {
     && Date.parse(fileRequest.expiresAt) > Date.now()
   ) {
     response.downloadURL = downloadURLFor(fileRequest, request, env);
+    response.downloadCapability = fileRequest.downloadTicket;
   }
   return response;
 }
@@ -6028,7 +6522,6 @@ function downloadURLFor(fileRequest, request, env) {
     new URL(request.url).pathname
   );
   url.search = "";
-  url.searchParams.set("ticket", fileRequest.downloadTicket);
   return url.toString();
 }
 

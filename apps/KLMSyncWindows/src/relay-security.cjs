@@ -44,22 +44,40 @@ function validateRelayURL(value) {
   }
 }
 
-function normalizeExternalURL(value) {
+function normalizeRelayDownloadURL(value, relayURL, requestID) {
   const text = String(value || "").trim();
   if (!text || /[\u0000-\u001f\u007f]/.test(text)) {
-    throw new Error("열 수 없는 외부 주소입니다.");
+    throw new Error("열 수 없는 파일 주소입니다.");
   }
+  const id = String(requestID || "").trim().toLowerCase();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {
+    throw new Error("파일 요청 식별자가 올바르지 않습니다.");
+  }
+  const base = new URL(normalizeRelayURL(relayURL));
   const url = new URL(text);
-  if (url.username || url.password) {
-    throw new Error("로그인 정보가 포함된 외부 주소는 열 수 없습니다.");
-  }
-  if (url.protocol === "http:" && isLoopbackHost(url.hostname)) {
-    return url.toString();
-  }
-  if (url.protocol !== "https:") {
-    throw new Error("외부 주소는 HTTPS여야 하며 로컬 loopback만 HTTP를 허용합니다.");
+  const basePath = base.pathname.replace(/\/+$/, "");
+  const expectedPath = `${basePath}/v1/file-access/${id}/download`;
+  if (url.username || url.password || url.search || url.hash
+      || url.protocol !== base.protocol
+      || normalizedHostname(url.hostname) !== normalizedHostname(base.hostname)
+      || effectivePort(url) !== effectivePort(base)
+      || url.pathname.toLowerCase() !== expectedPath.toLowerCase()) {
+    throw new Error("파일 주소가 현재 릴레이의 허용된 다운로드 경로와 다릅니다.");
   }
   return url.toString();
+}
+
+function validateDownloadCapability(value) {
+  const capability = String(value || "").trim();
+  if (!/^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/.test(capability)) {
+    throw new Error("파일 다운로드 권한이 올바르지 않습니다.");
+  }
+  return capability;
+}
+
+function effectivePort(url) {
+  if (url.port) return url.port;
+  return url.protocol === "https:" ? "443" : url.protocol === "http:" ? "80" : "";
 }
 
 function isLoopbackHost(hostname) {
@@ -108,8 +126,9 @@ module.exports = {
   configWithoutLegacyPlaintextToken,
   isLoopbackHost,
   isPrivateHost,
-  normalizeExternalURL,
   normalizeEndpoint,
+  normalizeRelayDownloadURL,
   normalizeRelayURL,
+  validateDownloadCapability,
   validateRelayURL
 };

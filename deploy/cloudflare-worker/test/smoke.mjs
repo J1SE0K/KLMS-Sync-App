@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import worker, { consumeBoundedRateWindow } from "../src/worker.mjs";
+import worker, { RelayRealtimeRoom, consumeBoundedRateWindow } from "../src/worker.mjs";
 import { redactPublicLogText } from "../../../tools/klms_public_log_redactor.mjs";
 
 const clientToken = "test-client-token-0123456789abcdef0123456789abcdef";
@@ -156,8 +156,8 @@ async function runSmoke() {
       auth: false,
       headers: { "CF-Connecting-IP": "192.0.2.10" },
     });
-    assert.equal(malformedTicket.status, 401);
-    assert.equal(env.RELAY_DB.prepareCount, prepareCount, "malformed download ticket must not touch D1");
+    assert.equal(malformedTicket.status, 400);
+    assert.equal(env.RELAY_DB.prepareCount, prepareCount, "URL download credentials must not touch D1");
     for (const malformedPath of [
       "/v1/commands/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a",
       "/v1/item-actions/aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa-a",
@@ -189,6 +189,52 @@ async function runSmoke() {
       headers: { Upgrade: "websocket" },
     });
     assert.equal(unauthorizedRole.status, 401);
+  }
+
+  {
+    const status = await expectJSON("/v1/status");
+    const socket = new FakeRealtimeWebSocket({
+      role: "client",
+      sessionID: crypto.randomUUID(),
+      publicBaseURL: "https://relay.example.test",
+      connectedAt: new Date().toISOString(),
+      outboundSequence: 0,
+      pendingSnapshot: null,
+      queuedBroadcast: null,
+      queuedManualRequest: null,
+    });
+    const roomState = { getWebSockets: () => [socket] };
+    const firstRoom = new RelayRealtimeRoom(roomState, env);
+    await firstRoom.broadcast({
+      version: 1,
+      type: "changed",
+      revision: status.revision,
+      reason: "state",
+      scopes: ["status"],
+      delta: {},
+      requiresSnapshot: false,
+      sentAt: new Date().toISOString(),
+    });
+    assert.equal(socket.sent.length, 2);
+    const event = JSON.parse(socket.sent[0]);
+    const begin = JSON.parse(socket.sent[1]);
+    assert.equal(event.type, "changed");
+    assert.equal(begin.type, "snapshot-begin");
+    assert.ok(socket.attachment.pendingSnapshot, "the pending reservation must survive hibernation");
+
+    const resumedRoom = new RelayRealtimeRoom(roomState, env);
+    await resumedRoom.webSocketMessage(socket, JSON.stringify({
+      version: 1,
+      type: "snapshot-ready",
+      sessionID: begin.sessionID,
+      streamID: begin.streamID,
+      revision: begin.revision,
+      reservedFrames: begin.reservedFrames,
+      reservedWireBytes: begin.reservedWireBytes,
+    }));
+    assert.equal(socket.closed, null);
+    assert.equal(socket.attachment.pendingSnapshot, null);
+    await assertCompleteSnapshotFrames(socket.sent.slice(2), begin);
   }
 
   {
@@ -512,7 +558,7 @@ async function runSmoke() {
   }, { method: "POST", role: "worker" });
   env.RELAY_REALTIME = originalSyncRealtime;
   assert.equal(syncBroadcastEnvelope.reason, "sync-data");
-  assert.equal(syncBroadcastEnvelope.requiresSnapshot, true);
+  assert.equal(syncBroadcastEnvelope.requiresSnapshot, false);
   assert.equal(syncResponse.revision, syncBroadcastEnvelope.revision, "snapshot revision must match its committed event");
 
   {
@@ -1310,14 +1356,21 @@ async function runSmoke() {
   assert.equal(uploadResponse.status, 200);
   const uploaded = await uploadResponse.json();
   assert.equal(uploaded.status, "completed");
-  assert.match(uploaded.downloadURL, /\/v1\/file-access\/.+\/download\?ticket=/);
+  assert.match(uploaded.downloadURL, /\/v1\/file-access\/.+\/download$/);
+  assert.match(uploaded.downloadCapability, /^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/);
 
   {
-    const wrongTicketURL = new URL(uploaded.downloadURL);
-    wrongTicketURL.searchParams.set("ticket", "wrong-ticket");
-    const wrongTicketResponse = await worker.fetch(new Request(wrongTicketURL.toString(), {
-      headers: { "CF-Connecting-IP": "192.0.2.11" },
-    }), env);
+    const leakedCapabilityURL = new URL(uploaded.downloadURL);
+    leakedCapabilityURL.searchParams.set("ticket", uploaded.downloadCapability);
+    const leakedCapabilityResponse = await worker.fetch(fileDownloadRequest(uploaded, leakedCapabilityURL), env);
+    assert.equal(leakedCapabilityResponse.status, 400);
+
+    const wrongTicketResponse = await worker.fetch(fileDownloadRequest(
+      uploaded,
+      uploaded.downloadURL,
+      { "CF-Connecting-IP": "192.0.2.11" },
+      "wrong-ticket",
+    ), env);
     assert.equal(wrongTicketResponse.status, 401);
     const wrongTicketHTML = await wrongTicketResponse.text();
     assert.match(wrongTicketHTML, /권한이 없는 링크입니다/);
@@ -1326,11 +1379,12 @@ async function runSmoke() {
 
     env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "2";
     const rateLimitAddress = "198.51.100.77";
-    const wellFormedWrongTicketURL = new URL(uploaded.downloadURL);
-    wellFormedWrongTicketURL.searchParams.set("ticket", "a".repeat(64));
-    const wrongTicketRequest = () => worker.fetch(new Request(wellFormedWrongTicketURL, {
-      headers: { "CF-Connecting-IP": rateLimitAddress },
-    }), env);
+    const wrongTicketRequest = () => worker.fetch(fileDownloadRequest(
+      uploaded,
+      uploaded.downloadURL,
+      { "CF-Connecting-IP": rateLimitAddress },
+      "a".repeat(64),
+    ), env);
     assert.equal((await wrongTicketRequest()).status, 401);
     assert.equal((await wrongTicketRequest()).status, 401);
     const prepareCountAfterAllowedLookups = env.RELAY_DB.prepareCount;
@@ -1342,9 +1396,11 @@ async function runSmoke() {
       prepareCountAfterAllowedLookups,
       "rate-limited fake tickets must not perform D1 work",
     );
-    const validTicketResponse = await worker.fetch(new Request(uploaded.downloadURL, {
-      headers: { "CF-Connecting-IP": rateLimitAddress },
-    }), env);
+    const validTicketResponse = await worker.fetch(fileDownloadRequest(
+      uploaded,
+      uploaded.downloadURL,
+      { "CF-Connecting-IP": rateLimitAddress },
+    ), env);
     assert.equal(
       validTicketResponse.status,
       429,
@@ -1354,11 +1410,13 @@ async function runSmoke() {
 
     const unknownTicketURL = new URL(uploaded.downloadURL);
     unknownTicketURL.pathname = "/v1/file-access/00000000-0000-4000-8000-000000000099/download";
-    unknownTicketURL.searchParams.set("ticket", "b".repeat(64));
     env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "2";
-    const unknownRequest = (forwardedFor) => worker.fetch(new Request(unknownTicketURL, {
-      headers: { "X-Forwarded-For": forwardedFor },
-    }), env);
+    const unknownRequest = (forwardedFor) => worker.fetch(fileDownloadRequest(
+      uploaded,
+      unknownTicketURL,
+      { "CF-Connecting-IP": "203.0.113.9", "X-Forwarded-For": forwardedFor },
+      "b".repeat(64),
+    ), env);
     assert.equal((await unknownRequest("203.0.113.1")).status, 404);
     assert.equal((await unknownRequest("203.0.113.2")).status, 404);
     const unknownPrepareCount = env.RELAY_DB.prepareCount;
@@ -1374,24 +1432,29 @@ async function runSmoke() {
     });
     env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "10";
     env.RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE = "2";
-    const fakeLinkTicket = new URL(linkLimited.downloadURL);
-    fakeLinkTicket.searchParams.set("ticket", "c".repeat(64));
-    assert.equal((await worker.fetch(new Request(fakeLinkTicket, {
-      headers: { "CF-Connecting-IP": "203.0.113.20" },
-    }), env)).status, 401);
+    assert.equal((await worker.fetch(fileDownloadRequest(
+      linkLimited,
+      linkLimited.downloadURL,
+      { "CF-Connecting-IP": "203.0.113.20" },
+      "c".repeat(64),
+    ), env)).status, 401);
     for (const [address, expectedStatus] of [
       ["203.0.113.21", 200],
       ["203.0.113.22", 200],
       ["203.0.113.23", 429],
     ]) {
-      assert.equal((await worker.fetch(new Request(linkLimited.downloadURL, {
-        headers: { "CF-Connecting-IP": address },
-      }), env)).status, expectedStatus);
+      assert.equal((await worker.fetch(fileDownloadRequest(
+        linkLimited,
+        linkLimited.downloadURL,
+        { "CF-Connecting-IP": address },
+      ), env)).status, expectedStatus);
     }
     env.RELAY_PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = "600";
     env.RELAY_PUBLIC_DOWNLOAD_LINKS_PER_MINUTE = "600";
 
-    const pageResponse = await worker.fetch(new Request(uploaded.downloadURL), env);
+    const pageURL = new URL(uploaded.downloadURL);
+    pageURL.searchParams.set("page", "1");
+    const pageResponse = await worker.fetch(fileDownloadRequest(uploaded, pageURL), env);
     assert.equal(pageResponse.status, 200);
     const pageHTML = await pageResponse.text();
     assert.match(pageHTML, /KLMS 파일 다운로드/);
@@ -1404,7 +1467,7 @@ async function runSmoke() {
 
     const previewURL = new URL(uploaded.downloadURL);
     previewURL.searchParams.set("preview", "1");
-    const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+    const previewResponse = await worker.fetch(fileDownloadRequest(uploaded, previewURL), env);
     assert.equal(previewResponse.status, 200);
     assert.match(previewResponse.headers.get("Content-Type"), /^text\/html/);
     const previewHTML = await previewResponse.text();
@@ -1416,7 +1479,7 @@ async function runSmoke() {
     const rawPreviewURL = new URL(uploaded.downloadURL);
     rawPreviewURL.searchParams.set("preview", "1");
     rawPreviewURL.searchParams.set("raw", "1");
-    const rawPreviewResponse = await worker.fetch(new Request(rawPreviewURL.toString()), env);
+    const rawPreviewResponse = await worker.fetch(fileDownloadRequest(uploaded, rawPreviewURL), env);
     assert.equal(rawPreviewResponse.status, 200);
     assert.match(rawPreviewResponse.headers.get("Content-Disposition"), /^inline;/);
     assert.match(rawPreviewResponse.headers.get("Content-Type"), /^text\/plain/);
@@ -1424,17 +1487,13 @@ async function runSmoke() {
     assert.match(rawPreviewResponse.headers.get("Content-Security-Policy") || "", /default-src 'none'/);
     assert.equal(await rawPreviewResponse.text(), "hello file");
 
-    const downloadURL = new URL(uploaded.downloadURL);
-    downloadURL.searchParams.set("download", "1");
-    const downloadResponse = await worker.fetch(new Request(downloadURL.toString()), env);
+    const downloadResponse = await worker.fetch(fileDownloadRequest(uploaded), env);
     assert.equal(downloadResponse.status, 200);
     assert.equal(await downloadResponse.text(), "hello file");
   }
   {
-    const downloadURL = new URL(uploaded.downloadURL);
-    downloadURL.searchParams.set("download", "1");
-    await worker.fetch(new Request(downloadURL.toString()), env);
-    const blockedResponse = await worker.fetch(new Request(downloadURL.toString()), env);
+    await worker.fetch(fileDownloadRequest(uploaded), env);
+    const blockedResponse = await worker.fetch(fileDownloadRequest(uploaded), env);
     assert.equal(blockedResponse.status, 429);
   }
   {
@@ -1445,12 +1504,10 @@ async function runSmoke() {
       body: "race",
       contentType: "text/plain",
     });
-    const racedURL = new URL(raced.downloadURL);
-    racedURL.searchParams.set("download", "1");
     const readsBeforeRace = env.RELAY_FILES.getCount;
     const responses = await Promise.all(Array.from(
       { length: 50 },
-      () => worker.fetch(new Request(racedURL.toString()), env)
+      () => worker.fetch(fileDownloadRequest(raced), env)
     ));
     assert.equal(responses.filter((response) => response.status === 200).length, 7);
     assert.equal(responses.filter((response) => response.status === 429).length, 43);
@@ -1468,10 +1525,8 @@ async function runSmoke() {
       body: "active-download",
       contentType: "text/plain",
     });
-    const protectedURL = new URL(protectedDownload.downloadURL);
-    protectedURL.searchParams.set("download", "1");
     env.RELAY_FILES.getDelayMs = 200;
-    const activeDownload = worker.fetch(new Request(protectedURL.toString()), env);
+    const activeDownload = worker.fetch(fileDownloadRequest(protectedDownload), env);
     const reservationDeadline = Date.now() + 1_000;
     while (env.RELAY_DB.fileDownloadReservations.size === 0 && Date.now() < reservationDeadline) {
       await new Promise((resolve) => setTimeout(resolve, 5));
@@ -1498,14 +1553,12 @@ async function runSmoke() {
     const quotaBefore = quota.download_count;
     const storedObject = env.RELAY_FILES.objects.get(row.object_key);
     env.RELAY_FILES.objects.delete(row.object_key);
-    const missingURL = new URL(missing.downloadURL);
-    missingURL.searchParams.set("download", "1");
-    assert.equal((await worker.fetch(new Request(missingURL.toString()), env)).status, 404);
+    assert.equal((await worker.fetch(fileDownloadRequest(missing), env)).status, 404);
     assert.equal(row.download_count, 0, "missing R2 objects must release the per-link reservation");
     assert.equal(quota.download_count, quotaBefore, "missing R2 objects must release daily quota");
     assert.equal(env.RELAY_DB.fileDownloadReservations.size, 0);
     env.RELAY_FILES.objects.set(row.object_key, storedObject);
-    assert.equal((await worker.fetch(new Request(missingURL.toString()), env)).status, 200);
+    assert.equal((await worker.fetch(fileDownloadRequest(missing), env)).status, 200);
   }
   {
     const failed = await createUploadedFile({
@@ -1518,12 +1571,10 @@ async function runSmoke() {
     const quota = env.RELAY_DB.fileAccessQuota.get(new Date().toISOString().slice(0, 10));
     const quotaBefore = quota.download_count;
     env.RELAY_FILES.failGets.add(row.object_key);
-    const failedURL = new URL(failed.downloadURL);
-    failedURL.searchParams.set("download", "1");
     const originalConsoleError = console.error;
     console.error = () => {};
     try {
-      assert.equal((await worker.fetch(new Request(failedURL.toString()), env)).status, 500);
+      assert.equal((await worker.fetch(fileDownloadRequest(failed), env)).status, 500);
     } finally {
       console.error = originalConsoleError;
     }
@@ -1531,7 +1582,7 @@ async function runSmoke() {
     assert.equal(quota.download_count, quotaBefore, "R2 exceptions must release daily quota");
     assert.equal(env.RELAY_DB.fileDownloadReservations.size, 0);
     env.RELAY_FILES.failGets.delete(row.object_key);
-    assert.equal((await worker.fetch(new Request(failedURL.toString()), env)).status, 200);
+    assert.equal((await worker.fetch(fileDownloadRequest(failed), env)).status, 200);
   }
   {
     const stale = await createUploadedFile({
@@ -1639,7 +1690,7 @@ async function runSmoke() {
     });
     const previewPageURL = new URL(pdf.downloadURL);
     previewPageURL.searchParams.set("preview", "1");
-    const previewPageResponse = await worker.fetch(new Request(previewPageURL.toString()), env);
+    const previewPageResponse = await worker.fetch(fileDownloadRequest(pdf, previewPageURL), env);
     assert.equal(previewPageResponse.status, 200);
     const previewPageCSP = previewPageResponse.headers.get("Content-Security-Policy") || "";
     assert.doesNotMatch(previewPageCSP, /script-src[^;]*'unsafe-inline'/);
@@ -1659,7 +1710,7 @@ async function runSmoke() {
     const previewURL = new URL(pdf.downloadURL);
     previewURL.searchParams.set("preview", "1");
     previewURL.searchParams.set("raw", "1");
-    const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+    const previewResponse = await worker.fetch(fileDownloadRequest(pdf, previewURL), env);
     assert.equal(previewResponse.status, 200);
     assert.match(previewResponse.headers.get("Content-Type"), /^application\/pdf/);
     assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
@@ -1672,7 +1723,9 @@ async function runSmoke() {
       body: "escaped",
       contentType: "text/plain",
     });
-    const pageResponse = await worker.fetch(new Request(hostile.downloadURL), env);
+    const hostilePageURL = new URL(hostile.downloadURL);
+    hostilePageURL.searchParams.set("page", "1");
+    const pageResponse = await worker.fetch(fileDownloadRequest(hostile, hostilePageURL), env);
     assert.equal(pageResponse.status, 200);
     const pageHTML = await pageResponse.text();
     assert.match(pageHTML, /&lt;img src=x onerror=&quot;globalThis\.__klmsXSS=true&quot;&gt;\.txt/);
@@ -1698,7 +1751,7 @@ async function runSmoke() {
       const previewURL = new URL(disguisedSVG.downloadURL);
       previewURL.searchParams.set("preview", "1");
       previewURL.searchParams.set("raw", "1");
-      const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+      const previewResponse = await worker.fetch(fileDownloadRequest(disguisedSVG, previewURL), env);
       assert.equal(previewResponse.status, 200);
       assert.match(previewResponse.headers.get("Content-Type"), /^text\/plain/);
       assert.doesNotMatch(previewResponse.headers.get("Content-Type"), /svg/i);
@@ -1717,7 +1770,7 @@ async function runSmoke() {
     const previewURL = new URL(png.downloadURL);
     previewURL.searchParams.set("preview", "1");
     previewURL.searchParams.set("raw", "1");
-    const previewResponse = await worker.fetch(new Request(previewURL.toString()), env);
+    const previewResponse = await worker.fetch(fileDownloadRequest(png, previewURL), env);
     assert.equal(previewResponse.status, 200);
     assert.match(previewResponse.headers.get("Content-Type"), /^image\/png/);
     assert.match(previewResponse.headers.get("Content-Disposition"), /^inline;/);
@@ -1730,7 +1783,9 @@ async function runSmoke() {
       body: largeText,
       contentType: "text/plain",
     });
-    const pageResponse = await worker.fetch(new Request(large.downloadURL), env);
+    const largePageURL = new URL(large.downloadURL);
+    largePageURL.searchParams.set("page", "1");
+    const pageResponse = await worker.fetch(fileDownloadRequest(large, largePageURL), env);
     assert.equal(pageResponse.status, 200);
     const pageHTML = await pageResponse.text();
     assert.match(pageHTML, /미리보기 불가/);
@@ -1896,9 +1951,7 @@ async function runSmoke() {
       },
     });
     assert.equal(patchDuringClear.status, 409);
-    const downloadDuringClearURL = new URL(slowClearFile.downloadURL);
-    downloadDuringClearURL.searchParams.set("download", "1");
-    const downloadDuringClear = await worker.fetch(new Request(downloadDuringClearURL), env);
+    const downloadDuringClear = await worker.fetch(fileDownloadRequest(slowClearFile), env);
     assert.equal(downloadDuringClear.status, 409);
     const statusStartedAt = Date.now();
     const statusDuringClear = await request("/v1/status");
@@ -1990,6 +2043,17 @@ async function createUploadedFile({ itemID, itemTitle, body, contentType }) {
   });
   assert.equal(uploadResponse.status, 200);
   return uploadResponse.json();
+}
+
+function fileDownloadRequest(
+  fileRequest,
+  url = fileRequest.downloadURL,
+  extraHeaders = {},
+  capability = fileRequest.downloadCapability,
+) {
+  const headers = new Headers(extraHeaders);
+  headers.set("Authorization", `Bearer ${capability}`);
+  return new Request(url, { headers });
 }
 
 async function expectJSON(path, body, options = {}) {
@@ -2745,6 +2809,64 @@ class FakeR2 {
     if (this.failDeletes.has(key)) throw new Error("injected delete failure");
     this.objects.delete(key);
   }
+}
+
+class FakeRealtimeWebSocket {
+  constructor(attachment) {
+    this.attachment = structuredClone(attachment);
+    this.sent = [];
+    this.closed = null;
+  }
+
+  serializeAttachment(value) {
+    this.attachment = structuredClone(value);
+  }
+
+  deserializeAttachment() {
+    return structuredClone(this.attachment);
+  }
+
+  send(value) {
+    this.sent.push(String(value));
+  }
+
+  close(code, reason) {
+    this.closed = { code, reason };
+  }
+}
+
+async function assertCompleteSnapshotFrames(frameTexts, begin) {
+  assert.equal(frameTexts.length, begin.chunkCount + 1);
+  const chunks = [];
+  let wireBytes = new TextEncoder().encode(JSON.stringify(begin)).byteLength;
+  for (let index = 0; index < begin.chunkCount; index += 1) {
+    const text = frameTexts[index];
+    const frame = JSON.parse(text);
+    assert.equal(frame.type, "snapshot-chunk");
+    assert.equal(frame.sessionID, begin.sessionID);
+    assert.equal(frame.streamID, begin.streamID);
+    assert.equal(frame.revision, begin.revision);
+    assert.deepEqual(frame.scopes, begin.scopes);
+    assert.equal(frame.index, index);
+    const chunk = Buffer.from(frame.payload, "base64");
+    assert.equal(chunk.toString("base64"), frame.payload);
+    assert.equal(chunk.length, Number.parseInt(frame.payloadBytes, 16));
+    chunks.push(chunk);
+    wireBytes += new TextEncoder().encode(text).byteLength;
+  }
+  const endText = frameTexts.at(-1);
+  const end = JSON.parse(endText);
+  assert.equal(end.type, "snapshot-end");
+  assert.equal(end.index, begin.chunkCount);
+  wireBytes += new TextEncoder().encode(endText).byteLength;
+  assert.equal(wireBytes, Number.parseInt(begin.reservedWireBytes, 16));
+  const payload = Buffer.concat(chunks);
+  assert.equal(payload.length, Number.parseInt(begin.totalPayloadBytes, 16));
+  const digest = await crypto.subtle.digest("SHA-256", payload);
+  assert.equal(Buffer.from(digest).toString("hex"), begin.payloadSHA256);
+  const decoded = JSON.parse(payload.toString("utf8"));
+  assert.equal(decoded.revision, begin.revision);
+  assert.deepEqual(decoded.scopes, begin.scopes);
 }
 
 function sortedRows(map, limit) {

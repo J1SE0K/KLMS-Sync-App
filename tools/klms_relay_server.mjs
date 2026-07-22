@@ -22,6 +22,10 @@ const MAX_BODY_BYTES = 1024 * 1024;
 const MIN_RELAY_TOKEN_BYTES = 32;
 const MAX_REALTIME_CONNECTIONS = 32;
 const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
+const MAX_REALTIME_FRAME_BYTES = 64 * 1024;
+const MAX_REALTIME_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+const MAX_REALTIME_SNAPSHOT_CHUNKS = 254;
+const REALTIME_SNAPSHOT_CHUNK_BYTES = 43 * 1024;
 const REQUESTS_PER_MINUTE = boundedInt(process.env.KLMS_RELAY_REQUESTS_PER_MINUTE, 600, 1, 6_000);
 const PUBLIC_DOWNLOAD_INGRESS_PER_MINUTE = Math.min(
   REQUESTS_PER_MINUTE,
@@ -369,7 +373,11 @@ async function route(request, response) {
       sendRateLimitResponse(response);
       return;
     }
-    if (!validDownloadTicket(url.searchParams.get("ticket"))) {
+    if (url.searchParams.has("ticket")) {
+      sendJSON(response, 400, { error: "download credentials are not accepted in URLs" });
+      return;
+    }
+    if (!validDownloadTicket(downloadCapabilityFromRequest(request))) {
       sendFileAccessDownloadPage(response, url, {
         status: 403,
         title: "권한이 없는 링크입니다",
@@ -1201,6 +1209,7 @@ function fileAccessResponseItem(fileRequest, request) {
     updatedAt: fileRequest.updatedAt,
     message: fileRequest.message,
     downloadURL: null,
+    downloadCapability: null,
     expiresAt: fileRequest.expiresAt || null,
     sizeBytes: Number.isFinite(Number(fileRequest.sizeBytes)) ? Number(fileRequest.sizeBytes) : null,
     downloadCount: Number.isFinite(Number(fileRequest.downloadCount)) ? Number(fileRequest.downloadCount) : 0,
@@ -1212,6 +1221,7 @@ function fileAccessResponseItem(fileRequest, request) {
     && Date.parse(fileRequest.expiresAt) > Date.now()
   ) {
     response.downloadURL = downloadURLFor(fileRequest, request);
+    response.downloadCapability = fileRequest.downloadTicket;
   }
   return response;
 }
@@ -2036,6 +2046,12 @@ function validDownloadTicket(value) {
   return /^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/.test(String(value || "").trim());
 }
 
+function downloadCapabilityFromRequest(request) {
+  const authorization = String(request?.headers?.authorization || "").trim();
+  const match = authorization.match(/^Bearer ([A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$/);
+  return match?.[1] || "";
+}
+
 function normalizeStatus(raw, fallbackPhase) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const status = { ...defaultStatus };
@@ -2394,7 +2410,17 @@ function handleWebSocketUpgrade(request, socket, head) {
       `Sec-WebSocket-Accept: ${accept}`,
       "\r\n",
     ].join("\r\n"));
-    const client = { socket, role, buffer: Buffer.alloc(0) };
+    const client = {
+      socket,
+      role,
+      request,
+      sessionID: crypto.randomUUID(),
+      pendingSnapshot: null,
+      queuedBroadcast: null,
+      queuedManualRequest: null,
+      outboundSequence: 0,
+      buffer: Buffer.alloc(0),
+    };
     realtimeClients.add(client);
     const hello = relayEventEnvelope({
       type: "hello",
@@ -2404,6 +2430,7 @@ function handleWebSocketUpgrade(request, socket, head) {
       delta: {},
       requiresSnapshot: false,
       sentAt: new Date().toISOString(),
+      sessionID: client.sessionID,
     });
     socket.write(encodeWebSocketFrame(JSON.stringify(hello)));
     socket.on("data", (chunk) => handleWebSocketData(client, chunk));
@@ -2481,11 +2508,16 @@ function handleWebSocketData(client, chunk) {
     }
     if (opcode !== 0x1) continue;
     const text = payload.toString("utf8");
+    let message = null;
     let isPing = text === "ping";
     if (!isPing) {
       try {
-        isPing = JSON.parse(text)?.type === "ping";
-      } catch {}
+        message = JSON.parse(text);
+        isPing = message?.type === "ping";
+      } catch {
+        closeWebSocketClient(client, 1002, "invalid JSON message");
+        return;
+      }
     }
     if (isPing) {
       client.socket.write(encodeWebSocketFrame(JSON.stringify(relayEventEnvelope({
@@ -2496,12 +2528,87 @@ function handleWebSocketData(client, chunk) {
         delta: {},
         requiresSnapshot: false,
         sentAt: new Date().toISOString(),
+        sessionID: client.sessionID,
       }))));
+      continue;
     }
+    if (message?.type === "snapshot-ready") {
+      handleRealtimeSnapshotReady(client, message);
+      continue;
+    }
+    if (message?.type === "snapshot-request") {
+      handleRealtimeSnapshotRequest(client, message);
+      continue;
+    }
+    closeWebSocketClient(client, 1002, "unsupported message");
+    return;
   }
 }
 
+function handleRealtimeSnapshotRequest(client, message) {
+  if (message?.version !== REALTIME_EVENT_VERSION
+      || message?.sessionID !== client.sessionID
+      || !normalizeUUIDText(message?.requestID)
+      || !Number.isSafeInteger(message?.revision)
+      || message.revision < 0) {
+    closeWebSocketClient(client, 1002, "invalid snapshot request");
+    return;
+  }
+  const scopes = normalizedRealtimeScopes(message.scopes, { allowEmpty: false });
+  if (!scopes) {
+    closeWebSocketClient(client, 1002, "invalid snapshot scopes");
+    return;
+  }
+  const revision = currentRelayRevision();
+  if (revision < message.revision) {
+    closeWebSocketClient(client, 1002, "snapshot revision moved backwards");
+    return;
+  }
+  const request = {
+    scopes,
+    requestID: message.requestID,
+    requestedRevision: message.revision,
+    sequence: ++client.outboundSequence,
+  };
+  if (client.pendingSnapshot) {
+    if (client.queuedManualRequest) {
+      closeWebSocketClient(client, 1013, "snapshot request queue capacity exceeded");
+      return;
+    }
+    client.queuedManualRequest = request;
+    return;
+  }
+  startRealtimeManualSnapshot(client, request);
+}
+
+function handleRealtimeSnapshotReady(client, message) {
+  const pending = client.pendingSnapshot;
+  if (!pending
+      || message?.version !== REALTIME_EVENT_VERSION
+      || message?.sessionID !== client.sessionID
+      || message?.streamID !== pending.streamID
+      || message?.revision !== pending.revision
+      || message?.reservedFrames !== pending.reservedFrames
+      || message?.reservedWireBytes !== pending.reservedWireBytes) {
+    closeWebSocketClient(client, 1002, "snapshot ready mismatch");
+    return;
+  }
+  client.pendingSnapshot = null;
+  for (const frameText of pending.dataFrames) {
+    if (!client.socket.writable || client.socket.destroyed) return;
+    if (client.socket.writableLength + Buffer.byteLength(frameText) > MAX_REALTIME_SNAPSHOT_BYTES) {
+      closeWebSocketClient(client, 1013, "snapshot queue capacity exceeded");
+      return;
+    }
+    client.socket.write(encodeWebSocketFrame(frameText));
+  }
+  drainRealtimeSnapshotQueue(client);
+}
+
 function closeWebSocketClient(client, code, reason) {
+  client.pendingSnapshot = null;
+  client.queuedBroadcast = null;
+  client.queuedManualRequest = null;
   const reasonBytes = Buffer.from(String(reason || "").slice(0, 120));
   const payload = Buffer.alloc(2 + reasonBytes.length);
   payload.writeUInt16BE(code, 0);
@@ -2918,8 +3025,8 @@ function currentRelayRevision() {
   return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 }
 
-function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, requiresSnapshot = false, sentAt }) {
-  return {
+function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, requiresSnapshot = false, sentAt, sessionID }) {
+  const event = {
     version: REALTIME_EVENT_VERSION,
     type,
     revision,
@@ -2931,6 +3038,8 @@ function relayEventEnvelope({ type, revision, reason, scopes = [], delta = {}, r
     sentAt: sentAt || new Date().toISOString(),
     updatedAt: sentAt || new Date().toISOString(),
   };
+  if (sessionID) event.sessionID = sessionID;
+  return event;
 }
 
 function relayScopesForReason(reason) {
@@ -2947,24 +3056,276 @@ function relayScopesForReason(reason) {
 }
 
 function relayEventRequiresSnapshot(reason) {
-  return reason === "sync-data";
+  return false;
 }
 
 function broadcastRelayEvent(event) {
   if (!event) return;
-  const frame = encodeWebSocketFrame(JSON.stringify(event));
   for (const client of realtimeClients) {
     if (client.socket.destroyed || !client.socket.writable) {
       realtimeClients.delete(client);
       continue;
     }
-    try {
-      client.socket.write(frame);
-    } catch {
-      client.socket.destroy();
-      realtimeClients.delete(client);
+    const clientEvent = { ...event, sessionID: client.sessionID, requiresSnapshot: false };
+    if (client.pendingSnapshot) {
+      queueRealtimeBroadcast(client, clientEvent);
+    } else {
+      startRealtimeBroadcastSnapshot(client, clientEvent);
     }
   }
+}
+
+function normalizedRealtimeScopes(value, { allowEmpty = true } = {}) {
+  if (!Array.isArray(value)) return null;
+  const requested = new Set(value);
+  if ([...requested].some((scope) => !REALTIME_SCOPES.has(scope))) return null;
+  const scopes = [...REALTIME_SCOPES].filter((scope) => requested.has(scope));
+  return scopes.length > 0 || allowEmpty ? scopes : null;
+}
+
+function startRealtimeBroadcastSnapshot(client, event) {
+  try {
+    const clientEvent = {
+      ...event,
+      revision: currentRelayRevision(),
+      sessionID: client.sessionID,
+      requiresSnapshot: false,
+    };
+    const prepared = prepareRealtimeSnapshot(client, clientEvent);
+    client.pendingSnapshot = prepared;
+    client.socket.write(encodeWebSocketFrame(JSON.stringify(clientEvent)));
+    client.socket.write(encodeWebSocketFrame(prepared.beginFrame));
+  } catch (error) {
+    const closeCode = error?.closeCode === 1009 ? 1009 : error?.closeCode === 1013 ? 1013 : 1002;
+    closeWebSocketClient(client, closeCode, error?.message || "snapshot preparation failed");
+  }
+}
+
+function startRealtimeManualSnapshot(client, request) {
+  const revision = currentRelayRevision();
+  if (revision < request.requestedRevision) {
+    closeWebSocketClient(client, 1002, "snapshot revision moved backwards");
+    return;
+  }
+  const event = relayEventEnvelope({
+    type: "changed",
+    revision,
+    reason: "manual-refresh",
+    scopes: request.scopes,
+    delta: {},
+    requiresSnapshot: false,
+    sentAt: new Date().toISOString(),
+    sessionID: client.sessionID,
+  });
+  try {
+    const prepared = prepareRealtimeSnapshot(client, event, { requestID: request.requestID });
+    client.pendingSnapshot = prepared;
+    client.socket.write(encodeWebSocketFrame(prepared.beginFrame));
+  } catch (error) {
+    const closeCode = error?.closeCode === 1009 ? 1009 : error?.closeCode === 1013 ? 1013 : 1002;
+    closeWebSocketClient(client, closeCode, error?.message || "snapshot preparation failed");
+  }
+}
+
+function queueRealtimeBroadcast(client, event) {
+  const scopes = normalizedRealtimeScopes(event.scopes, { allowEmpty: false });
+  if (!scopes) {
+    closeWebSocketClient(client, 1002, "invalid snapshot event");
+    return;
+  }
+  if (!client.queuedBroadcast) {
+    client.queuedBroadcast = {
+      event: { ...event, scopes },
+      sequence: ++client.outboundSequence,
+      count: 1,
+    };
+    return;
+  }
+  const mergedScopes = normalizedRealtimeScopes([
+    ...client.queuedBroadcast.event.scopes,
+    ...scopes,
+  ], { allowEmpty: false });
+  client.queuedBroadcast.event = {
+    ...event,
+    reason: "coalesced",
+    scopes: mergedScopes,
+  };
+  client.queuedBroadcast.count += 1;
+}
+
+function drainRealtimeSnapshotQueue(client) {
+  if (client.pendingSnapshot || !client.socket.writable || client.socket.destroyed) return;
+  const broadcast = client.queuedBroadcast;
+  const manual = client.queuedManualRequest;
+  if (manual && (!broadcast || manual.sequence < broadcast.sequence)) {
+    client.queuedManualRequest = null;
+    startRealtimeManualSnapshot(client, manual);
+    return;
+  }
+  if (broadcast) {
+    client.queuedBroadcast = null;
+    startRealtimeBroadcastSnapshot(client, broadcast.event);
+    return;
+  }
+  if (manual) {
+    client.queuedManualRequest = null;
+    startRealtimeManualSnapshot(client, manual);
+  }
+}
+
+function prepareRealtimeSnapshot(client, event, { requestID = null } = {}) {
+  const scopes = normalizedRealtimeScopes(event.scopes, { allowEmpty: false });
+  if (!scopes || event.requiresSnapshot) throw realtimeSnapshotError(1002, "invalid snapshot event");
+  const payload = realtimeSnapshotPayload(client, {
+    revision: event.revision,
+    scopes,
+    requestID,
+  });
+  return encodeRealtimeSnapshot({
+    sessionID: client.sessionID,
+    revision: event.revision,
+    scopes,
+    requestID,
+    payload,
+  });
+}
+
+function realtimeSnapshotPayload(client, { revision, scopes, requestID }) {
+  const payload = {
+    version: REALTIME_EVENT_VERSION,
+    revision,
+    scopes,
+    requestID,
+  };
+  if (client.role === "worker") {
+    payload.workerInbox = workerInboxResponse(client.request);
+    if (scopes.includes("syncData") || scopes.includes("runLogs") || scopes.includes("sharedSettings")) {
+      payload.syncData = syncDataResponse({ limit: MAX_SYNC_ITEMS });
+    }
+    return payload;
+  }
+
+  const clearTimes = displayLogClearTimes();
+  if (scopes.includes("status")) payload.status = relayResponse({ audience: "client" });
+  if (scopes.includes("commands")) {
+    payload.commands = commandListResponse(
+      filterDisplayCommands(state.commands, clearTimes.command)
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, 8)
+    );
+  }
+  if (scopes.includes("syncData") || scopes.includes("runLogs")) {
+    payload.syncData = syncDataResponse({ limit: MAX_SYNC_ITEMS });
+  }
+  if (scopes.includes("itemActions")) {
+    payload.itemActions = itemActionListResponse(
+      filterDisplayItemActions(state.itemActions, clearTimes.itemActions)
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, 10)
+    );
+  }
+  if (scopes.includes("settingActions")) {
+    payload.settingActions = settingActionListResponse(
+      filterDisplaySettingActions(state.settingActions || [], clearTimes.settingActions)
+        .slice()
+        .sort((lhs, rhs) => Date.parse(rhs.updatedAt) - Date.parse(lhs.updatedAt))
+        .slice(0, 10)
+    );
+  }
+  if (scopes.includes("fileAccess")) {
+    payload.fileAccess = fileAccessListResponse(
+      filterDisplayFileAccess(
+        loadFileAccessRequests({ limit: MAX_FILE_ACCESS_REQUESTS }),
+        clearTimes.fileAccess
+      ).slice(0, 20),
+      client.request
+    );
+  }
+  if (scopes.includes("requestLog")) payload.requestLog = requestLogResponse(20);
+  if (scopes.includes("sharedSettings")) payload.sharedSettings = sharedSettingsResponse();
+  return payload;
+}
+
+function encodeRealtimeSnapshot({ sessionID, revision, scopes, requestID, payload }) {
+  if (!normalizeUUIDText(sessionID) || !Number.isSafeInteger(revision) || revision < 0) {
+    throw realtimeSnapshotError(1002, "invalid snapshot binding");
+  }
+  const payloadBytes = Buffer.from(JSON.stringify(payload), "utf8");
+  if (payloadBytes.length > MAX_REALTIME_SNAPSHOT_BYTES) {
+    throw realtimeSnapshotError(1009, "snapshot payload too large");
+  }
+  const chunks = [];
+  for (let offset = 0; offset < payloadBytes.length || (offset === 0 && chunks.length === 0); offset += REALTIME_SNAPSHOT_CHUNK_BYTES) {
+    chunks.push(payloadBytes.subarray(offset, Math.min(payloadBytes.length, offset + REALTIME_SNAPSHOT_CHUNK_BYTES)));
+  }
+  if (chunks.length > MAX_REALTIME_SNAPSHOT_CHUNKS) {
+    throw realtimeSnapshotError(1009, "too many snapshot chunks");
+  }
+  const streamID = crypto.randomUUID();
+  const payloadSHA256 = crypto.createHash("sha256").update(payloadBytes).digest("hex");
+  const totalPayloadBytes = fixedWidthHex(payloadBytes.length);
+  const reservedFrames = chunks.length + 2;
+  const base = {
+    version: REALTIME_EVENT_VERSION,
+    sessionID,
+    streamID,
+    revision,
+    scopes,
+    requestID,
+    chunkCount: chunks.length,
+    totalPayloadBytes,
+    reservedFrames,
+    reservedWireBytes: "0000000000000000",
+    payloadSHA256,
+  };
+  const frameObjects = [
+    { ...base, type: "snapshot-begin", index: -1, payloadBytes: fixedWidthHex(0) },
+    ...chunks.map((chunk, index) => ({
+      ...base,
+      type: "snapshot-chunk",
+      index,
+      payloadBytes: fixedWidthHex(chunk.length),
+      payload: chunk.toString("base64"),
+    })),
+    { ...base, type: "snapshot-end", index: chunks.length, payloadBytes: fixedWidthHex(0) },
+  ];
+  let frameTexts = frameObjects.map((frame) => JSON.stringify(frame));
+  const reservedWireBytes = fixedWidthHex(frameTexts.reduce((sum, frame) => sum + Buffer.byteLength(frame), 0));
+  for (const frame of frameObjects) frame.reservedWireBytes = reservedWireBytes;
+  frameTexts = frameObjects.map((frame) => JSON.stringify(frame));
+  const exactWireBytes = frameTexts.reduce((sum, frame) => sum + Buffer.byteLength(frame), 0);
+  if (fixedWidthHex(exactWireBytes) !== reservedWireBytes) {
+    throw realtimeSnapshotError(1002, "snapshot byte reservation changed");
+  }
+  if (exactWireBytes > MAX_REALTIME_SNAPSHOT_BYTES) {
+    throw realtimeSnapshotError(1013, "snapshot wire reservation unavailable");
+  }
+  if (frameTexts.some((frame) => Buffer.byteLength(frame) > MAX_REALTIME_FRAME_BYTES)) {
+    throw realtimeSnapshotError(1009, "snapshot frame too large");
+  }
+  return {
+    streamID,
+    revision,
+    scopes,
+    requestID,
+    reservedFrames,
+    reservedWireBytes,
+    beginFrame: frameTexts[0],
+    dataFrames: frameTexts.slice(1),
+  };
+}
+
+function fixedWidthHex(value) {
+  if (!Number.isSafeInteger(value) || value < 0) throw realtimeSnapshotError(1002, "invalid snapshot byte count");
+  return value.toString(16).padStart(16, "0");
+}
+
+function realtimeSnapshotError(closeCode, message) {
+  const error = new Error(message);
+  error.closeCode = closeCode;
+  return error;
 }
 
 function getMeta(key) {
@@ -3695,7 +4056,7 @@ async function uploadFileAccess(response, request, id) {
 async function downloadFileAccess(request, response, url, id) {
   const wantsPreview = url.searchParams.has("preview") && !url.searchParams.has("download");
   const wantsRawPreview = wantsPreview && url.searchParams.has("raw");
-  const ticket = url.searchParams.get("ticket") || "";
+  const ticket = downloadCapabilityFromRequest(request);
   if (TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS) {
     setMeta("testPublicDownloadLookupCount", Number(getMeta("testPublicDownloadLookupCount") || 0) + 1);
   }
@@ -3841,12 +4202,12 @@ async function downloadFileAccess(request, response, url, id) {
     sendLocalFileObject(response, fileRequest, data, { disposition: "inline", preview });
     return;
   }
-  if (!url.searchParams.has("download")) {
+  if (url.searchParams.has("page")) {
     sendFileAccessDownloadPage(response, url, {
       fileRequest,
       status: 200,
       title: "KLMS 파일 다운로드",
-      message: "Mac이 준비한 임시 파일 링크입니다. 미리보기로 먼저 확인하거나 바로 다운로드하세요.",
+      message: "Mac이 준비한 임시 파일입니다. 앱에서 안전하게 다운로드하세요.",
       canDownload: true,
       previewMaxBytes: limits.previewMaxBytes,
       textPreviewMaxBytes: limits.textPreviewMaxBytes,
@@ -5690,7 +6051,6 @@ function downloadURLFor(fileRequest, request) {
   url.pathname = `${basePath}/v1/file-access/${fileRequest.id}/download`;
   url.search = "";
   url.hash = "";
-  url.searchParams.set("ticket", fileRequest.downloadTicket);
   return url.toString();
 }
 

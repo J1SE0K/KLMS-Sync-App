@@ -330,7 +330,8 @@ test("Windows client uses WebSocket triggers and responsive layout breakpoints",
   assert.match(mainSource, /sandbox:\s*true/);
   assert.match(mainSource, /setWindowOpenHandler\(\(\) => \(\{ action: "deny" \}\)\)/);
   assert.match(mainSource, /webContents\.on\("will-navigate"/);
-  assert.match(mainSource, /normalizeExternalURL\(target\)/);
+  assert.match(mainSource, /normalizeRelayDownloadURL\(input\.downloadURL, relayURL, requestID\)/);
+  assert.match(mainSource, /Authorization: `Bearer \$\{capability\}`/);
   assert.doesNotMatch(`${mainSource}\n${rendererSource}`, /\/events\/poll/);
   assert.doesNotMatch(rendererSource, /scheduleAutoRefresh|AUTO_REFRESH/);
   assert.match(rendererSource, /REALTIME_RETRY_MAX_MS = 2_000/);

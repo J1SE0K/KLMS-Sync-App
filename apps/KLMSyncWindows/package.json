@@ -6,7 +6,7 @@
   "main": "src/main.cjs",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/relay-security.cjs && node --check src/relay-state.js && node --check src/renderer.js && node --check playwright.config.js && node --check test/relay-security.test.cjs && node --check test/relay-state.test.cjs && node --check test/ui-quality.test.cjs && node --check test/e2e/electron-entry.cjs && node --check test/e2e/fake-relay.cjs && node --check test/e2e/windows-realtime.spec.js",
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/realtime-snapshot.cjs && node --check src/relay-security.cjs && node --check src/relay-state.js && node --check src/renderer.js && node --check playwright.config.js && node --check test/realtime-snapshot.test.cjs && node --check test/relay-security.test.cjs && node --check test/relay-state.test.cjs && node --check test/ui-quality.test.cjs && node --check test/e2e/electron-entry.cjs && node --check test/e2e/fake-relay.cjs && node --check test/e2e/windows-performance.spec.js && node --check test/e2e/windows-realtime.spec.js",
     "test": "node --test test/*.test.cjs",
     "test:e2e": "playwright test --config playwright.config.js",
     "dist:win": "electron-builder --win nsis --x64",

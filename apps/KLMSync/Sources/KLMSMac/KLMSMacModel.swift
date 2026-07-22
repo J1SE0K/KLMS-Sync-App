@@ -420,6 +420,10 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayImmediateFollowUpOperationID: UInt64 = 0
     private var serverRelayEventBatchTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
+    private var serverRelaySnapshotAssembler = RelaySnapshotStreamAssembler()
+    private var serverRelayWebSocketSessionID = ""
+    private var serverRelaySnapshotContinuations: [String: CheckedContinuation<Bool, Never>] = [:]
+    private var serverRelaySnapshotTimeoutTasks: [String: Task<Void, Never>] = [:]
     private var serverRelayEventStreamKey: String?
     private var serverRelayEventCursor = RelayEventCursor()
     private var serverRelaySessionGeneration: UInt64 = 0
@@ -440,6 +444,7 @@ final class KLMSMacModel: ObservableObject {
     private var serverRelayWorkerStatePreviewOperationID: UInt64 = 0
     private var serverRelayWorkerStatePreviewGeneration: UInt64?
     private var serverRelayWorkerRefreshPending = false
+    private var serverRelayWorkerInboxQueue = RelayWorkerInboxQueue()
     private var serverRelayCommandCheckOperationID: UInt64 = 0
     private var activeServerRelayCommandCheckOperationID: UInt64?
     private var serverRelayLogClearOperationID: UInt64 = 0
@@ -1249,6 +1254,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayDirtyScopes.reset()
         serverRelayEventBatchRetryAttempt = 0
         serverRelayWorkerRefreshPending = false
+        serverRelayWorkerInboxQueue.reset()
         serverRelayCommandCheckOperationID &+= 1
         activeServerRelayCommandCheckOperationID = nil
         isCheckingRemoteCommands = false
@@ -1448,6 +1454,11 @@ final class KLMSMacModel: ObservableObject {
         sessionGeneration: UInt64? = nil
     ) async -> Bool {
         guard serverRelayEnabled, serverRelayConfigured else { return false }
+        if sessionGeneration == nil,
+           serverRelayEventWebSocketTask?.state == .running,
+           !serverRelayWebSocketSessionID.isEmpty {
+            return await requestServerRelaySnapshot(scopes: Set(RelayEventScope.allCases))
+        }
         let expectedSessionGeneration = sessionGeneration ?? serverRelaySessionGeneration
         serverRelaySyncDataFetchOperationID &+= 1
         let fetchOperationID = serverRelaySyncDataFetchOperationID
@@ -1924,6 +1935,13 @@ final class KLMSMacModel: ObservableObject {
     private func configureServerRelayEventStream() {
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventWebSocketTask = nil
+        serverRelaySnapshotAssembler.discard()
+        serverRelayWebSocketSessionID = ""
+        serverRelaySnapshotTimeoutTasks.values.forEach { $0.cancel() }
+        serverRelaySnapshotTimeoutTasks.removeAll()
+        let snapshotContinuations = serverRelaySnapshotContinuations.values
+        serverRelaySnapshotContinuations.removeAll()
+        snapshotContinuations.forEach { $0.resume(returning: false) }
         serverRelayEventStreamTask?.cancel()
         serverRelayEventStreamTask = nil
         serverRelayImmediateFollowUpOperationID &+= 1
@@ -1947,6 +1965,7 @@ final class KLMSMacModel: ObservableObject {
         serverRelayWorkerStatePreviewOperationID &+= 1
         serverRelayWorkerStatePreviewGeneration = nil
         serverRelayWorkerRefreshPending = false
+        serverRelayWorkerInboxQueue.reset()
         serverRelayDirtyScopes.reset()
         serverRelayEventBatchRetryAttempt = 0
         serverRelayEventStreamKey = nil
@@ -1988,10 +2007,14 @@ final class KLMSMacModel: ObservableObject {
                 helloTimeout.cancel()
                 lastMessageAt = Date()
                 let hello = Self.serverRelayEvent(helloMessage)
-                guard handshake.observeFirstFrame(hello) == .accepted else {
+                guard handshake.observeFirstFrame(hello) == .accepted,
+                      let sessionID = hello?.sessionID,
+                      UUID(uuidString: sessionID) != nil else {
                     task.cancel(with: .protocolError, reason: nil)
                     throw KLMSMacRelayRealtimeError.invalidServerHello
                 }
+                serverRelayWebSocketSessionID = sessionID
+                serverRelaySnapshotAssembler.discard()
                 guard serverRelayEventCursor.isCurrent(generation: generation),
                       serverRelayEventStreamKey == key else {
                     task.cancel(with: .goingAway, reason: nil)
@@ -2022,7 +2045,20 @@ final class KLMSMacModel: ObservableObject {
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
                     lastMessageAt = Date()
-                    handleServerRelayEvent(message, generation: generation)
+                    do {
+                        try await handleServerRelayWebSocketMessage(
+                            message,
+                            task: task,
+                            generation: generation
+                        )
+                    } catch let streamError as RelaySnapshotStreamError {
+                        serverRelaySnapshotAssembler.discard()
+                        task.cancel(
+                            with: URLSessionWebSocketTask.CloseCode(rawValue: streamError.closeCode) ?? .protocolError,
+                            reason: streamError.reason.data(using: .utf8)
+                        )
+                        throw KLMSMacRelayRealtimeError.invalidServerHello
+                    }
                 }
             } catch {
                 if !Task.isCancelled, serverRelayEventStreamKey == key {
@@ -2035,9 +2071,157 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    private func scheduleServerRelayImmediateFollowUp() {
+    private func requestServerRelaySnapshot(scopes: Set<RelayEventScope>) async -> Bool {
+        guard let task = serverRelayEventWebSocketTask,
+              task.state == .running,
+              UUID(uuidString: serverRelayWebSocketSessionID) != nil else {
+            serverRelayStatusMessage = "실시간 연결을 확인한 뒤 다시 시도해 주세요."
+            return false
+        }
+        let requestID = UUID().uuidString.lowercased()
+        let orderedScopes = RelayEventScope.allCases.filter(scopes.contains)
+        guard !orderedScopes.isEmpty else { return false }
+        let request = RelaySnapshotRequestFrame(
+            sessionID: serverRelayWebSocketSessionID,
+            requestID: requestID,
+            revision: serverRelayEventCursor.lastAppliedRevision ?? 0,
+            scopes: orderedScopes
+        )
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(request)
+        } catch {
+            return false
+        }
+        serverRelayStatusMessage = "최신 상태를 실시간으로 요청 중..."
+        return await withCheckedContinuation { continuation in
+            serverRelaySnapshotContinuations[requestID] = continuation
+            serverRelaySnapshotTimeoutTasks[requestID] = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { return }
+                self?.finishServerRelaySnapshotRequest(requestID: requestID, succeeded: false)
+            }
+            Task { @MainActor [weak self] in
+                do {
+                    guard let text = String(data: data, encoding: .utf8) else {
+                        throw KLMSMacRelayRealtimeError.invalidServerHello
+                    }
+                    try await task.send(.string(text))
+                } catch {
+                    self?.finishServerRelaySnapshotRequest(requestID: requestID, succeeded: false)
+                }
+            }
+        }
+    }
+
+    private func finishServerRelaySnapshotRequest(requestID: String, succeeded: Bool) {
+        serverRelaySnapshotTimeoutTasks.removeValue(forKey: requestID)?.cancel()
+        serverRelaySnapshotContinuations.removeValue(forKey: requestID)?.resume(returning: succeeded)
+        serverRelayStatusMessage = succeeded
+            ? "최신 상태가 실시간으로 반영됐습니다."
+            : "실시간 새로고침에 실패했습니다. 연결을 확인해 주세요."
+    }
+
+    private func handleServerRelayWebSocketMessage(
+        _ message: URLSessionWebSocketTask.Message,
+        task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async throws {
+        guard serverRelayEventCursor.isCurrent(generation: generation) else { return }
+        let data: Data
+        switch message {
+        case .data(let payload):
+            data = payload
+        case .string(let text):
+            guard let encoded = text.data(using: .utf8) else {
+                throw RelaySnapshotStreamError(closeCode: 1002, reason: "invalid text frame")
+            }
+            data = encoded
+        @unknown default:
+            throw RelaySnapshotStreamError(closeCode: 1002, reason: "unsupported frame")
+        }
+        let frameType = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["type"] as? String
+        if ["snapshot-begin", "snapshot-chunk", "snapshot-end"].contains(frameType) {
+            switch try serverRelaySnapshotAssembler.ingest(
+                data,
+                expectedSessionID: serverRelayWebSocketSessionID
+            ) {
+            case .ready(let ready):
+                let readyData = try JSONEncoder().encode(ready)
+                guard let readyText = String(data: readyData, encoding: .utf8) else {
+                    throw RelaySnapshotStreamError(closeCode: 1002, reason: "invalid snapshot ready")
+                }
+                try await task.send(.string(readyText))
+            case .staged:
+                break
+            case .complete(let payload):
+                let applied = applyServerRelaySnapshot(payload)
+                if let requestID = payload.requestID {
+                    finishServerRelaySnapshotRequest(requestID: requestID, succeeded: applied)
+                }
+            }
+            return
+        }
+        guard let event = Self.serverRelayEvent(message) else {
+            throw RelaySnapshotStreamError(closeCode: 1002, reason: "invalid realtime event")
+        }
+        if event.requiresSnapshot {
+            throw RelaySnapshotStreamError(closeCode: 1002, reason: "legacy snapshot event is not supported")
+        }
+        handleServerRelayEvent(message, generation: generation)
+    }
+
+    @discardableResult
+    private func applyServerRelaySnapshot(_ snapshot: RelayRealtimeSnapshotPayload) -> Bool {
+        guard snapshot.version == RelaySnapshotProtocol.version,
+              snapshot.revision >= 0,
+              serverRelayEventCursor.lastAppliedRevision.map({ snapshot.revision >= $0 }) ?? true,
+              serverRelayEventCursor.lastObservedRevision.map({ snapshot.revision >= $0 }) ?? true else {
+            return false
+        }
+        var didApply = false
+        if let syncData = snapshot.syncData {
+            applyServerRelaySyncData(syncData, source: .serverFetch)
+            serverRelayForceSyncDataFetchOnNextWorkerRefresh = false
+            didApply = true
+        }
+        if let inbox = snapshot.workerInbox {
+            serverRelayLastInboxUpdatedAt = inbox.statusResponse.updatedAt
+            let requestLog = visibleServerRelayRequestLog(inbox.recentRequestLog)
+            if serverRelayRecentRequestLog != requestLog {
+                serverRelayRecentRequestLog = requestLog
+                didApply = true
+            }
+            let fileRequests = visibleServerRelayFileAccessRequests(inbox.recentFileAccessRequests)
+            if serverRelayRecentFileAccessRequests != fileRequests {
+                serverRelayRecentFileAccessRequests = fileRequests
+                didApply = true
+            }
+            if applyServerRelaySharedSettings(inbox.sharedSettings, merge: false) {
+                didApply = true
+            }
+            if !inbox.pendingFileAccessRequests.isEmpty
+                || !inbox.pendingSettingActions.isEmpty
+                || !inbox.pendingItemActions.isEmpty
+                || !inbox.pendingCommands.isEmpty
+                || inbox.cancelRequest.requested {
+                scheduleServerRelayImmediateFollowUp(prefetchedInbox: inbox)
+            }
+        }
+        if didApply { serverRelaySnapshotMutationEpoch &+= 1 }
+        serverRelayEventCursor.markApplied(revision: snapshot.revision)
+        serverRelayStatusMessage = "서버 실시간 연결됨"
+        return true
+    }
+
+    private func scheduleServerRelayImmediateFollowUp(
+        prefetchedInbox: ServerRelayWorkerInbox? = nil
+    ) {
         guard serverRelayEnabled, serverRelayConfigured else {
             return
+        }
+        if let prefetchedInbox {
+            serverRelayWorkerInboxQueue.replace(with: prefetchedInbox)
         }
         serverRelayImmediateFollowUpOperationID &+= 1
         let operationID = serverRelayImmediateFollowUpOperationID
@@ -2047,10 +2231,12 @@ final class KLMSMacModel: ObservableObject {
             guard let self, !Task.isCancelled,
                   self.serverRelayImmediateFollowUpOperationID == operationID,
                   self.serverRelaySessionGeneration == sessionGeneration else { return }
+            let streamedInbox = self.serverRelayWorkerInboxQueue.current
             let succeeded = await self.processServerRelayCommands(
                 silent: true,
-                forceSyncDataFetch: true,
-                sessionGeneration: sessionGeneration
+                forceSyncDataFetch: streamedInbox == nil,
+                sessionGeneration: sessionGeneration,
+                prefetchedInbox: streamedInbox
             )
             if !succeeded,
                self.serverRelaySessionGeneration == sessionGeneration {
@@ -2110,6 +2296,10 @@ final class KLMSMacModel: ObservableObject {
         } else if reason == "logs-display:command" {
             serverRelaySnapshotMutationEpoch &+= 1
             applyServerRelayLogClear(scope: .command)
+        }
+
+        if event.type == .changed {
+            return
         }
 
         var scopes = Set(event.scopes)
@@ -2335,7 +2525,7 @@ final class KLMSMacModel: ObservableObject {
             }
             do {
                 let store = try self.makeServerRelayStore()
-                let inbox = try await store.fetchWorkerInbox(since: nil, waitSeconds: 0)
+                let inbox = try await store.fetchWorkerInbox()
                 guard !Task.isCancelled,
                       self.isServerRelayWorkerStatePreviewOwner(
                           operationID: operationID,
@@ -2654,10 +2844,11 @@ final class KLMSMacModel: ObservableObject {
         )
     }
 
+    @discardableResult
     private func replayServerRelayTerminalCommandOutbox(
         using store: ServerRelayCommandStore,
         identity: ServerRelayTerminalOutboxIdentity
-    ) async throws {
+    ) async throws -> Bool {
         let entries = try await serverRelayTerminalOutbox.pending(
             relayURL: identity.relayURL,
             workerTokenFingerprint: identity.workerTokenFingerprint
@@ -2674,6 +2865,7 @@ final class KLMSMacModel: ObservableObject {
                 workerTokenFingerprint: identity.workerTokenFingerprint
             )
         }
+        return !entries.isEmpty
     }
 
     private static func isServerRetiredCommand(_ error: Error) -> Bool {
@@ -5590,20 +5782,26 @@ final class KLMSMacModel: ObservableObject {
     func processServerRelayCommands(
         silent: Bool = false,
         forceSyncDataFetch: Bool = false,
-        sessionGeneration: UInt64? = nil
+        sessionGeneration: UInt64? = nil,
+        prefetchedInbox: ServerRelayWorkerInbox? = nil
     ) async -> Bool {
         guard serverRelayEnabled else {
             return false
         }
         let expectedSessionGeneration = sessionGeneration ?? serverRelaySessionGeneration
         guard serverRelaySessionGeneration == expectedSessionGeneration else { return false }
+        if let prefetchedInbox {
+            serverRelayWorkerInboxQueue.replace(with: prefetchedInbox)
+        }
         if runningCommand != nil {
+            let streamedInbox = serverRelayWorkerInboxQueue.take()
             do {
                 let store = try makeServerRelayStore()
                 let cancelSucceeded = await processServerRelayCancelRequest(
                     store: store,
                     silent: silent,
-                    sessionGeneration: expectedSessionGeneration
+                    sessionGeneration: expectedSessionGeneration,
+                    prefetchedCancelRequest: streamedInbox?.cancelRequest
                 )
                 guard serverRelaySessionGeneration == expectedSessionGeneration else { return false }
                 guard cancelSucceeded else { return false }
@@ -5618,11 +5816,12 @@ final class KLMSMacModel: ObservableObject {
             }
         }
         guard activeServerRelayCommandCheckOperationID == nil else {
+            let hasStreamedRetry = serverRelayWorkerInboxQueue.hasValue
             serverRelayWorkerRefreshPending = true
             if forceSyncDataFetch {
                 serverRelayForceSyncDataFetchOnNextWorkerRefresh = true
             }
-            return false
+            return hasStreamedRetry
         }
         serverRelayCommandCheckOperationID &+= 1
         let commandCheckOperationID = serverRelayCommandCheckOperationID
@@ -5632,24 +5831,36 @@ final class KLMSMacModel: ObservableObject {
             if activeServerRelayCommandCheckOperationID == commandCheckOperationID {
                 activeServerRelayCommandCheckOperationID = nil
                 isCheckingRemoteCommands = false
-                if serverRelayWorkerRefreshPending {
+                if serverRelayWorkerRefreshPending || serverRelayWorkerInboxQueue.hasValue {
                     serverRelayWorkerRefreshPending = false
-                    scheduleServerRelayImmediateFollowUp()
+                    scheduleServerRelayImmediateFollowUp(
+                        prefetchedInbox: serverRelayWorkerInboxQueue.current
+                    )
                 }
             }
         }
         do {
             let store = try makeServerRelayStore()
             let outboxIdentity = serverRelayTerminalOutboxIdentity()
-            try await replayServerRelayTerminalCommandOutbox(
+            let streamedInbox = serverRelayWorkerInboxQueue.take()
+            let replayedTerminalState = try await replayServerRelayTerminalCommandOutbox(
                 using: store,
                 identity: outboxIdentity
             )
-            let inboxMutationEpoch = serverRelaySnapshotMutationEpoch
-            let inbox = try await store.fetchWorkerInbox(
-                since: runningCommand == nil ? serverRelayLastInboxUpdatedAt : nil,
-                waitSeconds: 0
+            let inboxDecision = RelayWorkerInboxConsumptionPolicy.decision(
+                hasStreamedInbox: streamedInbox != nil,
+                replayedTerminalState: replayedTerminalState
             )
+            if inboxDecision == .awaitFreshStream {
+                return true
+            }
+            let inboxMutationEpoch = serverRelaySnapshotMutationEpoch
+            let inbox: ServerRelayWorkerInbox
+            if inboxDecision == .useStreamed, let streamedInbox {
+                inbox = streamedInbox
+            } else {
+                inbox = try await store.fetchWorkerInbox()
+            }
             guard serverRelaySessionGeneration == expectedSessionGeneration else { return false }
             if serverRelaySnapshotMutationEpoch == inboxMutationEpoch {
                 var didApplyInboxState = false
@@ -5769,7 +5980,9 @@ final class KLMSMacModel: ObservableObject {
                     await publishServerRelayWorkerCompletionIfCurrent(
                         sessionGeneration: expectedSessionGeneration
                     )
-                    scheduleServerRelayImmediateFollowUp()
+                    if RelayWorkerInboxConsumptionPolicy.shouldScheduleNetworkFollowUp(after: inboxDecision) {
+                        scheduleServerRelayImmediateFollowUp()
+                    }
                     return true
                 }
                 return false
@@ -5808,7 +6021,9 @@ final class KLMSMacModel: ObservableObject {
                     if !silent, completedAction.status == .failed {
                         errorMessage = completedAction.message
                     }
-                    scheduleServerRelayImmediateFollowUp()
+                    if RelayWorkerInboxConsumptionPolicy.shouldScheduleNetworkFollowUp(after: inboxDecision) {
+                        scheduleServerRelayImmediateFollowUp()
+                    }
                 }
                 await publishServerRelayWorkerCompletionIfCurrent(
                     sessionGeneration: expectedSessionGeneration,
@@ -5892,7 +6107,9 @@ final class KLMSMacModel: ObservableObject {
                     if !silent, completedAction.status == .failed {
                         errorMessage = completedAction.message
                     }
-                    scheduleServerRelayImmediateFollowUp()
+                    if RelayWorkerInboxConsumptionPolicy.shouldScheduleNetworkFollowUp(after: inboxDecision) {
+                        scheduleServerRelayImmediateFollowUp()
+                    }
                 }
                 await publishServerRelayWorkerCompletionIfCurrent(
                     sessionGeneration: expectedSessionGeneration,
@@ -5910,7 +6127,9 @@ final class KLMSMacModel: ObservableObject {
                 outboxIdentity: outboxIdentity
             ) {
                 if serverRelaySessionGeneration == expectedSessionGeneration {
-                    scheduleServerRelayImmediateFollowUp()
+                    if RelayWorkerInboxConsumptionPolicy.shouldScheduleNetworkFollowUp(after: inboxDecision) {
+                        scheduleServerRelayImmediateFollowUp()
+                    }
                     return true
                 }
                 return false
@@ -6017,7 +6236,9 @@ final class KLMSMacModel: ObservableObject {
                 lastRemoteCommand = completed
                 serverRelayStatusMessage = completionMessage
                 remoteProcessingStatusMessage = completionMessage
-                scheduleServerRelayImmediateFollowUp()
+                if RelayWorkerInboxConsumptionPolicy.shouldScheduleNetworkFollowUp(after: inboxDecision) {
+                    scheduleServerRelayImmediateFollowUp()
+                }
             } else if serverRelayEnabled, serverRelayConfigured {
                 serverRelayDirtyScopes.insert(
                     RelayEventScope.allCases,
@@ -6046,11 +6267,17 @@ final class KLMSMacModel: ObservableObject {
     private func processServerRelayCancelRequest(
         store: ServerRelayCommandStore,
         silent: Bool,
-        sessionGeneration: UInt64? = nil
+        sessionGeneration: UInt64? = nil,
+        prefetchedCancelRequest: ServerRelayCancelRequest? = nil
     ) async -> Bool {
         let expectedSessionGeneration = sessionGeneration ?? serverRelaySessionGeneration
         do {
-            let cancelRequest = try await store.fetchCancelRequest()
+            let cancelRequest: ServerRelayCancelRequest
+            if let prefetchedCancelRequest {
+                cancelRequest = prefetchedCancelRequest
+            } else {
+                cancelRequest = try await store.fetchCancelRequest()
+            }
             guard serverRelaySessionGeneration == expectedSessionGeneration else { return false }
             guard cancelRequest.requested else {
                 return true

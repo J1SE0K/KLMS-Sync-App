@@ -474,7 +474,8 @@ final class RemoteCommandModelTests: XCTestCase {
             itemTitle: "기말 정리.pdf",
             status: .completed,
             message: "파일 링크 준비 완료",
-            downloadURL: "https://relay.example/v1/file-access/id/download?ticket=abc",
+            downloadURL: "https://relay.example/v1/file-access/\(UUID().uuidString)/download",
+            downloadCapability: String(repeating: "a", count: 32),
             expiresAt: expiresAt,
             sizeBytes: 1_024
         )
@@ -487,10 +488,36 @@ final class RemoteCommandModelTests: XCTestCase {
         XCTAssertEqual(decoded.itemTitle, "기말 정리.pdf")
         XCTAssertEqual(decoded.status, .completed)
         XCTAssertEqual(decoded.message, "파일 링크 준비 완료")
-        XCTAssertEqual(decoded.downloadURL, "https://relay.example/v1/file-access/id/download?ticket=abc")
+        XCTAssertEqual(decoded.downloadURL, request.downloadURL)
+        XCTAssertEqual(decoded.downloadCapability, String(repeating: "a", count: 32))
         XCTAssertEqual(decoded.expiresAt, expiresAt)
         XCTAssertEqual(decoded.sizeBytes, 1_024)
         XCTAssertTrue(decoded.isDownloadAvailable)
+    }
+
+    func testServerRelayFileDownloadPolicyRejectsQueryCredentialsAndOtherOrigins() throws {
+        let requestID = UUID()
+        let baseURL = try XCTUnwrap(URL(string: "https://relay.example/relay"))
+        let expected = ServerRelayFileDownloadPolicy.expectedURL(baseURL: baseURL, requestID: requestID)
+
+        XCTAssertTrue(ServerRelayFileDownloadPolicy.isExactURL(expected, baseURL: baseURL, requestID: requestID))
+        XCTAssertTrue(ServerRelayFileDownloadPolicy.isValidCapability(String(repeating: "a", count: 32)))
+        XCTAssertFalse(ServerRelayFileDownloadPolicy.isValidCapability("short"))
+        XCTAssertFalse(ServerRelayFileDownloadPolicy.isExactURL(
+            try XCTUnwrap(URL(string: "\(expected.absoluteString)?ticket=secret")),
+            baseURL: baseURL,
+            requestID: requestID
+        ))
+        XCTAssertFalse(ServerRelayFileDownloadPolicy.isExactURL(
+            try XCTUnwrap(URL(string: "https://other.example/relay/v1/file-access/\(requestID.uuidString)/download")),
+            baseURL: baseURL,
+            requestID: requestID
+        ))
+        XCTAssertFalse(ServerRelayFileDownloadPolicy.isExactURL(
+            try XCTUnwrap(URL(string: "https://relay.example/v1/file-access/\(requestID.uuidString)/download")),
+            baseURL: baseURL,
+            requestID: requestID
+        ))
     }
 
     func testServerRelayFileAccessRequestDecodesCloudflareFractionalDates() throws {
@@ -504,7 +531,8 @@ final class RemoteCommandModelTests: XCTestCase {
           "createdAt": "2026-06-04T10:51:25.123Z",
           "updatedAt": "2026-06-04T10:51:26.456Z",
           "message": "파일 링크 준비 완료",
-          "downloadURL": "https://relay.example/v1/file-access/id/download?ticket=abc",
+          "downloadURL": "https://relay.example/v1/file-access/3E222DF2-8D38-47D8-83A2-C12ED5DC75D2/download",
+          "downloadCapability": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "expiresAt": "2099-06-04T11:51:26.789Z",
           "sizeBytes": 1024,
           "downloadCount": 0

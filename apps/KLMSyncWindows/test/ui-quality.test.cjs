@@ -17,7 +17,8 @@ test("renderer uses a strict CSP, safe DOM sinks and guarded main-process naviga
   assert.doesNotMatch(renderer, /\.innerHTML\s*=|\.outerHTML\s*=|insertAdjacentHTML|document\.write/);
   assert.match(main, /setWindowOpenHandler\(\(\) => \(\{ action: "deny" \}\)\)/);
   assert.match(main, /webContents\.on\("will-navigate"/);
-  assert.match(main, /normalizeExternalURL\(target\)/);
+  assert.match(main, /normalizeRelayDownloadURL\(input\.downloadURL, relayURL, requestID\)/);
+  assert.doesNotMatch(main, /shell\.openExternal/);
   assert.match(main, /function assertTrustedIPCEvent\(event\)/);
   assert.match(main, /event\.sender !== mainWindow\.webContents/);
   assert.match(main, /event\.senderFrame\?\.url !== APP_ENTRY_URL/);

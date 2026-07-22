@@ -23,6 +23,9 @@ import UserNotifications
 import UIKit
 import UniformTypeIdentifiers
 #endif
+#if canImport(QuickLook)
+import QuickLook
+#endif
 
 #if canImport(UserNotifications)
 private final class KLMSCompanionNotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
@@ -254,6 +257,10 @@ final class CompanionModel: ObservableObject {
     private var cachedSyncDataPersistTask: Task<Void, Never>?
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayEventWebSocketTask: URLSessionWebSocketTask?
+    private var relaySnapshotAssembler = RelaySnapshotStreamAssembler()
+    private var relayWebSocketSessionID = ""
+    private var relaySnapshotContinuations: [String: CheckedContinuation<Bool, Never>] = [:]
+    private var relaySnapshotTimeoutTasks: [String: Task<Void, Never>] = [:]
     private var relayEventBatchTask: Task<Void, Never>?
     private var relayEventBatchOperationID: UInt64 = 0
     private var relayEventBatchGeneration: UInt64?
@@ -3413,19 +3420,24 @@ final class CompanionModel: ObservableObject {
         }
     }
 
-    func openFileAccessRequest(_ request: ServerRelayFileAccessRequest) {
-        guard let urlText = request.downloadURL,
-              let url = URL(string: urlText),
-              request.isDownloadAvailable else {
+    func downloadFileAccessRequest(_ request: ServerRelayFileAccessRequest) async -> URL? {
+        guard let serverRelayStore, request.isDownloadAvailable else {
             errorMessage = "파일 링크가 아직 준비되지 않았거나 만료되었습니다."
             userAlert = UserAlert(title: "파일 열기 실패", message: errorMessage)
-            return
+            return nil
         }
-        #if canImport(UIKit)
-        UIApplication.shared.open(url)
-        #else
-        errorMessage = "이 빌드는 외부 URL 열기를 사용할 수 없습니다."
-        #endif
+        do {
+            let localURL = try await serverRelayStore.downloadFileAccessRequest(request)
+            connectionMessage = "보호된 연결로 파일을 내려받았습니다."
+            connectionSucceeded = true
+            errorMessage = ""
+            return localURL
+        } catch {
+            let message = userFacingMessage(for: error)
+            errorMessage = message
+            userAlert = UserAlert(title: "파일 열기 실패", message: message)
+            return nil
+        }
     }
 
     deinit {
@@ -3669,6 +3681,11 @@ final class CompanionModel: ObservableObject {
         showsActivity: Bool = true,
         scope: RelayRefreshScope = .full
     ) async -> Bool {
+        if showsActivity,
+           serverRelayEventWebSocketTask?.state == .running,
+           !relayWebSocketSessionID.isEmpty {
+            return await requestRelaySnapshot(scopes: Set(RelayEventScope.allCases))
+        }
         let refreshGeneration = relaySessionGeneration
         if refreshInProgress, refreshInProgressGeneration != refreshGeneration {
             refreshInProgress = false
@@ -4825,6 +4842,13 @@ final class CompanionModel: ObservableObject {
     private func stopServerRelayEventStream() {
         serverRelayEventWebSocketTask?.cancel(with: .goingAway, reason: nil)
         serverRelayEventWebSocketTask = nil
+        relaySnapshotAssembler.discard()
+        relayWebSocketSessionID = ""
+        relaySnapshotTimeoutTasks.values.forEach { $0.cancel() }
+        relaySnapshotTimeoutTasks.removeAll()
+        let continuations = relaySnapshotContinuations.values
+        relaySnapshotContinuations.removeAll()
+        continuations.forEach { $0.resume(returning: false) }
         serverRelayEventStreamTask?.cancel()
         serverRelayEventStreamTask = nil
         relayEventBatchTask?.cancel()
@@ -4871,7 +4895,9 @@ final class CompanionModel: ObservableObject {
                 helloTimeout.cancel()
                 guard let hello = Self.relayEvent(for: helloMessage),
                       hello.type == .hello,
-                      hello.version == 1 else {
+                      hello.version == 1,
+                      let sessionID = hello.sessionID,
+                      UUID(uuidString: sessionID) != nil else {
                     task.cancel(with: .protocolError, reason: nil)
                     throw URLError(.cannotParseResponse)
                 }
@@ -4879,6 +4905,8 @@ final class CompanionModel: ObservableObject {
                     task.cancel(with: .goingAway, reason: nil)
                     continue
                 }
+                relayWebSocketSessionID = sessionID
+                relaySnapshotAssembler.discard()
                 handleRelayEvent(helloMessage, generation: generation)
                 connectionMessage = "서버 실시간 연결됨"
                 connectionSucceeded = true
@@ -4904,7 +4932,20 @@ final class CompanionModel: ObservableObject {
                 while !Task.isCancelled, serverRelayEventStreamKey == key {
                     let message = try await task.receive()
                     lastMessageAt = Date()
-                    handleRelayEvent(message, generation: generation)
+                    do {
+                        try await handleRelayWebSocketMessage(
+                            message,
+                            task: task,
+                            generation: generation
+                        )
+                    } catch let streamError as RelaySnapshotStreamError {
+                        relaySnapshotAssembler.discard()
+                        task.cancel(
+                            with: URLSessionWebSocketTask.CloseCode(rawValue: streamError.closeCode) ?? .protocolError,
+                            reason: streamError.reason.data(using: .utf8)
+                        )
+                        throw URLError(.cannotParseResponse)
+                    }
                 }
             } catch {
                 if !Task.isCancelled, serverRelayEventStreamKey == key {
@@ -4930,6 +4971,191 @@ final class CompanionModel: ObservableObject {
         configureServerRelayEventStream()
     }
 
+    private func requestRelaySnapshot(scopes: Set<RelayEventScope>) async -> Bool {
+        guard let task = serverRelayEventWebSocketTask,
+              task.state == .running,
+              UUID(uuidString: relayWebSocketSessionID) != nil else {
+            connectionMessage = "실시간 연결을 확인한 뒤 다시 시도해 주세요."
+            connectionSucceeded = false
+            return false
+        }
+        let requestID = UUID().uuidString.lowercased()
+        let orderedScopes = RelayEventScope.allCases.filter(scopes.contains)
+        guard !orderedScopes.isEmpty else { return false }
+        let request = RelaySnapshotRequestFrame(
+            sessionID: relayWebSocketSessionID,
+            requestID: requestID,
+            revision: relayEventCursor.lastAppliedRevision ?? 0,
+            scopes: orderedScopes
+        )
+        let data: Data
+        do {
+            data = try JSONEncoder().encode(request)
+        } catch {
+            return false
+        }
+        isRefreshing = true
+        connectionMessage = "최신 상태를 실시간으로 요청 중입니다."
+        connectionSucceeded = nil
+        return await withCheckedContinuation { continuation in
+            relaySnapshotContinuations[requestID] = continuation
+            relaySnapshotTimeoutTasks[requestID] = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard !Task.isCancelled else { return }
+                self?.finishRelaySnapshotRequest(requestID: requestID, succeeded: false)
+            }
+            Task { @MainActor [weak self] in
+                do {
+                    guard let text = String(data: data, encoding: .utf8) else {
+                        throw URLError(.cannotDecodeContentData)
+                    }
+                    try await task.send(.string(text))
+                } catch {
+                    self?.finishRelaySnapshotRequest(requestID: requestID, succeeded: false)
+                }
+            }
+        }
+    }
+
+    private func finishRelaySnapshotRequest(requestID: String, succeeded: Bool) {
+        relaySnapshotTimeoutTasks.removeValue(forKey: requestID)?.cancel()
+        relaySnapshotContinuations.removeValue(forKey: requestID)?.resume(returning: succeeded)
+        if relaySnapshotContinuations.isEmpty {
+            isRefreshing = false
+        }
+        if succeeded {
+            connectionMessage = "최신 상태가 실시간으로 반영됐습니다."
+            connectionSucceeded = true
+            lastRefreshAt = Date()
+            errorMessage = ""
+        } else {
+            connectionMessage = "실시간 새로고침에 실패했습니다. 연결을 확인해 주세요."
+            connectionSucceeded = false
+        }
+    }
+
+    private func handleRelayWebSocketMessage(
+        _ message: URLSessionWebSocketTask.Message,
+        task: URLSessionWebSocketTask,
+        generation: UInt64
+    ) async throws {
+        guard relayEventCursor.isCurrent(generation: generation) else { return }
+        let data: Data
+        switch message {
+        case .data(let payload):
+            data = payload
+        case .string(let text):
+            guard let encoded = text.data(using: .utf8) else {
+                throw RelaySnapshotStreamError(closeCode: 1002, reason: "invalid text frame")
+            }
+            data = encoded
+        @unknown default:
+            throw RelaySnapshotStreamError(closeCode: 1002, reason: "unsupported frame")
+        }
+        let frameType = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["type"] as? String
+        if ["snapshot-begin", "snapshot-chunk", "snapshot-end"].contains(frameType) {
+            switch try relaySnapshotAssembler.ingest(data, expectedSessionID: relayWebSocketSessionID) {
+            case .ready(let ready):
+                let readyData = try JSONEncoder().encode(ready)
+                guard let readyText = String(data: readyData, encoding: .utf8) else {
+                    throw RelaySnapshotStreamError(closeCode: 1002, reason: "invalid snapshot ready")
+                }
+                try await task.send(.string(readyText))
+            case .staged:
+                break
+            case .complete(let payload):
+                let applied = applyRelaySnapshot(payload)
+                if let requestID = payload.requestID {
+                    finishRelaySnapshotRequest(requestID: requestID, succeeded: applied)
+                }
+            }
+            return
+        }
+        guard let event = Self.relayEvent(for: message) else {
+            throw RelaySnapshotStreamError(closeCode: 1002, reason: "invalid realtime event")
+        }
+        if event.requiresSnapshot {
+            throw RelaySnapshotStreamError(closeCode: 1002, reason: "legacy snapshot event is not supported")
+        }
+        handleRelayEvent(message, generation: generation)
+    }
+
+    @discardableResult
+    private func applyRelaySnapshot(_ snapshot: RelayRealtimeSnapshotPayload) -> Bool {
+        guard snapshot.version == RelaySnapshotProtocol.version,
+              snapshot.revision >= 0,
+              relayEventCursor.lastAppliedRevision.map({ snapshot.revision >= $0 }) ?? true,
+              relayEventCursor.lastObservedRevision.map({ snapshot.revision >= $0 }) ?? true else {
+            return false
+        }
+        let scope = Self.relayRefreshScope(for: Set(snapshot.scopes))
+        var didChange = false
+        if let status = snapshot.status {
+            didChange = applyRelayRefreshEndpoint(
+                .status(.success(status)),
+                scope: scope,
+                shouldLoadSyncData: snapshot.syncData != nil,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let commands = snapshot.commands {
+            didChange = applyRelayRefreshEndpoint(
+                .commands(commands.commands),
+                scope: scope,
+                shouldLoadSyncData: snapshot.syncData != nil,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let syncData = snapshot.syncData {
+            didChange = applyRelayRefreshEndpoint(
+                .syncData(.success(syncData)),
+                scope: scope,
+                shouldLoadSyncData: true,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let fileAccess = snapshot.fileAccess {
+            didChange = applyRelayRefreshEndpoint(
+                .fileRequests(fileAccess.requests),
+                scope: scope,
+                shouldLoadSyncData: snapshot.syncData != nil,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let itemActions = snapshot.itemActions {
+            didChange = applyRelayRefreshEndpoint(
+                .itemActions(ItemActionRefreshResult(recent: itemActions.actions, exactByID: [:])),
+                scope: scope,
+                shouldLoadSyncData: snapshot.syncData != nil,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let requestLog = snapshot.requestLog {
+            didChange = applyRelayRefreshEndpoint(
+                .requestLog(requestLog.entries),
+                scope: scope,
+                shouldLoadSyncData: snapshot.syncData != nil,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let settingActions = snapshot.settingActions {
+            didChange = applyRelayRefreshEndpoint(
+                .settingActions(settingActions.actions),
+                scope: scope,
+                shouldLoadSyncData: snapshot.syncData != nil,
+                silentErrors: true
+            ).didChange || didChange
+        }
+        if let sharedSettings = snapshot.sharedSettings {
+            didChange = applySharedSettings(sharedSettings.settings, merge: false) || didChange
+        }
+        relayEventCursor.markApplied(revision: snapshot.revision)
+        if didChange { lastRefreshAt = Date() }
+        connectionSucceeded = true
+        connectionMessage = "서버 실시간 연결됨"
+        return true
+    }
+
     private func handleRelayEvent(
         _ message: URLSessionWebSocketTask.Message,
         generation: UInt64
@@ -4944,6 +5170,9 @@ final class CompanionModel: ObservableObject {
         let decision = relayEventCursor.decision(for: event)
         guard decision != .ignore else { return }
         applyRelayEventLocalClear(reason: reason)
+        if event.type == .changed {
+            return
+        }
         var scopes = Set(event.scopes)
         if scopes.isEmpty {
             scopes = Self.relayEventScopes(forLegacyReason: reason)
@@ -6864,6 +7093,8 @@ private struct CompanionCompactTabBar: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(KLMSCardButtonStyle())
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .contentShape(RoundedRectangle(cornerRadius: 12))
         .accessibilityLabel(section.compactTitle)
         .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(section.compactTitle) 탭으로 이동합니다.")
@@ -16736,6 +16967,7 @@ private struct DeferredServerSyncItemDetailPanel: View {
 private struct ServerSyncItemInlineDetailPanel: View {
     var item: ServerRelaySyncItem
     let model: CompanionModel
+    @State private var previewURL: URL?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16768,6 +17000,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(tint.opacity(0.22), lineWidth: 1)
         )
+        .quickLookPreview($previewURL)
     }
 
     private var header: some View {
@@ -16904,9 +17137,11 @@ private struct ServerSyncItemInlineDetailPanel: View {
                     Spacer(minLength: 0)
                     if request.isDownloadAvailable {
                         Button {
-                            model.openFileAccessRequest(request)
+                            Task {
+                                previewURL = await model.downloadFileAccessRequest(request)
+                            }
                         } label: {
-                            Label("웹 미리보기", systemImage: "safari")
+                            Label("파일 열기", systemImage: "doc")
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                     }

@@ -409,6 +409,7 @@ public struct RelayEventEnvelope: Codable, Sendable, Equatable {
     public var type: RelayEventType?
     public var revision: Int64?
     public var eventID: String?
+    public var sessionID: String?
     public var reason: String?
     public var scopes: [RelayEventScope]
     public var delta: [String: RelayJSONValue]?
@@ -421,6 +422,7 @@ public struct RelayEventEnvelope: Codable, Sendable, Equatable {
         case type
         case revision
         case eventID
+        case sessionID
         case reason
         case scopes
         case delta
@@ -434,6 +436,7 @@ public struct RelayEventEnvelope: Codable, Sendable, Equatable {
         type: RelayEventType? = nil,
         revision: Int64? = nil,
         eventID: String? = nil,
+        sessionID: String? = nil,
         reason: String? = nil,
         scopes: [RelayEventScope] = [],
         delta: [String: RelayJSONValue]? = nil,
@@ -445,6 +448,7 @@ public struct RelayEventEnvelope: Codable, Sendable, Equatable {
         self.type = type
         self.revision = revision
         self.eventID = eventID
+        self.sessionID = sessionID
         self.reason = reason
         self.scopes = scopes
         self.delta = delta
@@ -459,6 +463,7 @@ public struct RelayEventEnvelope: Codable, Sendable, Equatable {
         type = try container.decodeIfPresent(RelayEventType.self, forKey: .type)
         revision = try container.decodeIfPresent(Int64.self, forKey: .revision)
         eventID = try container.decodeIfPresent(String.self, forKey: .eventID)
+        sessionID = try container.decodeIfPresent(String.self, forKey: .sessionID)
         reason = try container.decodeIfPresent(String.self, forKey: .reason)
         scopes = (try? container.decode([RelayEventScope].self, forKey: .scopes)) ?? []
         delta = try? container.decodeIfPresent([String: RelayJSONValue].self, forKey: .delta)

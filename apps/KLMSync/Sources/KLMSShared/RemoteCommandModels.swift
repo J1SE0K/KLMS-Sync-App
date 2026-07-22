@@ -2992,6 +2992,7 @@ public struct ServerRelayFileAccessRequest: Codable, Sendable, Equatable, Identi
     public var updatedAt: Date
     public var message: String
     public var downloadURL: String?
+    public var downloadCapability: String?
     public var expiresAt: Date?
     public var sizeBytes: Int?
 
@@ -3005,6 +3006,7 @@ public struct ServerRelayFileAccessRequest: Codable, Sendable, Equatable, Identi
         updatedAt: Date = Date(),
         message: String = "",
         downloadURL: String? = nil,
+        downloadCapability: String? = nil,
         expiresAt: Date? = nil,
         sizeBytes: Int? = nil
     ) {
@@ -3017,13 +3019,15 @@ public struct ServerRelayFileAccessRequest: Codable, Sendable, Equatable, Identi
         self.updatedAt = updatedAt
         self.message = message
         self.downloadURL = downloadURL
+        self.downloadCapability = downloadCapability
         self.expiresAt = expiresAt
         self.sizeBytes = sizeBytes
     }
 
     public var isDownloadAvailable: Bool {
         guard status == .completed,
-              downloadURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+              downloadURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false,
+              downloadCapability?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             return false
         }
         if let expiresAt {
@@ -3254,7 +3258,7 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
     public var token: String
     public var allowsInsecureHTTP: Bool
     private static let requestTimeout: TimeInterval = 30
-    private static let longPollRequestTimeout: TimeInterval = 45
+    private static let eventStreamRequestTimeout: TimeInterval = 45
     private static let uploadTimeout: TimeInterval = 12 * 60 * 60
 
     public init(
@@ -3454,23 +3458,9 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
         }
     }
 
-    public func fetchWorkerInbox(since updatedAt: String? = nil, waitSeconds: Int = 0) async throws -> ServerRelayWorkerInbox {
-        var queryItems: [URLQueryItem] = []
-        if let updatedAt,
-           !updatedAt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            queryItems.append(URLQueryItem(name: "since", value: updatedAt))
-        }
-        if waitSeconds > 0 {
-            queryItems.append(URLQueryItem(name: "waitSeconds", value: "\(waitSeconds)"))
-        }
+    public func fetchWorkerInbox() async throws -> ServerRelayWorkerInbox {
         do {
-            return try await send(
-                method: "GET",
-                path: "/v1/worker/inbox",
-                queryItems: queryItems,
-                bodyData: nil,
-                timeout: waitSeconds > 0 ? Self.longPollRequestTimeout : nil
-            )
+            return try await send(method: "GET", path: "/v1/worker/inbox")
         } catch {
             guard Self.isMissingOptionalEndpoint(error) else { throw error }
             async let statusResponse = fetchStatusResponse()
@@ -3524,7 +3514,7 @@ public struct ServerRelayCommandStore: RemoteCommandStore {
             components?.scheme = "ws"
         }
         var request = URLRequest(url: components?.url ?? httpURL)
-        request.timeoutInterval = Self.longPollRequestTimeout
+        request.timeoutInterval = Self.eventStreamRequestTimeout
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue(Self.clientSourceName, forHTTPHeaderField: "X-KLMS-Client")

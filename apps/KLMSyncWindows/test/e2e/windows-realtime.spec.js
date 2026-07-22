@@ -298,6 +298,7 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   const focusedCommandButton = page.locator('[data-focus-key="command:filesSync"]');
   await focusedCommandButton.focus();
   await expect(focusedCommandButton).toBeFocused();
+  const requestsBeforeRealtimeUpdate = relay.requestCount;
   const changedAt = Date.now();
   const targetRevision = relay.publishChanged();
   await expect(page.locator("#itemList")).toContainText("실시간 갱신 과제", { timeout: 2_000 });
@@ -311,7 +312,7 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   expect(targetRevision).toBe(1);
   expect(relay.upgrades).toHaveLength(1);
   expect(relay.upgrades[0]).toMatch(/^\/v1\/events\?role=client&sinceRevision=0$/);
-  expect(relay.requests.some((request) => request.path.startsWith("/v1/sync-data"))).toBe(true);
+  expect(relay.requestCount).toBe(requestsBeforeRealtimeUpdate);
   expect(relay.requests.some((request) => /events\/poll|waitSeconds/i.test(request.path))).toBe(false);
 
   expect(relay.restoreLowerRevision()).toBe(0);
@@ -343,17 +344,38 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   const sortedBurstLatencies = [...burstLatencies].sort((lhs, rhs) => lhs - rhs);
   const burstP95 = sortedBurstLatencies[Math.ceil(sortedBurstLatencies.length * 0.95) - 1];
   expect(burstP95, `20-event local WebSocket p95 was ${burstP95}ms`).toBeLessThan(1_000);
+
+  const coalescedRequestBaseline = relay.requestCount;
+  const coalescedEventBaseline = relay.realtimeEvents.length;
+  const delayedCoalescedSnapshot = relay.delayNextSnapshotDelivery();
+  let coalescedTargetRevision = 0;
+  for (let index = 0; index < 8; index += 1) {
+    coalescedTargetRevision = relay.publishAssignment(
+      `coalesced-assignment-${index}`,
+      `합쳐진 실시간 과제 ${index + 1}`
+    );
+  }
+  await delayedCoalescedSnapshot.started;
+  delayedCoalescedSnapshot.release();
+  await expect(page.locator("#itemList")).toContainText("합쳐진 실시간 과제 8", { timeout: 2_000 });
+  await expect.poll(() => page.evaluate(() => state.relayRevision)).toBe(coalescedTargetRevision);
+  expect(relay.realtimeEvents.slice(coalescedEventBaseline)).toHaveLength(2);
+  expect(relay.realtimeEvents.at(-1).reason).toBe("coalesced");
+  expect(relay.requestCount).toBe(coalescedRequestBaseline);
+
   await writeStableArtifact("windows-realtime-burst-metrics.json", JSON.stringify({
     eventCount: burstLatencies.length,
     p95Milliseconds: burstP95,
     thresholdMilliseconds: 1_000,
     latenciesMilliseconds: burstLatencies,
-    transport: "WebSocket trigger with HTTP snapshot reconciliation",
+    coalescedInputEventCount: 8,
+    coalescedOutputStreamCount: 2,
+    transport: "bounded WebSocket snapshot stream",
     pollingObserved: false
   }, null, 2));
 
   await waitForStableRequestCount(relay);
-  const delayedSyncData = relay.delayNextSyncDataResponse();
+  const delayedSnapshot = relay.delayNextSnapshotDelivery();
   relay.itemActions = [{
     id: "slow-sync-independent-action",
     action: "assignmentComplete",
@@ -366,7 +388,9 @@ test("WebSocket changes render immediately and responsive resize preserves selec
     updatedAt: "2026-07-13T16:20:00.000Z"
   }];
   relay.publishEvent("item-actions:updated", ["syncData", "itemActions"]);
-  await delayedSyncData.started;
+  await delayedSnapshot.started;
+  await expect(page.locator("#historyList")).not.toContainText("느린 sync-data와 독립된 항목 처리");
+  delayedSnapshot.release();
   await expect(page.locator("#historyList")).toContainText("느린 sync-data와 독립된 항목 처리", { timeout: 2_000 });
   const crossBatchCommand = relay.publishCommand("running");
   await expect(page.locator("#phaseLabel")).toHaveText("실행 중", { timeout: 2_000 });
@@ -376,8 +400,6 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   await expect(page.locator("#phaseLabel")).toHaveText("취소됨", { timeout: 2_000 });
   await expect(page.locator("#primarySyncButton")).toContainText("전체 동기화");
   await expect(page.locator("#primarySyncButton")).toBeEnabled();
-  delayedSyncData.release();
-
   const idleBaseline = await waitForStableRequestCount(relay);
   await page.waitForTimeout(1_100);
   expect(relay.requestCount, "idle UI issued an interval or long-poll HTTP request").toBe(idleBaseline);
@@ -395,7 +417,6 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   expect(relay.latestCommand?.id).toMatch(/^[0-9a-f]{8}-[0-9a-f-]{27}$/i);
   expect(relay.latestCommand?.id).not.toBe(commandIDBeforeDelayedPost);
 
-  const delayedRequestLog = relay.delayNextRequestLogResponse();
   relay.itemActions = [{
     id: "slow-log-independent-action",
     action: "assignmentComplete",
@@ -408,15 +429,11 @@ test("WebSocket changes render immediately and responsive resize preserves selec
     updatedAt: "2026-07-13T16:30:00.000Z"
   }];
   relay.markLatestCommand("running", ["itemActions", "requestLog"]);
-  await delayedRequestLog.started;
   await expect(page.locator("#phaseLabel")).toHaveText("실행 중");
   await expect(page.locator("#primarySyncButton")).toContainText("전체 동기화 중단");
   await expect(page.locator("#statusSubtitle")).toContainText("fullSync running");
   await expect(page.locator("#historyList")).toContainText("느린 로그와 독립된 항목 처리");
-  delayedRequestLog.release();
-
   await page.evaluate(() => pendingCommandOverlays.clear());
-  relay.snapshotCommandsForNextResponse();
   relay.markLatestCommand("cancelled");
   await expect(page.locator("#phaseLabel")).toHaveText("취소됨");
   await expect(page.locator("#primarySyncButton")).toContainText("전체 동기화");
@@ -431,7 +448,6 @@ test("WebSocket changes render immediately and responsive resize preserves selec
   relay.markLatestCommand("running");
   await expect(page.locator("#phaseLabel")).toHaveText("실행 중");
   await page.evaluate(() => pendingCommandOverlays.clear());
-  relay.snapshotStatusForNextResponse();
   relay.markLatestCommand("cancelled");
   await expect(page.locator("#phaseLabel")).toHaveText("취소됨");
   await expect(page.locator("#primarySyncButton")).toContainText("전체 동기화");
@@ -532,12 +548,8 @@ test("same-key settings serialize and latest failure restores the committed pred
   expect(pageErrors).toEqual([]);
 });
 
-test("a superseded realtime snapshot cannot roll back a newer manual refresh", async () => {
+test("manual refresh uses the WebSocket snapshot without an HTTP round trip", async () => {
   await expect(page.locator("#connectionState")).toHaveText("실시간 연결됨");
-  const delayedSnapshot = replacementRelay.delayNextSyncDataResponse();
-  replacementRelay.publishEvent("sync-data:updated", ["syncData"]);
-  await delayedSnapshot.started;
-
   replacementRelay.items = [
     ...replacementRelay.items.filter((item) => item.id !== "race-winner-assignment"),
     {
@@ -554,31 +566,23 @@ test("a superseded realtime snapshot cannot roll back a newer manual refresh", a
   };
   replacementRelay.revision += 1;
 
-  await page.evaluate(async () => refreshAll({ quiet: true }));
+  const requestCountBeforeRefresh = replacementRelay.requestCount;
+  await page.locator("#refreshButton").click();
   await expect(page.locator("#itemList")).toContainText("최신 수동 갱신 과제");
   await expect(page.locator("#dashboardCards .metric-card", { hasText: "과제" }).locator("strong"))
     .toHaveText(String(replacementRelay.status.assignments));
 
-  delayedSnapshot.release();
-  await page.waitForTimeout(450);
-  await expect(page.locator("#itemList")).toContainText("최신 수동 갱신 과제");
-  await expect(page.locator("#dashboardCards .metric-card", { hasText: "과제" }).locator("strong"))
-    .toHaveText(String(replacementRelay.status.assignments));
+  await expect.poll(() => replacementRelay.requestCount).toBe(requestCountBeforeRefresh);
   expect(pageErrors).toEqual([]);
 });
 
-test("an older sync snapshot cannot roll back an optimistic item action", async () => {
+test("a realtime snapshot cannot roll back an optimistic item action", async () => {
   replacementRelay.itemActions = [];
   replacementRelay.appliedItemActions = [];
   const stableItem = replacementRelay.items.find((item) => item.id === "stable-assignment");
   await expect(page.locator("#itemList")).toContainText("선택 유지 과제");
   await page.locator("#itemList .item-row", { hasText: "선택 유지 과제" }).click();
 
-  const delayedSnapshot = replacementRelay.delayNextSyncDataResponse();
-  await page.evaluate(() => {
-    window.__staleRefresh = refreshAll({ quiet: true, includeSyncData: true });
-  });
-  await delayedSnapshot.started;
   await page.evaluate((item) => {
     window.__itemActionMutation = createItemAction("assignmentComplete", item);
   }, stableItem);
@@ -586,8 +590,8 @@ test("an older sync snapshot cannot roll back an optimistic item action", async 
   await page.evaluate(async () => window.__itemActionMutation);
   await expect(page.locator("#itemDetail")).toContainText("완료 요청됨");
 
-  delayedSnapshot.release();
-  await page.evaluate(async () => window.__staleRefresh);
+  const snapshotRevision = replacementRelay.publishEvent("item-actions:updated", ["syncData", "itemActions"]);
+  await expect.poll(() => page.evaluate(() => state.relayRevision)).toBe(snapshotRevision);
   await expect(page.locator("#itemDetail")).toContainText("완료 요청됨");
   await expect(page.locator("#itemList .item-row.active")).toContainText("선택 유지 과제");
   expect(pageErrors).toEqual([]);

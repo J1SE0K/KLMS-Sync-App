@@ -178,7 +178,7 @@ test("2,000 mixed items stay responsive through reconciliation, search, scroll f
   const webSocketResult = await page.evaluate(() => window.__klmsPerformanceWebSocketResult);
   await page.waitForFunction((revision) => state.relayRevision === revision, publishedRevision);
 
-  const requestCountAfterReconciliation = await waitForStableRequestCount(relay);
+  const requestCountAfterRealtimeUpdate = await waitForStableRequestCount(relay);
   await new Promise((resolve) => setTimeout(resolve, 750));
   const requestCountAfterIdle = relay.requestCount;
   const updateRequests = relay.requests.slice(requestsBeforeUpdate);
@@ -224,12 +224,12 @@ test("2,000 mixed items stay responsive through reconciliation, search, scroll f
     transport: {
       webSocketUpgradeCount: relay.upgrades.length,
       webSocketRevision: publishedRevision,
-      reconciliationHTTPRequests: updateRequests.map((request) => request.path),
+      realtimeHTTPRequests: updateRequests.map((request) => request.path),
       pollingRequestCount: pollingRequests.length,
       pollingObserved: pollingRequests.length > 0,
-      idleHTTPBaseline: requestCountAfterReconciliation,
+      idleHTTPBaseline: requestCountAfterRealtimeUpdate,
       idleHTTPAfter750ms: requestCountAfterIdle,
-      idleHTTPDelta: requestCountAfterIdle - requestCountAfterReconciliation
+      idleHTTPDelta: requestCountAfterIdle - requestCountAfterRealtimeUpdate
     },
     environment
   };
@@ -249,9 +249,9 @@ test("2,000 mixed items stay responsive through reconciliation, search, scroll f
   expect(scrollDriftPx).toBeLessThanOrEqual(thresholds.maximumScrollDriftPx);
   expect(publishedRevision).toBe(1);
   expect(relay.upgrades).toEqual(["/v1/events?role=client&sinceRevision=0"]);
-  expect(updateRequests.some((request) => request.path.startsWith("/v1/sync-data"))).toBe(true);
+  expect(updateRequests).toEqual([]);
   expect(pollingRequests).toEqual([]);
-  expect(requestCountAfterIdle).toBe(requestCountAfterReconciliation);
+  expect(requestCountAfterIdle).toBe(requestCountAfterRealtimeUpdate);
   expect(pageErrors).toEqual([]);
 });
 

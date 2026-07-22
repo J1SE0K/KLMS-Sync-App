@@ -1,13 +1,15 @@
 const { app, BrowserWindow, clipboard, ipcMain, nativeTheme, safeStorage, shell } = require("electron");
 const fs = require("node:fs/promises");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const WebSocket = require("ws");
 const {
   configWithoutLegacyPlaintextToken,
   normalizeEndpoint,
-  normalizeExternalURL,
+  normalizeRelayDownloadURL,
   normalizeRelayURL,
+  validateDownloadCapability,
   validateRelayURL
 } = require("./relay-security.cjs");
 const {
@@ -18,6 +20,11 @@ const {
   mutationConfigRevisionMatches,
   normalizedConfigRevision
 } = require("./relay-state.js");
+const {
+  RelaySnapshotAssembler,
+  createSnapshotRequest,
+  snapshotFrameType
+} = require("./realtime-snapshot.cjs");
 
 const REQUEST_TIMEOUT_MS = 30_000;
 const SOCKET_RECONNECT_MIN_MS = 250;
@@ -25,6 +32,8 @@ const SOCKET_RECONNECT_MAX_MS = 2_000;
 const SOCKET_HEARTBEAT_MS = 20_000;
 const SOCKET_STALE_MS = 45_000;
 const MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH = 200_000;
+const MAX_RELAY_FILE_DOWNLOAD_BYTES = 25 * 1024 * 1024;
+const FILE_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000;
 const APP_ENTRY_PATH = path.join(__dirname, "index.html");
 const APP_ENTRY_URL = pathToFileURL(APP_ENTRY_PATH).toString();
 
@@ -38,6 +47,9 @@ let relaySocketReconnectDelay = SOCKET_RECONNECT_MIN_MS;
 let relaySocketLastMessageAt = 0;
 let relaySocketLastRevision = 0;
 let relaySocketClientGeneration = 0;
+let relaySocketSessionID = "";
+let relaySnapshotAssembler = new RelaySnapshotAssembler();
+const relaySnapshotRequests = new Map();
 let relayConfigRevision = 0;
 let configMutationTail = Promise.resolve();
 const activeMutationRequests = createConfigBoundMutationRegistry();
@@ -145,11 +157,8 @@ function registerIPC() {
   registerTrustedIPCHandler("relay:request", async (request) => relayRequest(request || {}));
   registerTrustedIPCHandler("relay:socketStart", async (request) => startRelayEventSocket(request || {}));
   registerTrustedIPCHandler("relay:socketStop", async () => stopRelayEventSocket());
-  registerTrustedIPCHandler("shell:openExternal", async (target) => {
-    const safeTarget = normalizeExternalURL(target);
-    await shell.openExternal(safeTarget);
-    return { opened: true };
-  });
+  registerTrustedIPCHandler("relay:snapshotRequest", async (request) => requestRelaySocketSnapshot(request || {}));
+  registerTrustedIPCHandler("relay:fileDownload", async (request) => downloadRelayFileAccess(request || {}));
 }
 
 function registerTrustedIPCHandler(channel, handler) {
@@ -316,6 +325,46 @@ async function startRelayEventSocket(request = {}) {
   return { started: true, generation, clientGeneration };
 }
 
+function requestRelaySocketSnapshot(request = {}) {
+  const clientGeneration = Number(request.clientGeneration);
+  if (!Number.isSafeInteger(clientGeneration)
+      || clientGeneration !== relaySocketClientGeneration
+      || !relaySocket
+      || relaySocket.readyState !== WebSocket.OPEN
+      || !relaySocketSessionID) {
+    throw new Error("실시간 연결을 확인한 뒤 다시 시도해 주세요.");
+  }
+  const requestID = crypto.randomUUID();
+  const frame = createSnapshotRequest({
+    sessionID: relaySocketSessionID,
+    requestID,
+    revision: relaySocketLastRevision,
+    scopes: Array.isArray(request.scopes) ? request.scopes : []
+  });
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      relaySnapshotRequests.delete(requestID);
+      reject(new Error("실시간 새로고침 응답 시간이 초과되었습니다."));
+    }, REQUEST_TIMEOUT_MS);
+    relaySnapshotRequests.set(requestID, { resolve, reject, timeout, clientGeneration });
+    try {
+      relaySocket.send(JSON.stringify(frame));
+    } catch (error) {
+      clearTimeout(timeout);
+      relaySnapshotRequests.delete(requestID);
+      reject(error);
+    }
+  });
+}
+
+function rejectRelaySnapshotRequests(message) {
+  for (const request of relaySnapshotRequests.values()) {
+    clearTimeout(request.timeout);
+    request.reject(new Error(message));
+  }
+  relaySnapshotRequests.clear();
+}
+
 function stopRelayEventSocket(options = {}) {
   relaySocketGeneration += 1;
   if (relaySocketReconnectTimer) {
@@ -329,6 +378,9 @@ function stopRelayEventSocket(options = {}) {
   stopRelaySocketHelloTimer();
   const socket = relaySocket;
   relaySocket = null;
+  relaySocketSessionID = "";
+  relaySnapshotAssembler.discard();
+  rejectRelaySnapshotRequests("실시간 연결이 종료되었습니다.");
   if (socket) {
     try {
       socket.close(1000, "client stopped");
@@ -363,7 +415,8 @@ async function connectRelayEventSocket(generation, clientGeneration) {
         Authorization: `Bearer ${token}`,
         "X-KLMS-Client": "Windows"
       },
-      handshakeTimeout: REQUEST_TIMEOUT_MS
+      handshakeTimeout: REQUEST_TIMEOUT_MS,
+      maxPayload: 64 * 1024
     });
     relaySocket = socket;
     let acceptedHello = false;
@@ -388,6 +441,33 @@ async function connectRelayEventSocket(generation, clientGeneration) {
       if (generation !== relaySocketGeneration || relaySocket !== socket) return;
       relaySocketLastMessageAt = Date.now();
       let event;
+      const type = snapshotFrameType(raw);
+      if (acceptedHello && ["snapshot-begin", "snapshot-chunk", "snapshot-end"].includes(type)) {
+        try {
+          const result = relaySnapshotAssembler.ingest(raw, relaySocketSessionID);
+          if (result.action === "ready") {
+            socket.send(JSON.stringify(result.frame));
+          } else if (result.action === "complete") {
+            relaySocketLastRevision = Math.max(relaySocketLastRevision, result.payload.revision);
+            const requestID = typeof result.payload.requestID === "string" ? result.payload.requestID : "";
+            const pending = relaySnapshotRequests.get(requestID);
+            if (pending && pending.clientGeneration === clientGeneration) {
+              clearTimeout(pending.timeout);
+              relaySnapshotRequests.delete(requestID);
+              pending.resolve(result.payload);
+            } else {
+              sendToRenderer("relay:snapshot", {
+                ...result.payload,
+                connectionGeneration: clientGeneration
+              });
+            }
+          }
+        } catch (error) {
+          relaySnapshotAssembler.discard();
+          socket.close(error?.closeCode || 1002, String(error?.message || "snapshot protocol error").slice(0, 120));
+        }
+        return;
+      }
       try {
         event = JSON.parse(String(raw));
       } catch {
@@ -399,12 +479,23 @@ async function connectRelayEventSocket(generation, clientGeneration) {
           rejectRelaySocketHello(socket, clientGeneration);
           return;
         }
+        if (typeof event.sessionID !== "string"
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(event.sessionID)) {
+          rejectRelaySocketHello(socket, clientGeneration);
+          return;
+        }
+        relaySocketSessionID = event.sessionID;
+        relaySnapshotAssembler.discard();
         acceptedHello = true;
         stopRelaySocketHelloTimer();
         relaySocketReconnectDelay = SOCKET_RECONNECT_MIN_MS;
         sendToRenderer("relay:socketState", { state: "connected", connectionGeneration: clientGeneration });
         startRelaySocketHeartbeat(socket, generation);
       } else if (!event || typeof event !== "object" || Array.isArray(event)) {
+        return;
+      }
+      if (event.requiresSnapshot === true) {
+        socket.close(1002, "legacy snapshot event is not supported");
         return;
       }
       if (Number.isSafeInteger(Number(event?.revision))) {
@@ -426,6 +517,9 @@ async function connectRelayEventSocket(generation, clientGeneration) {
     socket.on("close", () => {
       if (generation !== relaySocketGeneration || relaySocket !== socket) return;
       relaySocket = null;
+      relaySocketSessionID = "";
+      relaySnapshotAssembler.discard();
+      rejectRelaySnapshotRequests("실시간 연결이 끊어졌습니다.");
       stopRelaySocketHelloTimer();
       stopRelaySocketHeartbeat();
       scheduleRelaySocketReconnect(generation, clientGeneration);
@@ -596,6 +690,95 @@ async function relayRequest(request) {
     clearTimeout(timeout);
     releaseMutation();
   }
+}
+
+async function downloadRelayFileAccess(input) {
+  const expectedConfigRevision = normalizedConfigRevision(input.expectedConfigRevision);
+  const config = await readConfigFile();
+  const configRevision = storedConfigRevision(config);
+  if (expectedConfigRevision == null
+      || expectedConfigRevision !== relayConfigRevision
+      || expectedConfigRevision !== configRevision) {
+    throw staleRelayConfigError();
+  }
+  const relayURL = normalizeRelayURL(config.relayURL || "");
+  validateRelayURL(relayURL);
+  if (!decodeToken(config)) {
+    throw new Error("서버 릴레이 토큰이 없습니다.");
+  }
+  const requestID = String(input.id || "").trim();
+  const downloadURL = normalizeRelayDownloadURL(input.downloadURL, relayURL, requestID);
+  const capability = validateDownloadCapability(input.downloadCapability);
+  const declaredBytes = Number(input.sizeBytes);
+  if (Number.isFinite(declaredBytes)
+      && (declaredBytes < 0 || declaredBytes > MAX_RELAY_FILE_DOWNLOAD_BYTES)) {
+    throw new Error("파일 크기가 앱의 안전 한도를 벗어났습니다.");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FILE_DOWNLOAD_TIMEOUT_MS);
+  let temporaryPath = "";
+  try {
+    const response = await fetch(downloadURL, {
+      method: "GET",
+      headers: {
+        Accept: "application/octet-stream",
+        Authorization: `Bearer ${capability}`,
+        "X-KLMS-Client": "Windows"
+      },
+      redirect: "error",
+      signal: controller.signal
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(`파일 다운로드 실패 (${response.status})`);
+    }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_RELAY_FILE_DOWNLOAD_BYTES) {
+      throw new Error("파일 크기가 앱의 안전 한도를 벗어났습니다.");
+    }
+
+    const directory = path.join(app.getPath("temp"), "KLMS Sync File Access", requestID);
+    await fs.mkdir(directory, { recursive: true, mode: 0o700 });
+    await fs.chmod(directory, 0o700);
+    const filename = safeRelayFilename(input.itemTitle);
+    const nonce = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const destinationPath = path.join(directory, `${nonce}-${filename}`);
+    temporaryPath = `${destinationPath}.partial`;
+    const handle = await fs.open(temporaryPath, "wx", 0o600);
+    let receivedBytes = 0;
+    try {
+      const reader = response.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        receivedBytes += value.byteLength;
+        if (receivedBytes > MAX_RELAY_FILE_DOWNLOAD_BYTES) {
+          await reader.cancel();
+          throw new Error("파일 크기가 앱의 안전 한도를 벗어났습니다.");
+        }
+        await handle.write(Buffer.from(value));
+      }
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await fs.rename(temporaryPath, destinationPath);
+    temporaryPath = "";
+    const openError = await shell.openPath(destinationPath);
+    if (openError) throw new Error(openError);
+    return { opened: true, sizeBytes: receivedBytes };
+  } finally {
+    clearTimeout(timeout);
+    if (temporaryPath) await fs.rm(temporaryPath, { force: true });
+  }
+}
+
+function safeRelayFilename(value) {
+  const sanitized = String(value || "KLMS file")
+    .replace(/[\\/:*?"<>|\u0000-\u001f\u007f]/g, "_")
+    .trim()
+    .slice(0, 180);
+  return sanitized || "KLMS file";
 }
 
 function staleRelayConfigError() {

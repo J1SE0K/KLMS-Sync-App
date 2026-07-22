@@ -5,9 +5,10 @@ const {
   configWithoutLegacyPlaintextToken,
   isLoopbackHost,
   isPrivateHost,
-  normalizeExternalURL,
   normalizeEndpoint,
+  normalizeRelayDownloadURL,
   normalizeRelayURL,
+  validateDownloadCapability,
   validateRelayURL
 } = require("../src/relay-security.cjs");
 
@@ -61,18 +62,30 @@ test("relay URLs allow HTTP only on an exact loopback host", () => {
   }
 });
 
-test("external navigation rejects active schemes, credentials and remote plaintext HTTP", () => {
-  assert.equal(normalizeExternalURL("https://downloads.example.com/file?id=1"), "https://downloads.example.com/file?id=1");
-  assert.equal(normalizeExternalURL("http://127.0.0.1:18484/file"), "http://127.0.0.1:18484/file");
+test("file downloads require the configured relay origin, exact path and header capability", () => {
+  const requestID = "8dfd4cca-4d78-4d4e-954b-65791b95623c";
+  assert.equal(
+    normalizeRelayDownloadURL(
+      `https://relay.example.com/relay/v1/file-access/${requestID}/download`,
+      "https://relay.example.com/relay",
+      requestID
+    ),
+    `https://relay.example.com/relay/v1/file-access/${requestID}/download`
+  );
+  assert.equal(validateDownloadCapability("a".repeat(32)), "a".repeat(32));
+  assert.throws(() => validateDownloadCapability("short"), /권한/);
   for (const value of [
-    "javascript:alert(1)",
-    "data:text/html,<script>alert(1)</script>",
-    "file:///etc/passwd",
-    "http://192.168.1.2/file",
-    "https://user:secret@downloads.example.com/file",
-    "https://downloads.example.com/\nfile"
+    `https://other.example.com/relay/v1/file-access/${requestID}/download`,
+    `https://relay.example.com/v1/file-access/${requestID}/download`,
+    `https://relay.example.com/relay/v1/file-access/${requestID}/download?ticket=secret`,
+    `https://user:secret@relay.example.com/relay/v1/file-access/${requestID}/download`,
+    `javascript:alert(1)`
   ]) {
-    assert.throws(() => normalizeExternalURL(value));
+    assert.throws(() => normalizeRelayDownloadURL(
+      value,
+      "https://relay.example.com/relay",
+      requestID
+    ));
   }
 });
 

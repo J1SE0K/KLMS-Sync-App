@@ -219,6 +219,7 @@ function bindEvents() {
 
 function bindRealtimeEvents() {
   window.klmsWindows.onRelayEvent((event) => handleRelayEvent(event));
+  window.klmsWindows.onRelaySnapshot((snapshot) => handleRelaySnapshot(snapshot));
   window.klmsWindows.onRelaySocketState((socketState) => handleRelaySocketState(socketState));
 }
 
@@ -505,6 +506,13 @@ function rejectOversizedConnectionPaste(event) {
 async function refreshAll(options = {}) {
   if (!state.configured && !options.check) {
     return false;
+  }
+  const manualWebSocketRefresh = !options.auto
+    && !options.realtime
+    && !options.reconcile
+    && state.socketConnected;
+  if (manualWebSocketRefresh) {
+    return refreshViaWebSocketSnapshot();
   }
   const scope = options.scope || refreshScopes.full;
   if ((options.auto || options.realtime) && (state.busy || realtimeRefreshRunning)) {
@@ -936,6 +944,9 @@ function handleRelayEvent(event) {
   } else if (eventRevision != null) {
     relayObservedRevision = Math.max(relayObservedRevision, eventRevision);
   }
+  if (event.type === "changed") {
+    return;
+  }
   const scope = decision.action === "reconcile"
     ? refreshScopes.full
     : window.KLMSRelayState.refreshScopeForEvent(event, refreshScopes);
@@ -943,6 +954,120 @@ function handleRelayEvent(event) {
     void refreshRealtimePreview(scope, relayRevisionEpoch);
   }
   queueRealtimeRefresh(scope, decision.revision, startsAuthoritativeSnapshot);
+}
+
+async function refreshViaWebSocketSnapshot() {
+  if (!state.configured || !state.socketConnected) return false;
+  const connectionGeneration = state.connectionGeneration;
+  const operationID = ++refreshApplyOperationSequence;
+  latestRefreshApplyOperationID = operationID;
+  setBusy(true);
+  setConnectionPhase("checking");
+  try {
+    const payload = await window.klmsWindows.requestRelaySnapshot({
+      scopes: [
+        "status", "syncData", "commands", "itemActions", "settingActions",
+        "sharedSettings", "runLogs", "fileAccess", "requestLog", "cancel"
+      ],
+      clientGeneration: connectionGeneration
+    });
+    if (operationID !== latestRefreshApplyOperationID || !isCurrentConnection(connectionGeneration)) {
+      return false;
+    }
+    const applied = applyRelaySnapshotPayload(payload, { allowSameRevision: true });
+    if (applied) {
+      toast("최신 상태가 실시간으로 반영됐습니다.");
+      setConnectionPhase("connected");
+    }
+    return applied;
+  } catch (error) {
+    if (operationID === latestRefreshApplyOperationID && isCurrentConnection(connectionGeneration)) {
+      showError(error);
+      setConnectionPhase("error");
+    }
+    return false;
+  } finally {
+    if (operationID === latestRefreshApplyOperationID) setBusy(false);
+  }
+}
+
+function handleRelaySnapshot(snapshot) {
+  if (!isCurrentConnectionPayload(snapshot)) return;
+  applyRelaySnapshotPayload(snapshot);
+}
+
+function applyRelaySnapshotPayload(snapshot, options = {}) {
+  const revision = normalizedRelayRevision(snapshot?.revision);
+  if (snapshot?.version !== 1
+      || revision == null
+      || !Array.isArray(snapshot?.scopes)
+      || revision < state.relayRevision
+      || revision < relayObservedRevision
+      || (!options.allowSameRevision && revision === state.relayRevision)) {
+    return false;
+  }
+  const appliedRenderScope = {};
+  if (snapshot.status) {
+    applyStatus(snapshot.status);
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("status")
+    ));
+  }
+  if (snapshot.commands) {
+    applyCommandResponse(snapshot.commands);
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("commands")
+    ));
+  }
+  if (snapshot.syncData) {
+    applySyncDataResponse(snapshot.syncData, { applySharedSettings: !snapshot.sharedSettings });
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("syncData")
+    ));
+  }
+  if (snapshot.itemActions) {
+    state.recentActions = itemActionsOverlayingPending(snapshot.itemActions.actions || []);
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("itemActions")
+    ));
+  }
+  if (snapshot.settingActions) {
+    state.recentSettingActions = snapshot.settingActions.actions || [];
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("settingActions")
+    ));
+  }
+  if (snapshot.fileAccess) {
+    state.recentFileAccess = fileAccessRequestsOverlayingPending(snapshot.fileAccess.requests || []);
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("fileAccess")
+    ));
+  }
+  if (snapshot.requestLog) {
+    state.recentRequestLog = snapshot.requestLog.entries || [];
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("requestLog")
+    ));
+  }
+  if (snapshot.sharedSettings) {
+    applySharedSettings(snapshot.sharedSettings.settings || [], { authoritative: true });
+    Object.assign(appliedRenderScope, window.KLMSRelayState.mergeBooleanFlags(
+      appliedRenderScope,
+      renderScopeForEndpoint("sharedSettings")
+    ));
+  }
+  state.relayRevision = revision;
+  relayObservedRevision = Math.max(relayObservedRevision, revision);
+  realtimeRetryDelay = REALTIME_RETRY_MIN_MS;
+  scheduleRender(window.KLMSRelayState.mergeBooleanFlags(appliedRenderScope, { header: true }));
+  return true;
 }
 
 async function refreshRealtimePreview(scope, expectedRevisionEpoch) {
@@ -2167,9 +2292,16 @@ function renderDetail() {
       requestButton.addEventListener("click", () => createFileAccess(item));
     }
     const openButton = $("openFileAccessButton");
-    if (openButton && fileAccess?.downloadURL) {
+    if (openButton && isDownloadAvailable(fileAccess)) {
       openButton.addEventListener("click", () => {
-        window.klmsWindows.openExternal(fileAccess.downloadURL).catch(showError);
+        window.klmsWindows.downloadRelayFile({
+          id: fileAccess.id,
+          itemTitle: fileAccess.itemTitle,
+          downloadURL: fileAccess.downloadURL,
+          downloadCapability: fileAccess.downloadCapability,
+          sizeBytes: fileAccess.sizeBytes,
+          expectedConfigRevision: state.configRevision
+        }).catch(showError);
       });
     }
   }
@@ -2395,7 +2527,7 @@ function latestFileAccess(item) {
 }
 
 function isDownloadAvailable(request) {
-  if (!request || request.status !== "completed" || !request.downloadURL) {
+  if (!request || request.status !== "completed" || !request.downloadURL || !request.downloadCapability) {
     return false;
   }
   if (!request.expiresAt) {

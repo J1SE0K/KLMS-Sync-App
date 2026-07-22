@@ -7212,7 +7212,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macModel.contains("RelayHeartbeatPolicy.isStale(lastMessageAt: lastMessageAt)"))
         XCTAssertTrue(ios.contains("RelayHeartbeatPolicy.isStale(lastMessageAt: lastMessageAt)"))
         XCTAssertTrue(macModel.contains("private static let serverRelayImmediateFollowUpDelayNanoseconds: UInt64 = 200_000_000"))
-        XCTAssertTrue(macModel.contains("private func scheduleServerRelayImmediateFollowUp()"))
+        XCTAssertTrue(macModel.contains("private func scheduleServerRelayImmediateFollowUp("))
+        XCTAssertTrue(macModel.contains("prefetchedInbox: ServerRelayWorkerInbox? = nil"))
+        XCTAssertTrue(macModel.contains("scheduleServerRelayImmediateFollowUp(prefetchedInbox: inbox)"))
         XCTAssertGreaterThanOrEqual(macModel.components(separatedBy: "scheduleServerRelayImmediateFollowUp()").count - 1, 5)
         XCTAssertTrue(macModel.contains("private static let serverRelayActiveSyncDataPublishMinimumInterval: TimeInterval = 20"))
         XCTAssertTrue(macModel.contains("private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0"))
@@ -7221,8 +7223,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(ios.contains("Task.sleep(nanoseconds: interval)"))
         XCTAssertFalse(ios.contains("Task.sleep(nanoseconds: 250_000_000)"))
 
-        XCTAssertTrue(macModel.contains("waitSeconds: 0"))
-        XCTAssertFalse(macModel.contains("waitSeconds: runningCommand == nil ? 20 : 0"))
+        XCTAssertFalse(macModel.contains("waitSeconds:"))
+        XCTAssertFalse(shared.contains("longPollRequestTimeout"))
         XCTAssertTrue(shared.contains("path: \"/v1/worker/inbox\""))
     }
 
@@ -7251,7 +7253,8 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertTrue(macModel.contains(") async -> Bool {\n        let expectedSessionGeneration = sessionGeneration ?? serverRelaySessionGeneration"))
         XCTAssertTrue(commandProcessor.contains("guard cancelSucceeded else { return false }"))
-        XCTAssertTrue(cancelProcessor.contains("let cancelRequest = try await store.fetchCancelRequest()"))
+        XCTAssertTrue(cancelProcessor.contains("if let prefetchedCancelRequest"))
+        XCTAssertTrue(cancelProcessor.contains("cancelRequest = try await store.fetchCancelRequest()"))
         XCTAssertTrue(cancelProcessor.contains("} catch {"))
         XCTAssertTrue(cancelProcessor.contains("return false"))
         XCTAssertTrue(eventBatch.contains("if !cancelSucceeded {\n                    self.serverRelayDirtyScopes.insert(\n                        [.cancel]"))
@@ -7306,9 +7309,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(eventBatch.contains("RelayEventBatchSchedulingPolicy.shouldScheduleDeferredScopes("))
         XCTAssertTrue(eventBatch.contains("RelayRealtimeWorkOrder.stages("))
 
-        let inboxIndex = try XCTUnwrap(commandProcessor.range(of: "let inbox = try await store.fetchWorkerInbox(")?.lowerBound)
+        let inboxIndex = try XCTUnwrap(commandProcessor.range(of: "let inbox: ServerRelayWorkerInbox")?.lowerBound)
         let firstClaimIndex = try XCTUnwrap(commandProcessor.range(of: "if let fileRequest = pendingFileRequests.first")?.lowerBound)
         XCTAssertLessThan(inboxIndex, firstClaimIndex)
+        XCTAssertTrue(commandProcessor.contains("RelayWorkerInboxConsumptionPolicy.decision("))
+        XCTAssertTrue(commandProcessor.contains("if inboxDecision == .useStreamed, let streamedInbox"))
+        XCTAssertTrue(commandProcessor.contains("inbox = streamedInbox"))
+        XCTAssertTrue(commandProcessor.contains("inbox = try await store.fetchWorkerInbox()"))
         XCTAssertFalse(commandProcessor.contains("await fetchAndApplyServerRelaySyncData("))
         XCTAssertFalse(commandProcessor[inboxIndex..<firstClaimIndex].contains("await publishServerRelayStatusIfNeeded()"))
         XCTAssertTrue(commandProcessor.contains("let hasPendingWorkerWork ="))
@@ -7320,9 +7327,10 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac busy relay command checker"
         )
         XCTAssertTrue(busyOwner.contains("serverRelayWorkerRefreshPending = true"))
-        XCTAssertTrue(busyOwner.contains("return false"))
+        XCTAssertTrue(busyOwner.contains("let hasStreamedRetry = serverRelayWorkerInboxQueue.hasValue"))
+        XCTAssertTrue(busyOwner.contains("return hasStreamedRetry"))
         let immediateFollowUp = try sourceBody(
-            after: "private func scheduleServerRelayImmediateFollowUp()",
+            after: "private func scheduleServerRelayImmediateFollowUp(",
             in: macModel,
             description: "Mac relay immediate follow-up"
         )

@@ -20,7 +20,7 @@ final class RealtimePreviewIntegrationTests: XCTestCase {
         let eventStream = try sourceSlice(
             source,
             from: "private func runServerRelayEventStream(key: String)",
-            to: "private func scheduleServerRelayImmediateFollowUp()"
+            to: "private func scheduleServerRelayImmediateFollowUp("
         )
         let workerInbox = try sourceSlice(
             source,
@@ -127,7 +127,7 @@ final class RealtimePreviewIntegrationTests: XCTestCase {
         XCTAssertTrue(dashboardPreview.contains("isServerRelayDashboardPreviewOwner("))
         XCTAssertTrue(dashboardPreview.contains("await self.refreshServerRelayDashboardNow("))
         XCTAssertTrue(workerPreview.contains("serverRelayWorkerStatePreviewTask?.cancel()"))
-        XCTAssertTrue(workerPreview.contains("fetchWorkerInbox(since: nil, waitSeconds: 0)"))
+        XCTAssertTrue(workerPreview.contains("fetchWorkerInbox()"))
         XCTAssertTrue(workerPreview.contains("serverRelayRecentRequestLog = requestLog"))
         XCTAssertTrue(workerPreview.contains("serverRelayRecentFileAccessRequests = fileRequests"))
         XCTAssertTrue(workerPreview.contains("applyServerRelaySharedSettings(inbox.sharedSettings, merge: false)"))

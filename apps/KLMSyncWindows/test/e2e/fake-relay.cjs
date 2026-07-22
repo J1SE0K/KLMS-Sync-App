@@ -1,8 +1,16 @@
 const http = require("node:http");
-const { randomUUID } = require("node:crypto");
+const { createHash, randomUUID } = require("node:crypto");
 const { WebSocket, WebSocketServer } = require("ws");
 
 const TEST_TOKEN = "klms-windows-e2e-token";
+const REALTIME_SCOPES = [
+  "status", "syncData", "commands", "itemActions", "settingActions", "sharedSettings",
+  "runLogs", "fileAccess", "requestLog", "cancel"
+];
+const MAX_REALTIME_FRAME_BYTES = 64 * 1024;
+const MAX_REALTIME_SNAPSHOT_BYTES = 8 * 1024 * 1024;
+const MAX_REALTIME_SNAPSHOT_CHUNKS = 254;
+const REALTIME_SNAPSHOT_CHUNK_BYTES = 43 * 1024;
 
 class FakeRelay {
   constructor() {
@@ -10,6 +18,7 @@ class FakeRelay {
     this.requests = [];
     this.upgrades = [];
     this.clients = new Set();
+    this.realtimeEvents = [];
     this.sharedSettings = [];
     this.itemActions = [];
     this.settingActions = [];
@@ -30,6 +39,7 @@ class FakeRelay {
     this.nextSyncDataGate = null;
     this.nextCommandMutationGate = null;
     this.nextRequestLogGate = null;
+    this.nextSnapshotDeliveryGate = null;
     this.nextCommandsSnapshot = null;
     this.nextStatusSnapshot = null;
     this.performanceFixture = null;
@@ -119,20 +129,110 @@ class FakeRelay {
 
   publishEvent(reason, scopes) {
     this.revision += 1;
-    const event = JSON.stringify({
-      version: 1,
-      type: "changed",
-      revision: this.revision,
-      reason,
-      scopes,
-      requiresSnapshot: false
-    });
+    const normalizedScopes = normalizeRealtimeScopes(scopes);
+    if (!normalizedScopes) throw new Error("invalid realtime scopes");
     for (const client of this.clients) {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(event);
+      if (client.readyState !== WebSocket.OPEN) continue;
+      const event = {
+        version: 1,
+        type: "changed",
+        revision: this.revision,
+        reason,
+        scopes: normalizedScopes,
+        requiresSnapshot: false,
+        sessionID: client.klmsSessionID
+      };
+      if (client.klmsPendingSnapshot) {
+        const existing = client.klmsQueuedBroadcast;
+        client.klmsQueuedBroadcast = {
+          ...event,
+          reason: existing ? "coalesced" : event.reason,
+          scopes: normalizeRealtimeScopes([...new Set([...(existing?.scopes || []), ...normalizedScopes])])
+        };
+      } else {
+        this.startBroadcastSnapshot(client, event);
       }
     }
     return this.revision;
+  }
+
+  prepareSnapshot(client, scopes, requestID = null) {
+    return encodeRealtimeSnapshot({
+      sessionID: client.klmsSessionID,
+      revision: this.revision,
+      scopes,
+      requestID,
+      payload: this.snapshotPayload(scopes, requestID)
+    });
+  }
+
+  startBroadcastSnapshot(client, event) {
+    const scopes = normalizeRealtimeScopes(event.scopes);
+    const currentEvent = {
+      ...event,
+      revision: this.revision,
+      scopes,
+      sessionID: client.klmsSessionID,
+      requiresSnapshot: false
+    };
+    const prepared = this.prepareSnapshot(client, scopes);
+    client.klmsPendingSnapshot = prepared;
+    this.realtimeEvents.push({ ...currentEvent });
+    client.send(JSON.stringify(currentEvent));
+    client.send(prepared.beginFrame);
+  }
+
+  drainSnapshotQueue(client) {
+    if (client.klmsPendingSnapshot || client.readyState !== WebSocket.OPEN) return;
+    if (client.klmsQueuedBroadcast) {
+      const event = client.klmsQueuedBroadcast;
+      client.klmsQueuedBroadcast = null;
+      this.startBroadcastSnapshot(client, event);
+      return;
+    }
+    if (client.klmsQueuedManualRequest) {
+      const request = client.klmsQueuedManualRequest;
+      client.klmsQueuedManualRequest = null;
+      const prepared = this.prepareSnapshot(client, request.scopes, request.requestID);
+      client.klmsPendingSnapshot = prepared;
+      client.send(prepared.beginFrame);
+    }
+  }
+
+  snapshotPayload(scopes, requestID) {
+    const payload = {
+      version: 1,
+      revision: this.revision,
+      scopes,
+      requestID
+    };
+    if (scopes.includes("status")) {
+      payload.status = {
+        ok: true,
+        revision: this.revision,
+        status: { ...this.status },
+        latestCommand: this.latestCommand,
+        running: this.running,
+        message: this.message
+      };
+    }
+    if (scopes.includes("commands")) payload.commands = { commands: this.commands.slice(0, 8) };
+    if (scopes.includes("syncData") || scopes.includes("runLogs")) {
+      payload.syncData = {
+        revision: this.revision,
+        items: this.items.map((item) => ({ ...item })),
+        calendarChanges: [],
+        verifySummary: null,
+        runLogs: this.runLogs.map((log) => ({ ...log })),
+        sharedSettings: this.sharedSettings.map((setting) => ({ ...setting }))
+      };
+    }
+    if (scopes.includes("itemActions")) payload.itemActions = { actions: this.itemActions.slice(0, 10) };
+    if (scopes.includes("settingActions")) payload.settingActions = { actions: this.settingActions.slice(0, 10) };
+    if (scopes.includes("fileAccess")) payload.fileAccess = { requests: this.fileAccessRequests.slice(0, 20) };
+    if (scopes.includes("requestLog")) payload.requestLog = { entries: this.requestLog.slice(0, 20) };
+    if (scopes.includes("sharedSettings")) payload.sharedSettings = { settings: this.sharedSettings };
+    return payload;
   }
 
   markLatestCommand(status, extraScopes = []) {
@@ -234,6 +334,18 @@ class FakeRelay {
     return { started, release };
   }
 
+  delayNextSnapshotDelivery() {
+    if (this.nextSnapshotDeliveryGate) {
+      throw new Error("a realtime snapshot delivery is already delayed");
+    }
+    let markStarted;
+    let release;
+    const started = new Promise((resolve) => { markStarted = resolve; });
+    const waiting = new Promise((resolve) => { release = resolve; });
+    this.nextSnapshotDeliveryGate = { started, waiting, markStarted, release };
+    return { started, release };
+  }
+
   snapshotCommandsForNextResponse() {
     this.nextCommandsSnapshot = this.commands.map((command) => ({
       ...command,
@@ -260,6 +372,7 @@ class FakeRelay {
     this.nextSyncDataGate?.release();
     this.nextCommandMutationGate?.release();
     this.nextRequestLogGate?.release();
+    this.nextSnapshotDeliveryGate?.release();
     for (const gate of this.pendingSharedSettingMutationGates) {
       gate.release();
     }
@@ -514,18 +627,78 @@ class FakeRelay {
   }
 
   handleWebSocket(socket) {
+    socket.klmsSessionID = randomUUID();
+    socket.klmsPendingSnapshot = null;
+    socket.klmsQueuedBroadcast = null;
+    socket.klmsQueuedManualRequest = null;
     this.clients.add(socket);
-    socket.on("close", () => this.clients.delete(socket));
-    socket.on("message", (raw) => {
+    socket.on("close", () => {
+      socket.klmsPendingSnapshot = null;
+      socket.klmsQueuedBroadcast = null;
+      socket.klmsQueuedManualRequest = null;
+      this.clients.delete(socket);
+    });
+    socket.on("message", async (raw) => {
       let message;
       try {
         message = JSON.parse(String(raw));
       } catch {
+        socket.close(1002, "invalid message");
         return;
       }
       if (message?.type === "ping" && socket.readyState === WebSocket.OPEN) {
         socket.send(JSON.stringify({ version: 1, type: "pong", revision: this.revision }));
+        return;
       }
+      if (message?.type === "snapshot-ready") {
+        const pending = socket.klmsPendingSnapshot;
+        if (!pending
+            || message.version !== 1
+            || message.sessionID !== socket.klmsSessionID
+            || message.streamID !== pending.streamID
+            || message.revision !== pending.revision
+            || message.reservedFrames !== pending.reservedFrames
+            || message.reservedWireBytes !== pending.reservedWireBytes) {
+          socket.close(1002, "snapshot ready mismatch");
+          return;
+        }
+        if (this.nextSnapshotDeliveryGate) {
+          const gate = this.nextSnapshotDeliveryGate;
+          this.nextSnapshotDeliveryGate = null;
+          gate.markStarted();
+          await gate.waiting;
+          if (socket.readyState !== WebSocket.OPEN || socket.klmsPendingSnapshot !== pending) return;
+        }
+        socket.klmsPendingSnapshot = null;
+        for (const frame of pending.dataFrames) socket.send(frame);
+        this.drainSnapshotQueue(socket);
+        return;
+      }
+      if (message?.type === "snapshot-request") {
+        const scopes = normalizeRealtimeScopes(message.scopes);
+        if (message.version !== 1
+            || message.sessionID !== socket.klmsSessionID
+            || !isUUID(message.requestID)
+            || !Number.isSafeInteger(message.revision)
+            || message.revision < 0
+            || !scopes) {
+          socket.close(1002, "invalid snapshot request");
+          return;
+        }
+        if (socket.klmsPendingSnapshot) {
+          if (socket.klmsQueuedManualRequest) {
+            socket.close(1013, "snapshot request queue capacity exceeded");
+            return;
+          }
+          socket.klmsQueuedManualRequest = { scopes, requestID: message.requestID };
+        } else {
+          const prepared = this.prepareSnapshot(socket, scopes, message.requestID);
+          socket.klmsPendingSnapshot = prepared;
+          socket.send(prepared.beginFrame);
+        }
+        return;
+      }
+      socket.close(1002, "unsupported message");
     });
     socket.send(JSON.stringify({
       version: 1,
@@ -533,9 +706,80 @@ class FakeRelay {
       revision: this.revision,
       reason: "connected",
       scopes: ["status", "syncData"],
-      requiresSnapshot: true
+      requiresSnapshot: false,
+      sessionID: socket.klmsSessionID
     }));
   }
+}
+
+function normalizeRealtimeScopes(value) {
+  if (!Array.isArray(value) || value.length === 0 || new Set(value).size !== value.length) return null;
+  const requested = new Set(value);
+  if ([...requested].some((scope) => !REALTIME_SCOPES.includes(scope))) return null;
+  return REALTIME_SCOPES.filter((scope) => requested.has(scope));
+}
+
+function encodeRealtimeSnapshot({ sessionID, revision, scopes, requestID, payload }) {
+  if (!isUUID(sessionID) || !Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error("invalid snapshot binding");
+  }
+  const payloadBuffer = Buffer.from(JSON.stringify(payload), "utf8");
+  if (payloadBuffer.length > MAX_REALTIME_SNAPSHOT_BYTES) throw new Error("snapshot payload too large");
+  const chunks = [];
+  for (let offset = 0; offset < payloadBuffer.length || chunks.length === 0; offset += REALTIME_SNAPSHOT_CHUNK_BYTES) {
+    chunks.push(payloadBuffer.subarray(offset, Math.min(payloadBuffer.length, offset + REALTIME_SNAPSHOT_CHUNK_BYTES)));
+  }
+  if (chunks.length > MAX_REALTIME_SNAPSHOT_CHUNKS) throw new Error("too many snapshot chunks");
+  const base = {
+    version: 1,
+    sessionID,
+    streamID: randomUUID(),
+    revision,
+    scopes,
+    requestID,
+    chunkCount: chunks.length,
+    totalPayloadBytes: fixedWidthHex(payloadBuffer.length),
+    reservedFrames: chunks.length + 2,
+    reservedWireBytes: "0000000000000000",
+    payloadSHA256: createHash("sha256").update(payloadBuffer).digest("hex")
+  };
+  const frames = [
+    { ...base, type: "snapshot-begin", index: -1, payloadBytes: fixedWidthHex(0) },
+    ...chunks.map((chunk, index) => ({
+      ...base,
+      type: "snapshot-chunk",
+      index,
+      payloadBytes: fixedWidthHex(chunk.length),
+      payload: chunk.toString("base64")
+    })),
+    { ...base, type: "snapshot-end", index: chunks.length, payloadBytes: fixedWidthHex(0) }
+  ];
+  let texts = frames.map((frame) => JSON.stringify(frame));
+  const reservedWireBytes = fixedWidthHex(texts.reduce((total, frame) => total + Buffer.byteLength(frame), 0));
+  for (const frame of frames) frame.reservedWireBytes = reservedWireBytes;
+  texts = frames.map((frame) => JSON.stringify(frame));
+  const wireBytes = texts.reduce((total, frame) => total + Buffer.byteLength(frame), 0);
+  if (fixedWidthHex(wireBytes) !== reservedWireBytes
+      || wireBytes > MAX_REALTIME_SNAPSHOT_BYTES
+      || texts.some((frame) => Buffer.byteLength(frame) > MAX_REALTIME_FRAME_BYTES)) {
+    throw new Error("invalid snapshot reservation");
+  }
+  return {
+    streamID: base.streamID,
+    revision,
+    reservedFrames: base.reservedFrames,
+    reservedWireBytes,
+    beginFrame: texts[0],
+    dataFrames: texts.slice(1)
+  };
+}
+
+function fixedWidthHex(value) {
+  return value.toString(16).padStart(16, "0");
+}
+
+function isUUID(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
 function createPerformanceFixture(count) {
@@ -718,4 +962,4 @@ async function readJSONBody(request) {
   return text ? JSON.parse(text) : {};
 }
 
-module.exports = { FakeRelay, TEST_TOKEN };
+module.exports = { FakeRelay, TEST_TOKEN, encodeRealtimeSnapshot };

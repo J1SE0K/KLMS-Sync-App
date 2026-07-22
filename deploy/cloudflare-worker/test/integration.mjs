@@ -191,7 +191,7 @@ try {
   assert.equal((await socket.next()).revision, 3);
   const firstUpload = await uploadWithContention(firstFile.id);
   assert.equal((await socket.next()).revision, 4);
-  const firstStatuses = await downloadMany(firstUpload.downloadURL, 50);
+  const firstStatuses = await downloadMany(firstUpload, 50);
   assert.equal(firstStatuses.filter((status) => status === 200).length, 7);
   assert.equal(firstStatuses.filter((status) => status === 429).length, 43);
   await consumeEvents(socket, 7, 11);
@@ -200,7 +200,7 @@ try {
   assert.equal((await socket.next()).revision, 12);
   const secondUpload = await uploadWithContention(secondFile.id);
   assert.equal((await socket.next()).revision, 13);
-  const secondStatuses = await downloadMany(secondUpload.downloadURL, 50);
+  const secondStatuses = await downloadMany(secondUpload, 50);
   assert.equal(secondStatuses.filter((status) => status === 200).length, 5);
   assert.equal(secondStatuses.filter((status) => status === 429).length, 45);
   await consumeEvents(socket, 5, 18);
@@ -603,32 +603,46 @@ async function uploadWithContention(id) {
   return responses.find((response) => response.status === 200).json();
 }
 
-async function downloadMany(downloadURL, count) {
-  const url = new URL(downloadURL);
-  url.searchParams.set("download", "1");
-  const responses = await Promise.all(Array.from({ length: count }, () => fetch(url)));
+async function downloadMany(fileRequest, count) {
+  const responses = await Promise.all(Array.from({ length: count }, () => fetch(fileRequest.downloadURL, {
+    headers: { Authorization: `Bearer ${fileRequest.downloadCapability}` },
+  })));
   return responses.map((response) => response.status);
 }
 
 async function consumeEvents(socket, count, finalRevision) {
   let lastRevision = 0;
-  for (let index = 0; index < count; index += 1) {
+  let consumed = 0;
+  while (lastRevision < finalRevision) {
     const event = await socket.next();
-    assert.equal(event.reason, "file-access:downloaded");
+    assert.ok(["file-access:downloaded", "coalesced"].includes(event.reason));
     assert.equal(event.requiresSnapshot, false);
     assert.ok(event.revision > lastRevision);
+    assert.ok(event.revision <= finalRevision);
+    assert.equal(event.snapshot.revision, event.revision);
     lastRevision = event.revision;
+    consumed += 1;
+    assert.ok(consumed <= count, "coalesced realtime delivery exceeded the committed event count");
   }
   assert.equal(lastRevision, finalRevision);
 }
 
 async function consumeSequentialEvents(socket, count, startRevision, reason) {
-  for (let index = 1; index <= count; index += 1) {
+  const finalRevision = startRevision + count;
+  let lastRevision = startRevision;
+  let consumed = 0;
+  while (lastRevision < finalRevision) {
     const event = await socket.next();
-    assert.equal(event.reason, reason);
+    assert.ok([reason, "coalesced"].includes(event.reason));
     assert.equal(event.requiresSnapshot, false);
-    assert.equal(event.revision, startRevision + index, "serialized events must have no revision gaps or duplicates");
+    assert.ok(event.revision > lastRevision, "coalesced events must advance monotonically");
+    assert.ok(event.revision <= finalRevision);
+    assert.equal(event.snapshot.revision, event.revision);
+    lastRevision = event.revision;
+    consumed += 1;
+    assert.ok(consumed <= count, "coalesced realtime delivery exceeded the committed event count");
   }
+  assert.equal(lastRevision, finalRevision);
 }
 
 function startStalledUpload(id, totalBytes = 8 * 1024 * 1024) {
@@ -761,7 +775,8 @@ function rawWebSocketUpgrade(route, token) {
         return;
       }
       const queue = webSocketJSONQueue(socket, handshake.subarray(boundary + 4));
-      resolve({ status, next: queue.next, close: () => socket.destroy() });
+      const protocol = realtimeEventQueue(queue, (value) => writeWebSocketJSON(socket, value));
+      resolve({ status, next: protocol.next, close: () => socket.destroy() });
     };
     socket.once("error", onError);
     socket.on("data", onData);
@@ -810,6 +825,7 @@ function webSocketJSONQueue(socket, initialData) {
       if (opcode === 0x8) return fail(new Error("websocket closed"));
       if (opcode !== 0x1) continue;
       const value = JSON.parse(payload.toString("utf8"));
+      Object.defineProperty(value, "__wireBytes", { value: payload.length, enumerable: false });
       const waiter = waiters.shift();
       if (waiter) waiter.resolve(value);
       else queued.push(value);
@@ -839,6 +855,117 @@ function webSocketJSONQueue(socket, initialData) {
       });
     },
   };
+}
+
+function realtimeEventQueue(queue, send) {
+  let sessionID = "";
+  return {
+    async next() {
+      const event = await queue.next();
+      if (event.type === "hello") {
+        assert.match(event.sessionID, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+        sessionID = event.sessionID;
+        return event;
+      }
+      if (event.type !== "changed") return event;
+      assert.equal(event.requiresSnapshot, false);
+      assert.equal(event.sessionID, sessionID);
+      const begin = await queue.next();
+      assert.equal(begin.type, "snapshot-begin");
+      assertRealtimeSnapshotBinding(begin, event, sessionID);
+      send({
+        version: 1,
+        type: "snapshot-ready",
+        sessionID,
+        streamID: begin.streamID,
+        revision: begin.revision,
+        reservedFrames: begin.reservedFrames,
+        reservedWireBytes: begin.reservedWireBytes,
+      });
+      const payloadChunks = [];
+      let payloadBytes = 0;
+      let wireBytes = begin.__wireBytes;
+      for (let index = 0; index < begin.chunkCount; index += 1) {
+        const chunk = await queue.next();
+        assert.equal(chunk.type, "snapshot-chunk");
+        assertRealtimeSnapshotBinding(chunk, begin, sessionID);
+        assert.equal(chunk.index, index);
+        const decoded = Buffer.from(chunk.payload, "base64");
+        assert.equal(decoded.toString("base64"), chunk.payload);
+        assert.equal(decoded.length, Number.parseInt(chunk.payloadBytes, 16));
+        payloadChunks.push(decoded);
+        payloadBytes += decoded.length;
+        wireBytes += chunk.__wireBytes;
+      }
+      const end = await queue.next();
+      assert.equal(end.type, "snapshot-end");
+      assertRealtimeSnapshotBinding(end, begin, sessionID);
+      assert.equal(end.index, begin.chunkCount);
+      assert.equal(end.payloadBytes, "0000000000000000");
+      assert.equal(end.payload, undefined);
+      wireBytes += end.__wireBytes;
+      assert.equal(payloadBytes, Number.parseInt(begin.totalPayloadBytes, 16));
+      assert.equal(wireBytes, Number.parseInt(begin.reservedWireBytes, 16));
+      const payloadBuffer = Buffer.concat(payloadChunks, payloadBytes);
+      assert.equal(crypto.createHash("sha256").update(payloadBuffer).digest("hex"), begin.payloadSHA256);
+      const payload = JSON.parse(payloadBuffer.toString("utf8"));
+      assert.equal(payload.version, 1);
+      assert.equal(payload.revision, event.revision);
+      assert.deepEqual(payload.scopes, event.scopes);
+      assert.equal(payload.requestID, null);
+      event.snapshot = payload;
+      return event;
+    },
+  };
+}
+
+function assertRealtimeSnapshotBinding(frame, expected, sessionID) {
+  assert.equal(frame.version, 1);
+  assert.equal(frame.sessionID, sessionID);
+  assert.match(frame.streamID, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  assert.equal(frame.revision, expected.revision);
+  assert.deepEqual(frame.scopes, expected.scopes);
+  assert.equal(frame.requestID, null);
+  assert.ok(Number.isInteger(frame.chunkCount) && frame.chunkCount >= 1 && frame.chunkCount <= 254);
+  assert.equal(frame.reservedFrames, frame.chunkCount + 2);
+  assert.ok(frame.reservedFrames <= 256);
+  assert.match(frame.totalPayloadBytes, /^[0-9a-f]{16}$/);
+  assert.match(frame.reservedWireBytes, /^[0-9a-f]{16}$/);
+  assert.match(frame.payloadBytes, /^[0-9a-f]{16}$/);
+  assert.match(frame.payloadSHA256, /^[0-9a-f]{64}$/);
+  assert.ok(Number.parseInt(frame.totalPayloadBytes, 16) <= 8 * 1024 * 1024);
+  assert.ok(Number.parseInt(frame.reservedWireBytes, 16) <= 8 * 1024 * 1024);
+  assert.ok(frame.__wireBytes <= 64 * 1024);
+  if (expected.type === "snapshot-begin") {
+    for (const key of [
+      "streamID", "revision", "scopes", "requestID", "chunkCount", "totalPayloadBytes",
+      "reservedFrames", "reservedWireBytes", "payloadSHA256",
+    ]) {
+      assert.deepEqual(frame[key], expected[key]);
+    }
+  }
+}
+
+function writeWebSocketJSON(socket, value) {
+  const payload = Buffer.from(JSON.stringify(value), "utf8");
+  const mask = crypto.randomBytes(4);
+  let header;
+  if (payload.length < 126) {
+    header = Buffer.from([0x81, 0x80 | payload.length]);
+  } else if (payload.length <= 0xffff) {
+    header = Buffer.alloc(4);
+    header[0] = 0x81;
+    header[1] = 0x80 | 126;
+    header.writeUInt16BE(payload.length, 2);
+  } else {
+    header = Buffer.alloc(10);
+    header[0] = 0x81;
+    header[1] = 0x80 | 127;
+    header.writeBigUInt64BE(BigInt(payload.length), 2);
+  }
+  const masked = Buffer.alloc(payload.length);
+  for (let index = 0; index < payload.length; index += 1) masked[index] = payload[index] ^ mask[index % 4];
+  socket.write(Buffer.concat([header, mask, masked]));
 }
 
 function runProcess(command, args) {
