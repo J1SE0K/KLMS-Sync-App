@@ -17,7 +17,7 @@ else
   READINESS_TEMP_DIR="$(cd "$READINESS_TEMP_DIR" && pwd -P)"
   MAC_APP_PATH="$READINESS_TEMP_DIR/KLMS Sync.app"
 fi
-MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-2}"
+MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-5}"
 ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"
 REQUIRE_CLEAN_WORKTREE="${KLMS_READINESS_REQUIRE_CLEAN:-0}"
 CANDIDATE_REVISION="unavailable"
@@ -120,11 +120,28 @@ relaunch_mac_app() {
   if /usr/bin/pgrep -x KLMSMac >/dev/null 2>&1; then
     CANONICAL_APP_WAS_RUNNING=1
   fi
-  /usr/bin/osascript -e 'tell application "KLMS Sync" to quit' >/dev/null 2>&1 || true
-  /bin/sleep 1
+  /usr/bin/pkill -x KLMSMac >/dev/null 2>&1 || true
+  for _ in {1..100}; do
+    if ! /usr/bin/pgrep -x KLMSMac >/dev/null 2>&1; then
+      break
+    fi
+    /bin/sleep 0.1
+  done
+  if /usr/bin/pgrep -x KLMSMac >/dev/null 2>&1; then
+    print -ru2 -- "Timed out waiting for previous KLMS Sync processes to terminate."
+    return 1
+  fi
   /usr/bin/open -n "$MAC_APP_PATH"
-  /bin/sleep "$MAC_RELAUNCH_DELAY_SECONDS"
-  print -r -- "$MAC_APP_PATH"
+  for _ in {1..100}; do
+    if /usr/bin/pgrep -x KLMSMac >/dev/null 2>&1; then
+      /bin/sleep "$MAC_RELAUNCH_DELAY_SECONDS"
+      print -r -- "$MAC_APP_PATH"
+      return 0
+    fi
+    /bin/sleep 0.1
+  done
+  print -ru2 -- "Timed out waiting for the candidate KLMS Sync process to launch."
+  return 1
 }
 
 print -r -- "KLMS Sync readiness check"

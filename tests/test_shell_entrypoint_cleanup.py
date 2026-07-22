@@ -184,6 +184,14 @@ class ShellEntrypointCleanupTests(unittest.TestCase):
         self.assertIn('record_step "mac-build"', readiness_script)
         self.assertIn('record_step "mac-relaunch"', readiness_script)
         self.assertIn("relaunch_mac_app()", readiness_script)
+        self.assertIn('MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-5}"', readiness_script)
+        self.assertIn("/usr/bin/pkill -x KLMSMac", readiness_script)
+        self.assertIn("Timed out waiting for previous KLMS Sync processes to terminate.", readiness_script)
+        self.assertIn("Timed out waiting for the candidate KLMS Sync process to launch.", readiness_script)
+        self.assertLess(
+            readiness_script.index("/usr/bin/pkill -x KLMSMac"),
+            readiness_script.index('/usr/bin/open -n "$MAC_APP_PATH"'),
+        )
         self.assertIn("mac-build|mac-relaunch|mac-accessibility-smoke|mac-resize-hit-area|mac-basic-actions|mac-tab-response", readiness_script)
         self.assertIn('record_step "mac-accessibility-smoke"', readiness_script)
         self.assertIn('record_step "mac-resize-hit-area"', readiness_script)
