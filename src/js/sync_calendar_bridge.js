@@ -30,6 +30,58 @@ function syncCalendarsFromState(stateJsonPath, scriptDir, config, calendarOption
   writeCalendarSyncResult(calendarOptions && calendarOptions.resultJson, output, "swift");
 }
 
+function runCalendarSyncStage(options) {
+  if (options.status.status !== "ok" || !options.enabled) {
+    return;
+  }
+  if (options.dryRun) {
+    beginStage(options.steps, options.stageTelemetry, "calendar-sync-dry-run");
+    debugStderr("dry-run skip calendar-sync");
+    return;
+  }
+  if (
+    options.skipUnchangedSideEffects &&
+    options.status.changed === false
+  ) {
+    beginStage(options.steps, options.stageTelemetry, "calendar-sync-skipped");
+    debugStderr("skip calendar-sync changed=false");
+    return;
+  }
+
+  const desiredHash = buildCalendarDesiredHash(
+    options.outputState,
+    options.config,
+    options.calendarOptions
+  );
+  const previousDesiredHash = fileExists(options.desiredHashPath)
+    ? readText(options.desiredHashPath).trim()
+    : "";
+  if (
+    options.skipUnchangedDesired &&
+    previousDesiredHash &&
+    previousDesiredHash === desiredHash
+  ) {
+    beginStage(
+      options.steps,
+      options.stageTelemetry,
+      "calendar-sync-skipped-hash"
+    );
+    debugStderr("skip calendar-sync desired hash unchanged");
+    return;
+  }
+
+  beginStage(options.steps, options.stageTelemetry, "calendar-sync");
+  debugStderr("before calendar-sync");
+  syncCalendarsFromState(
+    options.outputState,
+    options.scriptDir,
+    options.config,
+    options.calendarOptions
+  );
+  writeText(options.desiredHashPath, `${desiredHash}\n`);
+  debugStderr("after calendar-sync");
+}
+
 function writeCalendarSyncResult(path, output, backend) {
   if (!path) {
     return;

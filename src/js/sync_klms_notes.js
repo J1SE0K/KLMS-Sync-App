@@ -1162,49 +1162,25 @@ function run(argv) {
       completedRemindersOverridePendingJson = "";
     }
 
-    if (
-      status.status === "ok" &&
-      !dryRun &&
-      (examCalendarEnabled || helpDeskCalendarEnabled)
-    ) {
-      if (skipUnchangedSideEffects && status.changed === false) {
-        beginStage(steps, stageTelemetry, "calendar-sync-skipped");
-        debugStderr("skip calendar-sync changed=false");
-      } else {
-        const calendarOptions = {
-          examEnabled: examCalendarEnabled,
-          helpDeskEnabled: helpDeskCalendarEnabled,
-          tmpDir: workTmpDir,
-          resultJson: calendarSyncResultJson,
-        };
-        const calendarDesiredHash = buildCalendarDesiredHash(outputState, config, calendarOptions);
-        const previousCalendarDesiredHash = fileExists(calendarDesiredHashTxt)
-          ? readText(calendarDesiredHashTxt).trim()
-          : "";
-        if (
-          calendarSkipUnchangedDesired &&
-          previousCalendarDesiredHash &&
-          previousCalendarDesiredHash === calendarDesiredHash
-        ) {
-          beginStage(steps, stageTelemetry, "calendar-sync-skipped-hash");
-          debugStderr("skip calendar-sync desired hash unchanged");
-        } else {
-          beginStage(steps, stageTelemetry, "calendar-sync");
-          debugStderr("before calendar-sync");
-          syncCalendarsFromState(outputState, scriptDir, config, calendarOptions);
-          writeText(calendarDesiredHashTxt, `${calendarDesiredHash}\n`);
-          debugStderr("after calendar-sync");
-        }
-      }
-    }
-    if (
-      status.status === "ok" &&
-      dryRun &&
-      (examCalendarEnabled || helpDeskCalendarEnabled)
-    ) {
-      beginStage(steps, stageTelemetry, "calendar-sync-dry-run");
-      debugStderr("dry-run skip calendar-sync");
-    }
+    runCalendarSyncStage({
+      status,
+      dryRun,
+      enabled: examCalendarEnabled || helpDeskCalendarEnabled,
+      skipUnchangedSideEffects,
+      skipUnchangedDesired: calendarSkipUnchangedDesired,
+      outputState,
+      scriptDir,
+      config,
+      calendarOptions: {
+        examEnabled: examCalendarEnabled,
+        helpDeskEnabled: helpDeskCalendarEnabled,
+        tmpDir: workTmpDir,
+        resultJson: calendarSyncResultJson,
+      },
+      desiredHashPath: calendarDesiredHashTxt,
+      steps,
+      stageTelemetry,
+    });
 
     if (status.status === "ok" && remindersEnabled && !dryRun) {
       if (skipUnchangedSideEffects && status.changed === false) {

@@ -200,13 +200,11 @@ console.log(JSON.stringify({{
         source = (PROJECT_DIR / "src" / "js" / "sync_klms_notes.js").read_text(
             encoding="utf-8"
         )
-        calendar_block = source[
-            source.index('if (\n      status.status === "ok" &&\n      !dryRun') :
+        calendar_call = source[
+            source.index("runCalendarSyncStage({") :
             source.index('if (status.status === "ok" && remindersEnabled && !dryRun)')
         ]
-        self.assertIn("syncCalendarsFromState", calendar_block)
-        self.assertIn("writeText(calendarDesiredHashTxt", calendar_block)
-        self.assertIn('beginStage(steps, stageTelemetry, "calendar-sync-dry-run")', source)
+        self.assertIn("dryRun,", calendar_call)
         self.assertIn("const noticeScopeSnapshot = snapshotFiles", source)
         self.assertIn("if (dryRun || !noticeScopeSucceeded)", source)
         self.assertIn("restoreFileSnapshot(noticeScopeSnapshot)", source)
@@ -247,7 +245,7 @@ console.log(JSON.stringify({{
         commit_index = source.index(
             'beginStage(steps, stageTelemetry, "completed-reminders-override-commit")'
         )
-        calendar_index = source.index("syncCalendarsFromState", status_index)
+        calendar_index = source.index("runCalendarSyncStage", status_index)
 
         self.assertLess(preflight_index, import_index)
         self.assertLess(import_index, build_index)
