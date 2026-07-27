@@ -145,6 +145,16 @@ final class KLMSiOSUITests: XCTestCase {
             assertHorizontallyContained(sectionElement, in: layoutRoot)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
             attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-section-\(section)")
+            if section == "tasks" || section == "calendar" {
+                let itemIdentifier = section == "tasks"
+                    ? "dashboard-item-ui-test-assignment-reading"
+                    : "calendar-change-ui-test-calendar-created"
+                let item = identifiedElement(itemIdentifier, in: app)
+                XCTAssertTrue(
+                    revealByScrollingUp(item, in: app, attempts: 6),
+                    "The capture fixture \(section) item expired or became unreachable."
+                )
+            }
             if section != "status" {
                 XCTAssertFalse(
                     identifiedElement("dashboard-primary-full-sync", in: app).waitForExistence(timeout: 0.25),

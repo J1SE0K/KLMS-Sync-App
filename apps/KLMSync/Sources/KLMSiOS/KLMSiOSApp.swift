@@ -1206,7 +1206,11 @@ final class CompanionModel: ObservableObject {
         _ = apply(
             ServerRelaySyncData(
                 generatedAt: generatedAt,
-                items: Self.uiTestRunningFixtureItems(generatedAt: generatedAt),
+                items: Self.uiTestRunningFixtureItems(
+                    generatedAt: generatedAt,
+                    referenceDate: now
+                ),
+                calendarChanges: Self.uiTestCalendarChanges(referenceDate: now),
                 runLogs: [
                     ServerRelayRunLog(
                         id: "ui-test-completed-full-sync",
@@ -1294,7 +1298,11 @@ final class CompanionModel: ObservableObject {
         _ = apply(
             ServerRelaySyncData(
                 generatedAt: generatedAt,
-                items: Self.uiTestRunningFixtureItems(generatedAt: generatedAt),
+                items: Self.uiTestRunningFixtureItems(
+                    generatedAt: generatedAt,
+                    referenceDate: now
+                ),
+                calendarChanges: Self.uiTestCalendarChanges(referenceDate: now),
                 runLogs: [
                     ServerRelayRunLog(
                         id: "ui-test-running-full-sync",
@@ -1545,17 +1553,25 @@ final class CompanionModel: ObservableObject {
         (value * 1_000).rounded() / 1_000
     }
 
-    private static func uiTestRunningFixtureItems(generatedAt: String) -> [ServerRelaySyncItem] {
-        [
+    private static func uiTestRunningFixtureItems(
+        generatedAt: String,
+        referenceDate: Date
+    ) -> [ServerRelaySyncItem] {
+        let academicYear = Calendar(identifier: .gregorian)
+            .component(.year, from: referenceDate)
+        let academicTerm = "\(academicYear)년 여름학기"
+        return [
             ServerRelaySyncItem(
                 id: "ui-test-file-ai-report",
                 kind: "file",
                 course: "공공정책 특강",
-                academicTerm: "2026년 여름학기",
-                academicYear: 2026,
+                academicTerm: academicTerm,
+                academicYear: academicYear,
                 academicSemester: "summer",
                 title: "1-2 opt) ai_index_report_2026.pdf",
-                timestamp: "2026-07-06T10:00:00+09:00",
+                timestamp: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(-7 * 86_400)
+                ),
                 status: "folders",
                 detail: "강의자료와 첨부 파일 구분",
                 attachmentCount: 1,
@@ -1565,11 +1581,13 @@ final class CompanionModel: ObservableObject {
                 id: "ui-test-assignment-reading",
                 kind: "assignment",
                 course: "공공정책 특강",
-                academicTerm: "2026년 여름학기",
-                academicYear: 2026,
+                academicTerm: academicTerm,
+                academicYear: academicYear,
                 academicSemester: "summer",
-                title: "[포럼] 2-1 Weekly Reading Response",
-                timestamp: "2026-07-07T23:59:00+09:00",
+                title: "[포럼] 2-1 Weekly Reading Response — 긴 한글·Unicode 👩🏽‍💻 과제 제목의 줄바꿈과 상세 작업 메뉴 확인",
+                timestamp: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(7 * 86_400)
+                ),
                 status: "active",
                 detail: "미리알림 완료 상태 반영",
                 updatedAt: generatedAt
@@ -1578,11 +1596,13 @@ final class CompanionModel: ObservableObject {
                 id: "ui-test-notice-classroom",
                 kind: "notice",
                 course: "공공정책 특강",
-                academicTerm: "2026년 여름학기",
-                academicYear: 2026,
+                academicTerm: academicTerm,
+                academicYear: academicYear,
                 academicSemester: "summer",
                 title: "First Class Assignment (June 30) and Classroom Confirmed (N4 1316)",
-                timestamp: "2026-06-29",
+                timestamp: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(-2 * 86_400)
+                ),
                 status: "stable",
                 detail: "읽음 · 중요",
                 updatedAt: generatedAt,
@@ -1593,11 +1613,13 @@ final class CompanionModel: ObservableObject {
                 id: "ui-test-exam-final",
                 kind: "exam",
                 course: "전기전자공학특강",
-                academicTerm: "2026년 여름학기",
-                academicYear: 2026,
+                academicTerm: academicTerm,
+                academicYear: academicYear,
                 academicSemester: "summer",
                 title: "기말고사",
-                timestamp: "2026-06-17T09:00:00+09:00",
+                timestamp: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(14 * 86_400)
+                ),
                 status: "메일 반영",
                 detail: "시험 범위와 일정 통합",
                 updatedAt: generatedAt
@@ -1606,15 +1628,49 @@ final class CompanionModel: ObservableObject {
                 id: "ui-test-helpdesk",
                 kind: "helpDesk",
                 course: "알고리즘 개론",
-                academicTerm: "2026년 봄학기",
-                academicYear: 2026,
-                academicSemester: "spring",
+                academicTerm: academicTerm,
+                academicYear: academicYear,
+                academicSemester: "summer",
                 title: "중간고사 헬프데스크",
-                timestamp: "2026-03-31T10:30:00+09:00",
+                timestamp: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(21 * 86_400)
+                ),
                 status: "기록",
-                detail: "지난 일정은 기록으로 유지",
+                detail: "다가오는 일정을 기록으로 유지",
                 updatedAt: generatedAt
             )
+        ]
+    }
+
+    private static func uiTestCalendarChanges(referenceDate: Date) -> [CalendarChange] {
+        [
+            CalendarChange(
+                action: "created",
+                calendar: "시험",
+                bucket: "exam",
+                identifier: "ui-test-calendar-created",
+                title: "긴 한글·Unicode 👩🏽‍💻 캘린더 일정의 줄바꿈과 상세 작업 확인",
+                course: "공공정책 특강",
+                startAt: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(14 * 86_400)
+                ),
+                dueAt: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval((14 * 86_400) + 3_600)
+                ),
+                location: "샘플 강의실"
+            ),
+            CalendarChange(
+                action: "updated",
+                calendar: "기타",
+                bucket: "helpDesk",
+                identifier: "ui-test-calendar-updated",
+                title: "중간고사 헬프데스크 일정 변경",
+                course: "알고리즘 개론",
+                startAt: ServerRelaySyncItem.isoTimestamp(
+                    date: referenceDate.addingTimeInterval(21 * 86_400)
+                ),
+                changes: ["시간", "장소"]
+            ),
         ]
     }
 
@@ -13315,6 +13371,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
                             onEdit: { edit in await model.editCalendarEventOnDevice(change: change, edit: edit) },
                             onDelete: { await model.deleteCalendarEventOnDevice(change: change) }
                         )
+                        .accessibilityIdentifier("calendar-change-\(change.identifier)")
                     }
                     if calendarChanges.count > visibleChanges.count {
                         CompanionShowMoreRowsButton(
@@ -14119,6 +14176,7 @@ private struct WorkstationCalendarWorkspace: View {
         .companionStableTap(cornerRadius: KLMSRadius.control) {
             selectChange(change)
         }
+        .accessibilityIdentifier("calendar-change-\(change.identifier)")
         .accessibilityLabel("\(change.title.nilIfBlank ?? "캘린더 변경") \(change.actionDisplayName)")
         .accessibilityHint("상세 패널에 일정 상세와 처리 버튼을 표시합니다.")
     }
