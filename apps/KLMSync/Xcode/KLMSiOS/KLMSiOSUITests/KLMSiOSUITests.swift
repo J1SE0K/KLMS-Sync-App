@@ -71,7 +71,14 @@ final class KLMSiOSUITests: XCTestCase {
 
         let settingsNavigation = identifiedElement("\(resizedPrefix)-settings", in: app)
         XCTAssertTrue(settingsNavigation.waitForExistence(timeout: 8), "Resized settings navigation is missing.")
-        settingsNavigation.tap()
+        XCTAssertTrue(
+            openSection(
+                navigationIdentifier: "\(resizedPrefix)-settings",
+                sectionIdentifier: "companion-section-settings",
+                in: app
+            ),
+            "The settings navigation did not activate after the layout transition."
+        )
         let settingsSection = identifiedElement("companion-section-settings", in: app)
         XCTAssertTrue(settingsSection.waitForExistence(timeout: 8), "The settings section did not open.")
         XCTAssertFalse(
@@ -560,6 +567,37 @@ final class KLMSiOSUITests: XCTestCase {
             object: element
         )
         return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    @MainActor
+    private func openSection(
+        navigationIdentifier: String,
+        sectionIdentifier: String,
+        in app: XCUIApplication
+    ) -> Bool {
+        for attempt in 0..<2 {
+            let navigation = identifiedElement(navigationIdentifier, in: app)
+            let hittableExpectation = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == true AND hittable == true"),
+                object: navigation
+            )
+            guard XCTWaiter.wait(
+                for: [hittableExpectation],
+                timeout: attempt == 0 ? 2 : 1
+            ) == .completed else {
+                continue
+            }
+
+            if navigation.value as? String != "선택됨" {
+                navigation.tap()
+            }
+            let section = identifiedElement(sectionIdentifier, in: app)
+            if waitForValue("선택됨", of: navigation, timeout: 1.5),
+               section.waitForExistence(timeout: 1.5) {
+                return true
+            }
+        }
+        return false
     }
 
     @MainActor
