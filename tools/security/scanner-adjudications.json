@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
-    "expectedFindings": 43,
-    "coordinatesSha256": "929476dc828d89ccd8ecbb412952e9f88b768a2c05bc7bafe4aa7ae12158019a",
+    "expectedFindings": 44,
+    "coordinatesSha256": "d37fb6f491c6b8431e69d19591c4a91b84dcc931df9e565afdf93a18ceb8897a",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -58,6 +58,12 @@
         "path": "src/python/managed_course_file_roots.py",
         "expectedCount": 3,
         "reason": "Mode 0700 intentionally restricts managed course-file and recovery directories to the current user; it protects downloaded academic content and is stricter than the scanner's generic 0644 recommendation."
+      },
+      {
+        "rule": "python.lang.security.audit.insecure-file-permissions",
+        "path": "src/python/prune_backup_retention.py",
+        "expectedCount": 1,
+        "reason": "Mode 0700 intentionally restricts the backup-retention root to the current user; it protects private recovery data and is stricter than the scanner's generic 0644 recommendation."
       },
       {
         "rule": "python.lang.security.audit.insecure-file-permissions",

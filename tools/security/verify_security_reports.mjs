@@ -13,7 +13,7 @@ const policy = readJSON(policyPath);
 const semgrep = readJSON(path.join(evidenceDirectory, "semgrep.json"));
 const detectSecrets = readJSON(path.join(evidenceDirectory, "detect-secrets.json"));
 
-assertEqual((semgrep.errors || []).length, 0, "Semgrep scan errors");
+verifySemgrepCompleteness(semgrep, "Semgrep");
 const semgrepFindings = (semgrep.results || []).map((finding) => ({
   group: `${normalizeSemgrepRule(finding.check_id)}|${finding.path}`,
   coordinate: [
@@ -26,6 +26,16 @@ const semgrepFindings = (semgrep.results || []).map((finding) => ({
   ].join("|"),
 }));
 verifyAdjudicatedFindings(semgrepFindings, policy.semgrep, "Semgrep");
+for (const reportName of [
+  "semgrep-expensive-production.json",
+  "semgrep-download-jxa.json",
+  "semgrep-relay-test.json",
+  "semgrep-download-jxa-boundary.json",
+]) {
+  const supplementalSemgrep = readJSON(path.join(evidenceDirectory, reportName));
+  verifySemgrepCompleteness(supplementalSemgrep, reportName);
+  assertEqual((supplementalSemgrep.results || []).length, 0, `${reportName} findings`);
+}
 
 const detectSecretFindings = Object.entries(detectSecrets.results || {}).flatMap(([filename, findings]) => (
   findings.map((finding) => ({
@@ -73,6 +83,15 @@ if (sbom.bomFormat !== "CycloneDX" || !Array.isArray(sbom.components) || sbom.co
 }
 
 console.log("security-report-verification ok");
+
+function verifySemgrepCompleteness(report, label) {
+  assertEqual((report.errors || []).length, 0, `${label} scan errors`);
+  const fixpointTimeouts = report.time?.fixpoint_timeouts;
+  if (!Array.isArray(fixpointTimeouts)) {
+    throw new Error(`${label} fixpoint timeout report is missing`);
+  }
+  assertEqual(fixpointTimeouts.length, 0, `${label} fixpoint timeouts`);
+}
 
 function verifyAdjudicatedFindings(findings, scannerPolicy, scannerName) {
   assertEqual(findings.length, scannerPolicy.expectedFindings, `${scannerName} finding count`);

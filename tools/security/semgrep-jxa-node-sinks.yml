@@ -1,0 +1,10 @@
+rules:
+  - id: klms-jxa-node-sink-boundary
+    message: >-
+      The JXA downloader introduced a Node require, fs, or path sink. Re-enable
+      the corresponding official taint rule for this file before accepting it.
+    languages:
+      - generic
+    severity: ERROR
+    pattern-regex: >-
+      (?m)(\brequire\s*\(|\bpath\.(?:join|resolve)\s*\(|\bfs\.[A-Za-z_$][A-Za-z0-9_$]*\s*\()

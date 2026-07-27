@@ -10,8 +10,11 @@ source "$script_dir/security-tool-versions.env"
 evidence_dir="${1:-${TMPDIR:-/tmp}/klms-security-evidence}"
 scanner_root="${2:-${KLMS_SECURITY_SCANNER_ROOT:-${TMPDIR:-/tmp}/klms-security-scanners}}"
 rules_root="$scanner_root/semgrep-rules-$SEMGREP_RULES_COMMIT"
+javascript_audit_rules_root="$rules_root/javascript/lang/security/audit"
 scan_tree="$(mktemp -d "${TMPDIR:-/tmp}/klms-security-source.XXXXXX")"
 policy_path="$script_dir/scanner-adjudications.json"
+semgrep_rule_prefix="${rules_root#/}"
+semgrep_rule_prefix="${semgrep_rule_prefix//\//.}"
 
 umask 077
 mkdir -p "$evidence_dir" "$scanner_root/cache"
@@ -65,6 +68,21 @@ require_version osv-scanner "$OSV_SCANNER_VERSION" "$(osv-scanner --version | se
 
 git archive HEAD | tar -x -C "$scan_tree"
 
+run_clean_semgrep_report() {
+  local label="$1"
+  local report_name="$2"
+  shift 2
+  set +e
+  (
+    cd "$scan_tree"
+    semgrep scan --metrics=off --disable-version-check --error --jobs 1 \
+      --timeout 60 --timeout-threshold 0 --json "$@"
+  ) > "$evidence_dir/$report_name" 2> "$evidence_dir/$report_name.stderr"
+  local report_exit=$?
+  set -e
+  [[ "$report_exit" -eq 0 ]] || fail "$label"
+}
+
 runtime_python_expected="$(
   awk -F '==' '
     /^[[:space:]]*(#|$)/ { next }
@@ -91,6 +109,10 @@ set +e
 (
   cd "$scan_tree"
   semgrep scan --metrics=off --disable-version-check --error --jobs 1 --timeout 60 --timeout-threshold 0 --json \
+    --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.detect-non-literal-require" \
+    --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.detect-non-literal-fs-filename" \
+    --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.path-traversal.path-join-resolve-traversal" \
+    --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.unsafe-formatstring" \
     --config "$rules_root/python/lang/security" \
     --config "$rules_root/javascript/lang/security" \
     --config "$rules_root/bash/lang/security" \
@@ -102,6 +124,38 @@ set +e
 semgrep_exit=$?
 set -e
 [[ "$semgrep_exit" -eq 0 || "$semgrep_exit" -eq 1 ]] || fail semgrep
+
+# Four broad taint rules hit Semgrep's internal fixpoint limit on two unusually
+# large scripts. Keep full coverage everywhere else, then scan the safe subsets
+# independently. The JXA downloader cannot use the Node sinks those rules model;
+# a non-taint boundary rule makes any future introduction fail closed.
+run_clean_semgrep_report \
+  semgrep-expensive-production \
+  semgrep-expensive-production.json \
+  --config "$javascript_audit_rules_root/detect-non-literal-require.yaml" \
+  --config "$javascript_audit_rules_root/detect-non-literal-fs-filename.yaml" \
+  --config "$javascript_audit_rules_root/path-traversal/path-join-resolve-traversal.yaml" \
+  --config "$javascript_audit_rules_root/unsafe-formatstring.yaml" \
+  --exclude "src/js/download_klms_files.js" \
+  --exclude "deploy/relay/test_relay.mjs" \
+  src tools deploy apps
+run_clean_semgrep_report \
+  semgrep-download-jxa \
+  semgrep-download-jxa.json \
+  --config "$javascript_audit_rules_root/unsafe-formatstring.yaml" \
+  src/js/download_klms_files.js
+run_clean_semgrep_report \
+  semgrep-relay-test \
+  semgrep-relay-test.json \
+  --config "$javascript_audit_rules_root/detect-non-literal-require.yaml" \
+  --config "$javascript_audit_rules_root/detect-non-literal-fs-filename.yaml" \
+  --config "$javascript_audit_rules_root/path-traversal/path-join-resolve-traversal.yaml" \
+  deploy/relay/test_relay.mjs
+run_clean_semgrep_report \
+  semgrep-download-jxa-boundary \
+  semgrep-download-jxa-boundary.json \
+  --config "$scan_tree/tools/security/semgrep-jxa-node-sinks.yml" \
+  src/js/download_klms_files.js
 
 bandit -r "$scan_tree/src/python" -lll -q -f json -o "$evidence_dir/bandit.json" \
   > "$evidence_dir/bandit.stdout" 2>&1 || fail bandit
