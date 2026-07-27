@@ -52,7 +52,7 @@
     },
     {
       "id": "mac-runtime",
-      "command": "KLMS_READINESS_REQUIRE_CLEAN=1 KLMS_PAYLOAD_REQUIRE_CLEAN=1 KLMS_READINESS_SWIFT_TESTS=0 KLMS_READINESS_IOS_BUILD=0 KLMS_READINESS_IOS_LAUNCH=0 tools/verify_klms_app_readiness.sh",
+      "command": "KLMS_READINESS_REQUIRE_CLEAN=1 KLMS_PAYLOAD_REQUIRE_CLEAN=1 KLMS_READINESS_SWIFT_TESTS=0 KLMS_READINESS_IOS_BUILD=0 KLMS_READINESS_IOS_LAUNCH=0 KLMS_MAC_AX_SAFE_FIXTURE=1 KLMS_MAC_AX_SCREENSHOT_DIR=<isolated-path> tools/verify_klms_app_readiness.sh",
       "execution": {
         "workingDirectory": ".",
         "environment": {
@@ -60,7 +60,9 @@
           "KLMS_PAYLOAD_REQUIRE_CLEAN": "1",
           "KLMS_READINESS_SWIFT_TESTS": "0",
           "KLMS_READINESS_IOS_BUILD": "0",
-          "KLMS_READINESS_IOS_LAUNCH": "0"
+          "KLMS_READINESS_IOS_LAUNCH": "0",
+          "KLMS_MAC_AX_SAFE_FIXTURE": "1",
+          "KLMS_MAC_AX_SCREENSHOT_DIR": "<isolated-path>"
         },
         "timeoutSeconds": 1800,
         "maxOutputBytes": 67108864,

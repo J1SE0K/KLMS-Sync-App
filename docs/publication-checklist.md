@@ -28,6 +28,12 @@ The first command should show only intentional source/documentation changes. The
 
 ## Verification
 
+`docs/quality-gate-inventory.json` and the exact-candidate receipt are the current execution
+contract. Historical strict-gate specifications document design intent but cannot authorize
+a different command or skipped mandatory test. Mandatory gates allow zero skips; a
+complementary iPhone/iPad target may omit a scenario only when the required cross-device
+matrix executes it and the inventory-bound aggregate proves complete coverage.
+
 Run syntax checks and focused tests:
 
 ```sh

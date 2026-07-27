@@ -578,6 +578,7 @@ private func verifyAdaptiveResize(appElement: AXUIElement) throws {
     }
     defer {
         try? setAccessibilityWindowSize(originalFrame.size, window: window)
+        try? setAccessibilityWindowPosition(originalFrame.origin, window: window)
     }
 
     let verificationWidths: [(width: CGFloat, mode: String)] = [
@@ -771,13 +772,13 @@ private func verifyNavigationTransitionRanges(
     try setAccessibilityWindowSize(CGSize(width: 1_200, height: height), window: window)
     try verifyWorkspaceNavigation(appElement: appElement, target: dashboard)
 
-    let samples: [(width: CGFloat, contentMode: String, navigationMode: String?, navigationWidth: CGFloat)] = [
-        (640, "compact", nil, 0),
-        (720, "compact", nil, 0),
-        (759, "medium", nil, 0),
-        (760, "compact", "rail", 65),
-        (1_199, "wide", "rail", 65),
-        (1_200, "wide", "sidebar", 185),
+    let samples: [(label: String, width: CGFloat, contentMode: String, navigationMode: String?, navigationWidth: CGFloat)] = [
+        ("640", 640, "compact", nil, 0),
+        ("720", 720, "compact", nil, 0),
+        ("759.5", 759.5, "medium", nil, 0),
+        ("760", 760, "compact", "rail", 65),
+        ("1199.5", 1_199.5, "wide", "rail", 65),
+        ("1200", 1_200, "wide", "sidebar", 185),
     ]
 
     for sample in samples {
@@ -788,7 +789,7 @@ private func verifyNavigationTransitionRanges(
             timeout: timeout
         ) != nil else {
             throw SmokeFailure.layoutOverlap(
-                "Content mode \(sample.contentMode) is missing at transition width \(Int(sample.width))."
+                "Content mode \(sample.contentMode) is missing at transition width \(sample.label)."
             )
         }
         if let navigationMode = sample.navigationMode {
@@ -808,7 +809,7 @@ private func verifyNavigationTransitionRanges(
             abs(navigationFrame.width - sample.navigationWidth) <= 2,
             abs(contentFrame.minX - navigationFrame.maxX) <= 2 else {
                 throw SmokeFailure.layoutOverlap(
-                    "Navigation \(navigationMode) must be exactly \(Int(sample.navigationWidth))pt and meet the document edge at transition width \(Int(sample.width))."
+                    "Navigation \(navigationMode) must be exactly \(Int(sample.navigationWidth))pt and meet the document edge at transition width \(sample.label)."
                 )
             }
         } else {
@@ -821,7 +822,7 @@ private func verifyNavigationTransitionRanges(
                 timeout: timeout
             ) else {
                 throw SmokeFailure.layoutOverlap(
-                    "Compact navigation is missing at transition width \(Int(sample.width))."
+                    "Compact navigation is missing at transition width \(sample.label)."
                 )
             }
             guard let contentRoot = waitForElement(
@@ -832,7 +833,7 @@ private func verifyNavigationTransitionRanges(
             let contentFrame = accessibilityFrame(of: contentRoot),
             abs(contentFrame.width - sample.width) <= 2 else {
                 throw SmokeFailure.layoutOverlap(
-                    "Hidden navigation must be exactly 0pt at transition width \(Int(sample.width))."
+                    "Hidden navigation must be exactly 0pt at transition width \(sample.label)."
                 )
             }
             if sample.width == 720 {
@@ -843,9 +844,89 @@ private func verifyNavigationTransitionRanges(
             appElement: appElement,
             rootIdentifier: dashboard.contentRootIdentifier,
             viewportIdentifier: dashboard.scrollIdentifier,
-            context: "dashboard transition width \(Int(sample.width))"
+            context: "dashboard transition width \(sample.label)"
         )
-        try captureScreenshotIfRequested(named: "transition-\(Int(sample.width))")
+        try captureScreenshotIfRequested(named: "transition-\(sample.label)")
+    }
+
+    try verifyRepeatedNavigationBoundaryCrossings(
+        appElement: appElement,
+        window: window,
+        height: height,
+        dashboard: dashboard
+    )
+}
+
+private func verifyRepeatedNavigationBoundaryCrossings(
+    appElement: AXUIElement,
+    window: AXUIElement,
+    height: CGFloat,
+    dashboard: WorkspaceSmokeTarget
+) throws {
+    let samples: [(width: CGFloat, contentMode: String, navigationMode: String?)] = [
+        (759, "medium", nil),
+        (760, "compact", "rail"),
+        (1_199, "wide", "rail"),
+        (1_200, "wide", "sidebar"),
+    ]
+
+    for crossing in 0..<20 {
+        let sample = samples[crossing % samples.count]
+        try setAccessibilityWindowSize(CGSize(width: sample.width, height: height), window: window)
+        guard waitForElement(
+            withIdentifier: "workspace-layout-mode-\(sample.contentMode)",
+            in: appElement,
+            timeout: timeout
+        ) != nil else {
+            throw SmokeFailure.layoutOverlap(
+                "Repeated resize crossing \(crossing + 1) lost content mode \(sample.contentMode)."
+            )
+        }
+        if let navigationMode = sample.navigationMode {
+            guard waitForElement(
+                withIdentifier: "workspace-navigation-mode-\(navigationMode)",
+                in: appElement,
+                timeout: timeout
+            ) != nil else {
+                throw SmokeFailure.layoutOverlap(
+                    "Repeated resize crossing \(crossing + 1) lost navigation mode \(navigationMode)."
+                )
+            }
+        } else {
+            guard waitForElementAbsence(
+                identifiers: ["workspace-navigation-mode-rail", "workspace-navigation-mode-sidebar"],
+                in: appElement,
+                timeout: timeout
+            ) else {
+                throw SmokeFailure.layoutOverlap(
+                    "Repeated resize crossing \(crossing + 1) did not hide navigation."
+                )
+            }
+        }
+        let selectionIsPreserved: Bool
+        if sample.navigationMode == nil {
+            selectionIsPreserved = waitForElement(
+                withIdentifier: dashboard.renderedIdentifier,
+                in: appElement,
+                timeout: timeout
+            ) != nil && waitForElement(
+                withIdentifier: "workspace-compact-menu",
+                in: appElement,
+                timeout: timeout
+            ) != nil
+        } else {
+            selectionIsPreserved = waitForSelectedValue(
+                identifier: dashboard.buttonIdentifier,
+                in: appElement,
+                timeout: 0.5
+            )
+        }
+        guard selectionIsPreserved,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == targetProcessIdentifier else {
+            throw SmokeFailure.layoutOverlap(
+                "Repeated resize crossing \(crossing + 1) lost the selected workspace or app focus."
+            )
+        }
     }
 }
 
@@ -1125,25 +1206,35 @@ private func setAccessibilityWindowSize(_ requestedSize: CGSize, window: AXUIEle
 }
 
 private func ensureAccessibilityWindowFits(_ requestedSize: CGSize, window: AXUIElement) throws {
-    guard let currentFrame = accessibilityFrame(of: window),
-          let screen = NSScreen.screens.first(where: {
-              currentFrame.midX >= $0.frame.minX && currentFrame.midX <= $0.frame.maxX
-          }) ?? NSScreen.main else {
+    guard let currentFrame = accessibilityFrame(of: window) else {
         return
     }
 
+    let displayFrame = activeDisplayBounds(
+        containing: CGPoint(x: currentFrame.midX, y: currentFrame.midY)
+    )
     let horizontalInset: CGFloat = 12
-    let visibleFrame = screen.visibleFrame
-    let minimumX = visibleFrame.minX + horizontalInset
-    let maximumX = visibleFrame.maxX - requestedSize.width - horizontalInset
+    let topInset: CGFloat = 40
+    let bottomInset: CGFloat = 24
+    let minimumX = displayFrame.minX + horizontalInset
+    let maximumX = displayFrame.maxX - requestedSize.width - horizontalInset
+    let minimumY = displayFrame.minY + topInset
+    let maximumY = displayFrame.maxY - requestedSize.height - bottomInset
     let targetX = maximumX >= minimumX
         ? min(max(currentFrame.minX, minimumX), maximumX)
-        : visibleFrame.minX
-    guard abs(currentFrame.minX - targetX) > 1 else {
+        : displayFrame.minX
+    let targetY = maximumY >= minimumY
+        ? min(max(currentFrame.minY, minimumY), maximumY)
+        : displayFrame.minY
+    guard abs(currentFrame.minX - targetX) > 1 || abs(currentFrame.minY - targetY) > 1 else {
         return
     }
 
-    var position = CGPoint(x: targetX, y: currentFrame.minY)
+    try setAccessibilityWindowPosition(CGPoint(x: targetX, y: targetY), window: window)
+}
+
+private func setAccessibilityWindowPosition(_ requestedPosition: CGPoint, window: AXUIElement) throws {
+    var position = requestedPosition
     guard let value = AXValueCreate(.cgPoint, &position) else {
         throw SmokeFailure.layoutOverlap("Could not create an accessibility window-position value.")
     }
@@ -1154,12 +1245,30 @@ private func ensureAccessibilityWindowFits(_ requestedSize: CGSize, window: AXUI
 
     let deadline = Date().addingTimeInterval(min(timeout, 1.0))
     repeat {
-        if let frame = accessibilityFrame(of: window), abs(frame.minX - targetX) <= 2 {
+        if let frame = accessibilityFrame(of: window),
+           abs(frame.minX - requestedPosition.x) <= 2,
+           abs(frame.minY - requestedPosition.y) <= 2 {
             return
         }
         Thread.sleep(forTimeInterval: 0.05)
     } while Date() < deadline
     throw SmokeFailure.layoutOverlap("KLMS window did not reach its safe resize position.")
+}
+
+private func activeDisplayBounds(containing point: CGPoint) -> CGRect {
+    var count: UInt32 = 0
+    guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else {
+        return CGDisplayBounds(CGMainDisplayID())
+    }
+    var displays = Array(repeating: CGDirectDisplayID(), count: Int(count))
+    guard CGGetActiveDisplayList(count, &displays, &count) == .success else {
+        return CGDisplayBounds(CGMainDisplayID())
+    }
+    return displays
+        .prefix(Int(count))
+        .map(CGDisplayBounds)
+        .first(where: { $0.contains(point) })
+        ?? CGDisplayBounds(CGMainDisplayID())
 }
 
 private func verifyWorkspaceContentLayout(
@@ -1427,6 +1536,18 @@ private func captureScreenshotIfRequested(named rawName: String) throws {
         at: screenshotDirectoryURL,
         withIntermediateDirectories: true
     )
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o700],
+        ofItemAtPath: screenshotDirectoryURL.path
+    )
+    if let targetProcessIdentifier {
+        let appElement = AXUIElementCreateApplication(targetProcessIdentifier)
+        if let window = firstAccessibilityWindow(in: appElement),
+           let frame = accessibilityFrame(of: window) {
+            try ensureAccessibilityWindowFits(frame.size, window: window)
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
     guard let windowID = waitForVisibleDashboardWindowID() else {
         throw SmokeFailure.screenshotFailed("Could not find a visible KLMS Sync window to capture.")
     }
@@ -1434,11 +1555,23 @@ private func captureScreenshotIfRequested(named rawName: String) throws {
         .replacingOccurrences(of: "[^A-Za-z0-9._-]+", with: "-", options: .regularExpression)
         .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     let outputURL = screenshotDirectoryURL.appendingPathComponent("\(safeName).png")
-    let captured = captureWindowUsingScreencapture(windowID: windowID, to: outputURL)
+    var captured = false
+    for attempt in 0..<3 {
+        try? FileManager.default.removeItem(at: outputURL)
+        captured = captureWindowUsingScreencapture(windowID: windowID, to: outputURL)
+        if captured {
+            break
+        }
+        Thread.sleep(forTimeInterval: 0.2 * Double(attempt + 1))
+    }
     guard captured,
           FileManager.default.fileExists(atPath: outputURL.path) else {
         throw SmokeFailure.screenshotFailed("Could not capture KLMS Sync screenshot for '\(rawName)'.")
     }
+    try FileManager.default.setAttributes(
+        [.posixPermissions: 0o600],
+        ofItemAtPath: outputURL.path
+    )
     print("screenshot: \(outputURL.path)")
 }
 

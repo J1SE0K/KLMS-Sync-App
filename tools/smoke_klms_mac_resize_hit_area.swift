@@ -68,7 +68,7 @@ private func runProbe() throws {
         try? setSize(originalSize, on: window, attribute: kAXSizeAttribute as CFString)
     }
 
-    for offset in [CGFloat(2), 10] {
+    for offset in [CGFloat(2), 10, 11.5] {
         try setPoint(CGPoint(x: 120, y: 120), on: window, attribute: kAXPositionAttribute as CFString)
         try setSize(CGSize(width: 900, height: 650), on: window, attribute: kAXSizeAttribute as CFString)
         Thread.sleep(forTimeInterval: 0.35)
@@ -94,7 +94,7 @@ private func runProbe() throws {
         }
     }
 
-    print("ok: installed Mac app resizes from the native edge and the expanded 10pt inner hit area")
+    print("ok: installed Mac app resizes from the native edge and the expanded 12pt inner hit area")
 }
 
 private func waitUntilFrontmost(

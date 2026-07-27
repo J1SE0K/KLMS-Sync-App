@@ -1792,6 +1792,14 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "0",
         )
         self.assertEqual(
+            mac_runtime_gate["execution"]["environment"]["KLMS_MAC_AX_SAFE_FIXTURE"],
+            "1",
+        )
+        self.assertEqual(
+            mac_runtime_gate["execution"]["environment"]["KLMS_MAC_AX_SCREENSHOT_DIR"],
+            "<isolated-path>",
+        )
+        self.assertEqual(
             inventory["releaseEvidenceReceipt"]["gateRunner"],
             "tools/run_release_gate.sh <gate-id>",
         )

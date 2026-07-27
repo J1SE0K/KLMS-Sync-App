@@ -18,6 +18,7 @@ else
   MAC_APP_PATH="$READINESS_TEMP_DIR/KLMS Sync.app"
 fi
 MAC_RELAUNCH_DELAY_SECONDS="${KLMS_READINESS_MAC_RELAUNCH_DELAY_SECONDS:-5}"
+MAC_SAFE_CAPTURE_FIXTURE="${KLMS_MAC_AX_SAFE_FIXTURE:-0}"
 ALLOW_DESTRUCTIVE_ACTIONS="${KLMS_READINESS_ALLOW_DESTRUCTIVE_ACTIONS:-0}"
 REQUIRE_CLEAN_WORKTREE="${KLMS_READINESS_REQUIRE_CLEAN:-0}"
 CANDIDATE_REVISION="unavailable"
@@ -131,7 +132,12 @@ relaunch_mac_app() {
     print -ru2 -- "Timed out waiting for previous KLMS Sync processes to terminate."
     return 1
   fi
-  /usr/bin/open -n "$MAC_APP_PATH"
+  if [[ "$MAC_SAFE_CAPTURE_FIXTURE" == "1" ]]; then
+    KLMS_MAC_SAFE_CAPTURE_FIXTURE=1 \
+      "$MAC_APP_PATH/Contents/MacOS/KLMSMac" >/dev/null 2>&1 &!
+  else
+    /usr/bin/open -n "$MAC_APP_PATH"
+  fi
   for _ in {1..100}; do
     if /usr/bin/pgrep -x KLMSMac >/dev/null 2>&1; then
       /bin/sleep "$MAC_RELAUNCH_DELAY_SECONDS"

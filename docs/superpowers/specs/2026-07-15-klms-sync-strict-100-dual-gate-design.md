@@ -1,9 +1,13 @@
 # KLMS Sync 엄격한 100점 이중 게이트 설계
 
 - 작성일: 2026-07-15
-- 상태: 사용자 설계 승인 완료
+- 상태: 사용자 설계 승인 완료, 현재 실행에는 역사적 설계 근거로 사용
 - 적용 대상: KLMS Sync Mac, iPhone, iPad, Windows, Cloudflare relay, 자체 호스팅 relay. 평가할 source candidate는 5절의 immutable identity로 고정한다.
 - 성격: 기존 세부 설계를 연결하고 최종 100점 판정을 통제하는 상위 품질 계약
+
+현재 후보의 실제 실행 명령, 허용 skip, 증거 상태와 점수 판정은
+`docs/quality-gate-inventory.json` 및 그 inventory에 결합된 exact-SHA receipt가 우선한다.
+이 문서는 설계 의도와 근거를 보존하지만 현재 inventory 또는 receipt를 덮어쓰지 않는다.
 
 ## 1. 목적
 

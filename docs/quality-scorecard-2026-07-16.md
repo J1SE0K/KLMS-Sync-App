@@ -12,6 +12,14 @@ evidence-certified**. Passing automated checks alone is not described as a liter
 The generated `evidenceCertifiedScore` is calculated from the committed 100-point rubric
 and its active caps; the generator rejects a malformed or non-100-point score model.
 
+For current executions, `docs/quality-gate-inventory.json`, the exact-SHA gate logs, and the
+generated receipt are the operational authority. Earlier design specifications under
+`docs/superpowers/specs/` remain design history and rationale; they do not replace or amend
+an inventory command, skip allowance, or receipt result. Every mandatory gate allows zero
+skips. A complementary iPhone/iPad test target may omit a scenario only when the union of
+the required iPhone and iPad matrix executes that scenario and the inventory-bound summary
+proves full coverage with zero mandatory skips.
+
 ## Scoring model
 
 | Area | Points |
