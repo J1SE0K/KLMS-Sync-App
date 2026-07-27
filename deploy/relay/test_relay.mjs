@@ -9,8 +9,13 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { consumeBoundedRateWindow } from "../../tools/klms_bounded_rate_window.mjs";
 import { redactPublicLogText } from "../../tools/klms_public_log_redactor.mjs";
+import {
+  admitRealtimeMessage,
+  realtimeRoleConnectionAllowed,
+} from "../../tools/klms_realtime_admission.mjs";
 
 assertBoundedRateWindowContract(consumeBoundedRateWindow);
+assertRealtimeAdmissionContract();
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
 const serverPath = path.join(projectRoot, "tools", "klms_relay_server.mjs");
@@ -248,7 +253,38 @@ try {
   const pong = await socket.next();
   assert.equal(pong.type, "pong");
   assert.equal(pong.revision, burstTarget.revision);
-  socket.close();
+  await socket.close();
+
+  {
+    const clients = [];
+    for (let index = 0; index < 24; index += 1) {
+      const client = await rawWebSocketUpgrade("/v1/events?role=client", clientToken);
+      assert.equal(client.status, 101);
+      await client.next();
+      clients.push(client);
+    }
+    assert.equal(
+      (await rawWebSocketUpgrade("/v1/events?role=client", clientToken)).status,
+      429,
+      "client sockets must not consume the worker reservation",
+    );
+    const reservedWorker = await rawWebSocketUpgrade("/v1/events?role=worker", workerToken);
+    assert.equal(reservedWorker.status, 101);
+    await reservedWorker.next();
+    await reservedWorker.close();
+    await Promise.all(clients.map((client) => client.close()));
+  }
+
+  {
+    const flooded = await rawWebSocketUpgrade("/v1/events?role=client", clientToken);
+    assert.equal(flooded.status, 101);
+    await flooded.next();
+    for (let index = 0; index < 31; index += 1) flooded.send({ type: "ping" });
+    for (let index = 0; index < 30; index += 1) {
+      assert.equal((await flooded.next()).type, "pong");
+    }
+    await assert.rejects(flooded.next(), /websocket closed/);
+  }
 
   await jsonRequest(`/v1/commands/${command.id}`, {
     method: "PUT",
@@ -1705,6 +1741,7 @@ function rawWebSocketUpgrade(route, token) {
         return;
       }
       const queue = rawWebSocketJSONQueue(socket, handshake.subarray(boundary + 4));
+      const closed = new Promise((closedResolve) => socket.once("close", closedResolve));
       resolve({
         status,
         next: queue.next,
@@ -1714,6 +1751,7 @@ function rawWebSocketUpgrade(route, token) {
         },
         close() {
           socket.destroy();
+          return closed;
         },
       });
     };
@@ -1734,6 +1772,31 @@ function rawWebSocketUpgrade(route, token) {
       ].join("\r\n"));
     });
   });
+}
+
+function assertRealtimeAdmissionContract() {
+  assert.equal(realtimeRoleConnectionAllowed(Array(23).fill("client"), "client"), true);
+  assert.equal(realtimeRoleConnectionAllowed(Array(24).fill("client"), "client"), false);
+  assert.equal(realtimeRoleConnectionAllowed(Array(24).fill("client"), "worker"), true);
+  assert.equal(realtimeRoleConnectionAllowed(Array(8).fill("worker"), "worker"), false);
+
+  let state = null;
+  for (let index = 0; index < 30; index += 1) {
+    const admission = admitRealtimeMessage(state, "ping", 1_000);
+    assert.equal(admission.allowed, true);
+    state = admission.state;
+  }
+  assert.equal(admitRealtimeMessage(state, "ping", 1_000).allowed, false);
+  assert.equal(admitRealtimeMessage(state, "ping", 1_500).allowed, true);
+
+  state = null;
+  for (let index = 0; index < 3; index += 1) {
+    const admission = admitRealtimeMessage(state, "snapshot-request", 2_000);
+    assert.equal(admission.allowed, true);
+    state = admission.state;
+  }
+  assert.equal(admitRealtimeMessage(state, "snapshot-request", 2_000).allowed, false);
+  assert.equal(admitRealtimeMessage(state, "snapshot-request", 12_000).allowed, true);
 }
 
 function rawWebSocketJSONQueue(socket, initialData = Buffer.alloc(0)) {

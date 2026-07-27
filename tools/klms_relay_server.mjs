@@ -9,6 +9,10 @@ import os from "node:os";
 import path from "node:path";
 import { consumeBoundedRateWindow } from "./klms_bounded_rate_window.mjs";
 import { redactPublicLogText } from "./klms_public_log_redactor.mjs";
+import {
+  admitRealtimeMessage,
+  realtimeRoleConnectionAllowed,
+} from "./klms_realtime_admission.mjs";
 
 const HOST = process.env.KLMS_RELAY_HOST || "127.0.0.1";
 const PORT = Number.parseInt(process.env.KLMS_RELAY_PORT || "18484", 10);
@@ -20,7 +24,6 @@ const DB_PATH = process.env.KLMS_RELAY_DB
   : path.join(os.homedir(), ".local", "state", "klms-sync-relay.sqlite");
 const MAX_BODY_BYTES = 1024 * 1024;
 const MIN_RELAY_TOKEN_BYTES = 32;
-const MAX_REALTIME_CONNECTIONS = 32;
 const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
 const MAX_REALTIME_FRAME_BYTES = 64 * 1024;
 const MAX_REALTIME_SNAPSHOT_BYTES = 8 * 1024 * 1024;
@@ -2380,7 +2383,10 @@ function handleWebSocketUpgrade(request, socket, head) {
       rejectWebSocketUpgrade(socket, 401, "unauthorized");
       return;
     }
-    if (realtimeClients.size >= MAX_REALTIME_CONNECTIONS) {
+    if (!realtimeRoleConnectionAllowed(
+      Array.from(realtimeClients, (client) => client.role),
+      role,
+    )) {
       rejectWebSocketUpgrade(socket, 429, "too many realtime connections");
       return;
     }
@@ -2420,6 +2426,7 @@ function handleWebSocketUpgrade(request, socket, head) {
       queuedManualRequest: null,
       outboundSequence: 0,
       buffer: Buffer.alloc(0),
+      realtimeAdmission: null,
     };
     realtimeClients.add(client);
     const hello = relayEventEnvelope({
@@ -2503,10 +2510,18 @@ function handleWebSocketData(client, chunk) {
       return;
     }
     if (opcode === 0x9) {
+      if (!consumeRealtimeMessageAdmission(client, "control-ping")) return;
       client.socket.write(encodeWebSocketFrame(payload, 0xA));
       continue;
     }
-    if (opcode !== 0x1) continue;
+    if (opcode === 0xA) {
+      if (!consumeRealtimeMessageAdmission(client, "control-pong")) return;
+      continue;
+    }
+    if (opcode !== 0x1) {
+      closeWebSocketClient(client, 1003, "text messages only");
+      return;
+    }
     const text = payload.toString("utf8");
     let message = null;
     let isPing = text === "ping";
@@ -2519,6 +2534,7 @@ function handleWebSocketData(client, chunk) {
         return;
       }
     }
+    if (!consumeRealtimeMessageAdmission(client, isPing ? "ping" : message?.type)) return;
     if (isPing) {
       client.socket.write(encodeWebSocketFrame(JSON.stringify(relayEventEnvelope({
         type: "pong",
@@ -2543,6 +2559,14 @@ function handleWebSocketData(client, chunk) {
     closeWebSocketClient(client, 1002, "unsupported message");
     return;
   }
+}
+
+function consumeRealtimeMessageAdmission(client, messageType) {
+  const admission = admitRealtimeMessage(client.realtimeAdmission, messageType);
+  client.realtimeAdmission = admission.state;
+  if (admission.allowed) return true;
+  closeWebSocketClient(client, 1008, admission.reason);
+  return false;
 }
 
 function handleRealtimeSnapshotRequest(client, message) {

@@ -238,6 +238,91 @@ async function runSmoke() {
   }
 
   {
+    const clientSockets = Array.from({ length: 24 }, () => new FakeRealtimeWebSocket({ role: "client" }));
+    const clientRoom = new RelayRealtimeRoom({ getWebSockets: () => clientSockets }, env);
+    const clientLimit = await clientRoom.fetch(new Request(
+      "https://klms-sync-relay.internal/connect?role=client",
+      { headers: { Upgrade: "websocket" } },
+    ));
+    assert.equal(clientLimit.status, 429);
+
+    const workerSockets = Array.from({ length: 8 }, () => new FakeRealtimeWebSocket({ role: "worker" }));
+    const workerRoom = new RelayRealtimeRoom({ getWebSockets: () => workerSockets }, env);
+    const workerLimit = await workerRoom.fetch(new Request(
+      "https://klms-sync-relay.internal/connect?role=worker",
+      { headers: { Upgrade: "websocket" } },
+    ));
+    assert.equal(workerLimit.status, 429);
+  }
+
+  {
+    const sessionID = crypto.randomUUID();
+    const socket = new FakeRealtimeWebSocket({
+      role: "client",
+      sessionID,
+      lastKnownRevision: 7,
+    });
+    const room = new RelayRealtimeRoom({ getWebSockets: () => [socket] }, env);
+    const prepareCount = env.RELAY_DB.prepareCount;
+    for (let index = 0; index < 31 && !socket.closed; index += 1) {
+      await room.webSocketMessage(socket, JSON.stringify({ type: "ping" }));
+    }
+    assert.deepEqual(socket.closed, { code: 1008, reason: "realtime message rate limit exceeded" });
+    assert.equal(env.RELAY_DB.prepareCount, prepareCount, "realtime pings must not read D1");
+    assert.equal(JSON.parse(socket.sent[0]).revision, 7);
+
+    const invalidSnapshotSocket = new FakeRealtimeWebSocket({
+      role: "client",
+      sessionID: crypto.randomUUID(),
+      lastKnownRevision: 7,
+    });
+    const invalidSnapshotRoom = new RelayRealtimeRoom(
+      { getWebSockets: () => [invalidSnapshotSocket] },
+      env,
+    );
+    await invalidSnapshotRoom.webSocketMessage(invalidSnapshotSocket, JSON.stringify({
+      version: 2,
+      type: "snapshot-request",
+      sessionID: invalidSnapshotSocket.attachment.sessionID,
+      requestID: crypto.randomUUID(),
+      revision: 7,
+      scopes: ["status"],
+    }));
+    assert.equal(invalidSnapshotSocket.closed?.code, 1002);
+    assert.equal(env.RELAY_DB.prepareCount, prepareCount, "invalid snapshot metadata must not read D1");
+  }
+
+  {
+    const firstSocket = new FakeRealtimeWebSocket({
+      role: "client",
+      sessionID: crypto.randomUUID(),
+      lastKnownRevision: 0,
+    });
+    const secondSocket = new FakeRealtimeWebSocket({
+      role: "worker",
+      sessionID: crypto.randomUUID(),
+      lastKnownRevision: 0,
+    });
+    const room = new RelayRealtimeRoom({ getWebSockets: () => [firstSocket, secondSocket] }, env);
+    let releaseOperation;
+    const operationGate = new Promise((resolve) => { releaseOperation = resolve; });
+    room.handleWebSocketMessage = async () => operationGate;
+    const pending = [];
+    for (let index = 0; index < 16; index += 1) {
+      pending.push(room.webSocketMessage(firstSocket, JSON.stringify({ type: "ping" })));
+      pending.push(room.webSocketMessage(secondSocket, JSON.stringify({ type: "ping" })));
+    }
+    await room.webSocketMessage(secondSocket, JSON.stringify({ type: "ping" }));
+    assert.deepEqual(secondSocket.closed, {
+      code: 1013,
+      reason: "realtime operation queue capacity exceeded",
+    });
+    releaseOperation();
+    await Promise.all(pending);
+    assert.equal(room.pendingInboundOperations, 0);
+  }
+
+  {
     const payload = await expectJSON("/v1/status");
     assert.equal(payload.ok, true);
     assert.equal(payload.status.phase, "idle");

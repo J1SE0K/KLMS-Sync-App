@@ -172,6 +172,8 @@ Mac 앱은 상태를 올릴 때 과제, 시험, 공지, 파일 목록도 같이 
 
 JSON 요청 본문은 스트림을 읽는 동안 1 MiB로 제한한다. 잘못된 JSON은 400, 제한을 넘긴 본문은 413으로 응답한다. 인증된 client/worker 요청과 인증 실패 요청은 서로 다른 rate-limit bucket을 사용하므로, 잘못된 토큰 트래픽이 정상 앱 요청의 quota를 소진하지 않는다. 공개 run log는 서버 저장 경계에서 fail-closed 방식으로 정리하며 credential, URL, 이메일, Unix/macOS/Windows 절대 경로가 남은 줄은 게시하지 않는다.
 
+WebSocket은 relay 인스턴스당 총 32개, client 24개, worker 8개까지 허용한다. 각 연결의 inbound frame은 최대 4 KiB이며 token bucket은 순간 30개, 초당 2개를 보충한다. snapshot 요청은 별도 bucket으로 순간 3개, 분당 6개를 보충한다. Cloudflare coordinator는 동시에 대기하는 inbound 작업을 32개로 제한하고, 한도를 넘는 연결은 재시도 가능한 오류로 닫는다. 두 backend 모두 snapshot payload를 8 MiB와 254 chunk로 제한한다.
+
 - `GET /healthz`: process liveness 확인. 인증 없음.
 - `GET /readyz`: DB schema와 WebSocket 준비 확인. 준비되지 않으면 503. worker 토큰 필요.
 - `GET /v1/events?role=client|worker&sinceRevision=N`: 인증된 WebSocket. 연결 직후 `hello`, 변경 시 `changed`, heartbeat에 `pong`을 보내며 각 frame은 현재 `revision`과 변경 `scopes`를 포함한다.

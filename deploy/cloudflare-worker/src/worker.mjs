@@ -1,12 +1,16 @@
 import { redactPublicLogText } from "../../../tools/klms_public_log_redactor.mjs";
 import { consumeBoundedRateWindow } from "../../../tools/klms_bounded_rate_window.mjs";
+import {
+  admitRealtimeMessage,
+  realtimeRoleConnectionAllowed,
+} from "../../../tools/klms_realtime_admission.mjs";
 
 export { consumeBoundedRateWindow };
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const MIN_RELAY_TOKEN_BYTES = 32;
-const MAX_REALTIME_CONNECTIONS = 32;
 const MAX_REALTIME_MESSAGE_BYTES = 4 * 1024;
+const MAX_PENDING_REALTIME_INBOUND_OPERATIONS = 32;
 const MAX_REALTIME_FRAME_BYTES = 64 * 1024;
 const MAX_REALTIME_SNAPSHOT_BYTES = 8 * 1024 * 1024;
 const MAX_REALTIME_SNAPSHOT_CHUNKS = 254;
@@ -198,6 +202,8 @@ export class RelayRealtimeRoom {
     this.state = state;
     this.env = env;
     this.pendingSnapshots = new Map();
+    this.realtimeAdmissions = new Map();
+    this.pendingInboundOperations = 0;
     this.operationTail = Promise.resolve();
   }
 
@@ -209,28 +215,39 @@ export class RelayRealtimeRoom {
       }
       const role = parseRealtimeRole(url.searchParams.get("role"));
       if (!role) return sendJSON(400, { error: "role must be client or worker" });
-      if (this.state.getWebSockets().length >= MAX_REALTIME_CONNECTIONS) {
+      const existingRoles = this.state.getWebSockets().map((webSocket) => {
+        try {
+          return webSocket.deserializeAttachment()?.role;
+        } catch {
+          return null;
+        }
+      });
+      if (!realtimeRoleConnectionAllowed(existingRoles, role)) {
         return sendJSON(429, { error: "too many realtime connections" });
       }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       const sessionID = crypto.randomUUID();
       const publicBaseURL = String(request.headers.get("X-KLMS-Public-Base-URL") || "").trim();
-      server.serializeAttachment({
+      const attachment = {
         role,
         sessionID,
         publicBaseURL,
         connectedAt: new Date().toISOString(),
+        lastKnownRevision: 0,
         outboundSequence: 0,
         pendingSnapshot: null,
         queuedBroadcast: null,
         queuedManualRequest: null,
-      });
+      };
+      server.serializeAttachment(attachment);
       this.state.acceptWebSocket(server);
       let revision = 0;
       try {
         revision = await currentRelayRevision(database(this.env));
       } catch {}
+      attachment.lastKnownRevision = revision;
+      server.serializeAttachment(attachment);
       server.send(JSON.stringify(relayEventEnvelope({
         type: "hello",
         revision,
@@ -255,10 +272,6 @@ export class RelayRealtimeRoom {
   }
 
   webSocketMessage(webSocket, message) {
-    return this.enqueue(() => this.handleWebSocketMessage(webSocket, message));
-  }
-
-  async handleWebSocketMessage(webSocket, message) {
     if (typeof message !== "string") {
       webSocket.close(1003, "text messages only");
       return;
@@ -280,11 +293,40 @@ export class RelayRealtimeRoom {
       }
     }
     const attachment = webSocket.deserializeAttachment() || {};
+    if (["snapshot-request", "snapshot-ready"].includes(parsed?.type)
+        && (parsed?.version !== REALTIME_EVENT_VERSION
+          || parsed?.sessionID !== attachment.sessionID)) {
+      webSocket.close(1002, `invalid ${parsed.type}`);
+      return;
+    }
+    const admission = admitRealtimeMessage(
+      this.realtimeAdmissions.get(webSocket),
+      isPing ? "ping" : parsed?.type,
+    );
+    this.realtimeAdmissions.set(webSocket, admission.state);
+    if (!admission.allowed) {
+      webSocket.close(1008, admission.reason);
+      return;
+    }
+    if (this.pendingInboundOperations >= MAX_PENDING_REALTIME_INBOUND_OPERATIONS) {
+      this.realtimeAdmissions.delete(webSocket);
+      webSocket.close(1013, "realtime operation queue capacity exceeded");
+      return;
+    }
+    this.pendingInboundOperations += 1;
+    return this.enqueue(() => this.handleWebSocketMessage(webSocket, { parsed, isPing }))
+      .finally(() => {
+        this.pendingInboundOperations = Math.max(0, this.pendingInboundOperations - 1);
+      });
+  }
+
+  async handleWebSocketMessage(webSocket, message) {
+    const attachment = webSocket.deserializeAttachment() || {};
+    const { parsed, isPing } = message;
     if (isPing) {
-      let revision = 0;
-      try {
-        revision = await currentRelayRevision(database(this.env));
-      } catch {}
+      const revision = Number.isSafeInteger(attachment.lastKnownRevision)
+        ? Math.max(0, attachment.lastKnownRevision)
+        : 0;
       webSocket.send(JSON.stringify(relayEventEnvelope({
         type: "pong",
         revision,
@@ -314,9 +356,11 @@ export class RelayRealtimeRoom {
 
   async webSocketClose(webSocket) {
     this.pendingSnapshots.delete(webSocket);
+    this.realtimeAdmissions.delete(webSocket);
   }
   async webSocketError(webSocket) {
     this.pendingSnapshots.delete(webSocket);
+    this.realtimeAdmissions.delete(webSocket);
   }
 
   enqueue(task) {
@@ -446,6 +490,7 @@ export class RelayRealtimeRoom {
 
   reserveSnapshot(webSocket, attachment, prepared) {
     this.pendingSnapshots.set(webSocket, prepared);
+    attachment.lastKnownRevision = prepared.revision;
     attachment.pendingSnapshot = realtimeSnapshotDescriptor(prepared);
     webSocket.serializeAttachment(attachment);
   }

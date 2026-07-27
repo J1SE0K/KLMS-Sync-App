@@ -80,6 +80,7 @@ Mac 앱에는 같은 서버 주소와 `<KLMS_RELAY_WORKER_TOKEN>`을 입력한�
 - 배포·상태·백업·복원 스크립트는 credential env의 symlink를 거부하고 현재 사용자 소유인지 확인한 뒤 권한을 `0600`으로 고정한다.
 - 항목 작업 재시도는 body UUID 또는 `Idempotency-Key`를 재사용한다. 동일 key의 같은 요청은 한 번만 반영되고 다른 의도 재사용은 409다.
 - 파일 업로드는 body 수신 전에 quota와 object tombstone을 SQLite transaction으로 예약한다. 실패·중단 시 파일 삭제를 확인한 뒤 quota를 반환하고, 주기 정리는 tombstone과 알려지지 않은 orphan 파일을 회수한다.
+- WebSocket은 총 32개, client 24개, worker 8개로 제한한다. 연결별 frame rate는 순간 30개·초당 2개 보충, snapshot 요청은 순간 3개·분당 6개 보충이며 snapshot은 최대 8 MiB와 254 chunk다. Cloudflare coordinator의 동시 inbound 작업 queue도 32개로 제한한다.
 
 ## 업데이트
 

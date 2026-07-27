@@ -45,7 +45,7 @@ On the Mac worker, install the relay as a background service with:
 tools/install_klms_relay_agent.sh install
 ```
 
-The relay uses WebSocket realtime events with a short fallback check. Mac executes one sync command at a time. iPhone/iPad can still show the last server data when the Mac worker is off; new sync and file-link requests wait until the Mac worker is available.
+The relay uses authenticated WebSocket events for realtime updates and does not schedule dashboard polling. A one-shot HTTP snapshot is used only for initial bootstrap when no socket snapshot is available, after reconnect, or when a revision gap is detected. Mac executes one sync command at a time. iPhone/iPad can still show the last server data when the Mac worker is off; new sync and file-link requests wait until the Mac worker is available.
 
 The checked-in iPhone Xcode project is generated at:
 
