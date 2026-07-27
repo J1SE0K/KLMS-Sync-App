@@ -4584,7 +4584,6 @@ final class CompanionModel: ObservableObject {
                 return false
             }
         }
-        commitServerRelayConnection(serverURL: nextServerURL, serverToken: nextServerToken)
         serverRelayCredentialRecoveryRequired = false
         connectionMessage = "서버 연결 정보를 안전하게 저장했습니다. 최신 요약을 바로 불러옵니다."
         connectionSucceeded = nil
@@ -4687,7 +4686,6 @@ final class CompanionModel: ObservableObject {
 
     func clearServerRelayConnectionInfo() async {
         guard await persistServerRelayConnection(serverURL: "", serverToken: "") else { return }
-        commitServerRelayConnection(serverURL: "", serverToken: "")
         serverRelayCredentialRecoveryRequired = false
         connectionMessage = "서버 연결 정보를 지웠습니다."
         connectionSucceeded = nil
@@ -6432,15 +6430,12 @@ final class CompanionModel: ObservableObject {
         ) { envelope in
             Self.persistServerRelayConnectionEnvelope(envelope)
         }
+        let persistedGeneration: UInt64
         switch result {
-        case .persisted:
-            return true
+        case let .persisted(envelope):
+            persistedGeneration = envelope.generation
         case .superseded:
-            let message = "더 최신 연결 정보 저장 요청이 있어 이 변경은 적용하지 않았습니다."
-            connectionMessage = message
-            connectionSucceeded = false
-            errorMessage = message
-            return false
+            return markServerRelayConnectionPersistenceSuperseded()
         case .failed:
             let message = "서버 URL과 클라이언트 토큰을 함께 저장하지 못해 기존 연결 정보를 유지했습니다. 잠시 후 다시 시도해 주세요."
             connectionMessage = message
@@ -6449,6 +6444,23 @@ final class CompanionModel: ObservableObject {
             userAlert = UserAlert(title: "연결 정보 저장 실패", message: message)
             return false
         }
+        guard persistenceCoordinator.commitIfCurrent(
+            generation: persistedGeneration,
+            operation: {
+                commitServerRelayConnection(serverURL: serverURL, serverToken: serverToken)
+            }
+        ) else {
+            return markServerRelayConnectionPersistenceSuperseded()
+        }
+        return true
+    }
+
+    private func markServerRelayConnectionPersistenceSuperseded() -> Bool {
+        let message = "더 최신 연결 정보 저장 요청이 있어 이 변경은 적용하지 않았습니다."
+        connectionMessage = message
+        connectionSucceeded = false
+        errorMessage = message
+        return false
     }
 
     @discardableResult

@@ -247,6 +247,7 @@ final class CredentialPersistenceTests: XCTestCase {
         let operationStarted = DispatchSemaphore(value: 0)
         let allowFirstOperationToFinish = DispatchSemaphore(value: 0)
         let recorder = LockedStringRecorder()
+        let commitRecorder = LockedStringRecorder()
         let coordinator = CredentialPersistenceCoordinator(
             queueLabel: "credential-persistence-test-linearization"
         )
@@ -279,8 +280,18 @@ final class CredentialPersistenceTests: XCTestCase {
             secondResult,
             .persisted(VersionedCredentialEnvelope(generation: secondGeneration, value: "second"))
         )
-
         XCTAssertEqual(recorder.snapshot(), ["first", "second"])
+        XCTAssertFalse(
+            coordinator.commitIfCurrent(generation: firstGeneration) {
+                commitRecorder.append("first")
+            }
+        )
+        XCTAssertTrue(
+            coordinator.commitIfCurrent(generation: secondGeneration) {
+                commitRecorder.append("second")
+            }
+        )
+        XCTAssertEqual(commitRecorder.snapshot(), ["second"])
     }
 
     func testCoordinatorReportsStoreFailure() async {

@@ -179,6 +179,22 @@ public final class CredentialPersistenceCoordinator: @unchecked Sendable {
         return generation
     }
 
+    /// Commits in-memory state only while the matching persisted generation is
+    /// still current. The operation must not call back into this coordinator.
+    @discardableResult
+    public func commitIfCurrent(
+        generation expectedGeneration: UInt64,
+        operation: () -> Void
+    ) -> Bool {
+        generationLock.lock()
+        defer { generationLock.unlock() }
+        guard generation == expectedGeneration else {
+            return false
+        }
+        operation()
+        return true
+    }
+
     public func persist(
         _ value: String,
         generation expectedGeneration: UInt64,

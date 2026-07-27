@@ -174,6 +174,16 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
 
     func testServerConnectionPersistenceSerializesAtomicKeychainWrites() throws {
         let source = try iosSource()
+        let applyConnection = try sourceSlice(
+            source,
+            from: "func applyServerRelayConnection(serverURL rawURL:",
+            to: "private func commitServerRelayConnection("
+        )
+        let clearConnection = try sourceSlice(
+            source,
+            from: "func clearServerRelayConnectionInfo() async",
+            to: "private func resetRemoteSessionForConnectionChange()"
+        )
         let persistence = try sourceSlice(
             source,
             from: "private func persistServerRelayConnection(serverURL:",
@@ -194,6 +204,12 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertTrue(persistenceSource.contains("operationQueue.async"))
         XCTAssertFalse(source.contains("operationQueue.sync"))
         XCTAssertFalse(persistenceSource.contains("operationQueue.sync"))
+        XCTAssertTrue(persistenceSource.contains("public func commitIfCurrent("))
+        XCTAssertTrue(persistence.contains("persistenceCoordinator.commitIfCurrent("))
+        XCTAssertTrue(persistence.contains("generation: persistedGeneration"))
+        XCTAssertTrue(persistence.contains("commitServerRelayConnection(serverURL: serverURL, serverToken: serverToken)"))
+        XCTAssertFalse(applyConnection.contains("commitServerRelayConnection("))
+        XCTAssertFalse(clearConnection.contains("commitServerRelayConnection("))
         XCTAssertTrue(source.contains("VersionedCredentialEnvelope.acceptedEnvelope("))
         XCTAssertFalse(persistence.contains("serverToken ="))
         XCTAssertTrue(source.contains("@Published private(set) var serverToken: String"))
