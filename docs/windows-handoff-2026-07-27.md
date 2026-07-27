@@ -73,7 +73,7 @@ npm run dist:win
 
 ## 2026-07-27 보안 차단 항목
 
-최신 OSV 데이터베이스 검사는 `electron-builder@26.15.3`의 개발 전용 간접 의존성에서 다음 HIGH 취약점을 발견했다.
+최신 OSV 데이터베이스 검사는 `electron-builder@26.15.3`의 개발 전용 간접 의존성에서 다음 HIGH 1종과 MODERATE 1종을 발견했다.
 
 - `brace-expansion` 1.1.16, 2.1.2, 5.0.7:
   `GHSA-mh99-v99m-4gvg` 메모리 고갈 DoS. 수정 버전은 5.0.8 이상이다.
@@ -88,20 +88,20 @@ npm run dist:win
 
 ```powershell
 npm ls brace-expansion tar --all
-npm audit --audit-level=high
+npm audit --audit-level=moderate
 osv-scanner scan source -r .
 ```
 
 4. 이어서 `npm run check`, `npm test`, `npm run test:e2e`, `npm run dist:win`을 모두 다시 실행한다.
 
-HIGH/CRITICAL 결과가 0이 되기 전에는 브랜치를 `main`에 병합하지 않는다.
+아래에 적은 알려진 취약 버전이 모두 사라지고 MODERATE/HIGH/CRITICAL 결과가 0이 되기 전에는 브랜치를 `main`에 병합하지 않는다.
 
 ## Windows 11 완료 조건
 
 다음 항목이 모두 통과해야 Windows 작업을 완료로 본다.
 
 - `npm run check`, `npm test`, `npm run test:e2e` 전부 성공
-- `npm audit --audit-level=high`와 OSV 검사에서 HIGH/CRITICAL 0건
+- `npm audit --audit-level=moderate`와 OSV 검사에서 MODERATE/HIGH/CRITICAL 0건
 - `npm run dist:win`으로 x64 installer 생성
 - 새 설치 후 첫 실행 성공
 - 유효한 암호화 캐시가 있으면 네트워크 응답 전 대시보드가 즉시 표시됨
