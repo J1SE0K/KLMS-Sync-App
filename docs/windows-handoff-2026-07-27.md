@@ -71,11 +71,37 @@ npm run dist:win
 
 실제 잘림이면 production CSS와 레이아웃을 수정한다. 화면은 정상인데 edge-ink 측정만 실패하면 Windows의 동일 폰트·배율에서 안정적인 기준을 증명한 뒤 측정 방법을 고친다. 단순 허용 오차 증가로 실패를 숨기지 않는다.
 
+## 2026-07-27 보안 차단 항목
+
+최신 OSV 데이터베이스 검사는 `electron-builder@26.15.3`의 개발 전용 간접 의존성에서 다음 HIGH 취약점을 발견했다.
+
+- `brace-expansion` 1.1.16, 2.1.2, 5.0.7:
+  `GHSA-mh99-v99m-4gvg` 메모리 고갈 DoS. 수정 버전은 5.0.8 이상이다.
+- `tar` 7.5.20:
+  `GHSA-r292-9mhp-454m` 긴 경로 archive 처리 중 stack-overflow DoS. 수정 버전은 7.5.21 이상이다.
+
+두 패키지는 앱 런타임 의존성이 아니라 Windows 빌드 도구 경로에 있지만, installer 생성과 CI도 신뢰 경계이므로 무시하거나 보안 예외로 숨기지 않는다. Windows 11에서 다음 순서로 처리한다.
+
+1. `electron-builder`와 하위 빌드 도구의 최신 호환 버전을 먼저 확인한다.
+2. 상위 패키지 업데이트만으로 해결되지 않으면 npm `overrides`를 사용하되, 서로 다른 `brace-expansion` 메이저 버전을 하나로 강제하기 전에 `npm ci`, 전체 테스트와 installer 생성으로 호환성을 증명한다.
+3. 아래 명령으로 취약 버전이 남지 않았는지 확인한다.
+
+```powershell
+npm ls brace-expansion tar --all
+npm audit --audit-level=high
+osv-scanner scan source -r .
+```
+
+4. 이어서 `npm run check`, `npm test`, `npm run test:e2e`, `npm run dist:win`을 모두 다시 실행한다.
+
+HIGH/CRITICAL 결과가 0이 되기 전에는 브랜치를 `main`에 병합하지 않는다.
+
 ## Windows 11 완료 조건
 
 다음 항목이 모두 통과해야 Windows 작업을 완료로 본다.
 
 - `npm run check`, `npm test`, `npm run test:e2e` 전부 성공
+- `npm audit --audit-level=high`와 OSV 검사에서 HIGH/CRITICAL 0건
 - `npm run dist:win`으로 x64 installer 생성
 - 새 설치 후 첫 실행 성공
 - 유효한 암호화 캐시가 있으면 네트워크 응답 전 대시보드가 즉시 표시됨
