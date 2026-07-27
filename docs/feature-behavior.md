@@ -48,6 +48,8 @@
 
 `refresh_course_files.sh`는 첨부파일 manifest를 만든 뒤 정리본을 `$KLMS_DATA_DIR/course_files`에 유지한다. 앱의 canonical 위치는 `~/Library/Application Support/KLMSNotesSync/course_files`다. 다운로드 staging은 기본적으로 `runtime/tmp/files/downloads` 아래에서만 쓰고 `~/Downloads`에는 KLMS 폴더를 만들지 않는다.
 
+`FILE_OUTPUT_ROOT`로 별도 폴더를 지정할 수 있다. 비어 있지 않고 아직 관리 marker가 없는 사용자 지정 폴더는 기존 persistent/download manifest가 그 안의 모든 일반 파일을 추적할 때만 한 번 채택한다. manifest가 없거나, 추적되지 않은 파일·symlink·비정상 entry·경로 이탈이 하나라도 있으면 marker를 만들거나 파일을 건드리지 않고 실패한다.
+
 기본 구조:
 
 ```text
@@ -80,7 +82,7 @@ Example Course/resources/Week 1 Notes.pdf
 - 파일 seed URL 목록이 unchanged이고 기존 manifest와 `course_files`가 맞으면 seed 상세 페이지는 더 오래 재사용하고, resource/assignment index 같은 timestamp 페이지를 주기적으로 확인해 같은 파일명 교체만 다시 받는다.
 - 실행이 끝나면 `course_files`는 manifest 기준으로 prune하고, staging 다운로드는 기본적으로 제거한다.
 - `FILE_KEEP_FRESH_DOWNLOADS=1`이면 이번 실행에서 새로 받은 파일만 staging에 남긴다.
-- prune 전 삭제 후보는 `runtime/cache/prune_backups/`에 JSON으로 남긴다.
+- prune은 삭제 대상 파일을 먼저 `runtime/cache/prune_backups/`의 비공개 복구 batch로 옮기고 JSON manifest를 남긴 뒤에만 완료한다. `FILE_PRUNE_BACKUP_KEEP`와 `FILE_PRUNE_BACKUP_MAX_BYTES`가 batch 수와 전체 바이트를 함께 제한하며, 만료 시 파일 디렉터리와 관련 manifest를 같은 batch 단위로 제거한다. 새 batch 하나가 바이트 한도를 넘으면 prune을 거부한다. `FILE_PRUNE_BACKUP_ENABLED=0`이면 삭제하지 않고 preview 결과만 만든다.
 - 임시 다운로드 정리 결과는 `runtime/cache/` 아래 JSON으로 남긴다.
 - manifest가 비정상적으로 줄어든 상태에서는 바로 prune하지 않고 full rebuild를 한 번 재시도한다.
 - 기존 파일이 있어도 전부 다시 받으려면 `FILE_FORCE_DOWNLOAD=1`을 설정한다.

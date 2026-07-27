@@ -158,6 +158,8 @@ class PruneCourseFilesTests(unittest.TestCase):
             self.assertEqual(payload["deleted_file_count"], 0)
             self.assertTrue(old_named_file.exists())
 
+            self.assertFalse((tmp_path / "recovery").exists())
+
     def test_prune_rejects_unmarked_nonempty_and_protected_roots(self) -> None:
         script = PROJECT_DIR / "src" / "python" / "prune_course_files.py"
         with tempfile.TemporaryDirectory() as tmp:

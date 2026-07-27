@@ -17,6 +17,11 @@ MARKER_SCHEMA_VERSION = 1
 IGNORED_MANAGED_FILES = {MARKER_FILENAME, "README.md"}
 SYSTEM_ROOT_SYMLINK_ALIASES = {Path("/etc"), Path("/tmp"), Path("/var")}
 
+try:
+    from managed_course_file_adoption import validate_adoptable_root
+except ModuleNotFoundError:
+    from .managed_course_file_adoption import validate_adoptable_root
+
 
 class ManagedRootError(ValueError):
     pass
@@ -50,6 +55,7 @@ def prepare_managed_root(
     *,
     approved_roots: Iterable[str | Path] = (),
     protected_roots: Iterable[str | Path] = (),
+    adopt_from_manifests: Iterable[str | Path] = (),
     initialize: bool = False,
     allow_unmarked: bool = False,
 ) -> Path:
@@ -77,7 +83,7 @@ def prepare_managed_root(
     if not initialize:
         raise ManagedRootError(f"managed root marker is missing: {marker}")
     if root.exists() and root not in approved and any(root.iterdir()):
-        raise ManagedRootError(f"refusing to claim non-empty unmarked root: {root}")
+        validate_adoptable_root(root, adopt_from_manifests)
 
     root.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(root, 0o700)
@@ -252,6 +258,7 @@ def main() -> int:
     parser.add_argument("--purpose", required=True)
     parser.add_argument("--approved-root", action="append", default=[])
     parser.add_argument("--protected-root", action="append", default=[])
+    parser.add_argument("--adopt-from-manifest", action="append", default=[])
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--allow-unmarked", action="store_true")
     args = parser.parse_args()
@@ -260,6 +267,7 @@ def main() -> int:
         args.purpose,
         approved_roots=args.approved_root,
         protected_roots=args.protected_root,
+        adopt_from_manifests=args.adopt_from_manifest,
         initialize=args.initialize,
         allow_unmarked=args.allow_unmarked,
     )

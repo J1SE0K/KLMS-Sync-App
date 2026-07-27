@@ -48,6 +48,7 @@ FILE_PRESERVE_DOWNLOAD_ARCHIVE="${FILE_PRESERVE_DOWNLOAD_ARCHIVE:-0}"
 FILE_DRY_RUN="${KLMS_DRY_RUN:-0}"
 FILE_PRUNE_BACKUP_ENABLED="${FILE_PRUNE_BACKUP_ENABLED:-1}"
 FILE_PRUNE_BACKUP_KEEP="${FILE_PRUNE_BACKUP_KEEP:-20}"
+FILE_PRUNE_BACKUP_MAX_BYTES="${FILE_PRUNE_BACKUP_MAX_BYTES:-1073741824}"
 FILE_MANIFEST_SHRINK_GUARD_PERCENT="${FILE_MANIFEST_SHRINK_GUARD_PERCENT:-80}"
 FILE_ALLOW_LARGE_MANIFEST_SHRINK="${FILE_ALLOW_LARGE_MANIFEST_SHRINK:-0}"
 FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS="${FILE_ALWAYS_FETCH_MIN_INTERVAL_SECONDS:-21600}"
@@ -96,6 +97,7 @@ DOWNLOAD_LOG_JSON="$CACHE_DIR/course_file_download_log.json"
 DOWNLOAD_RESULT_JSON="$CACHE_DIR/course_file_download_result.json"
 PRUNE_RESULT_JSON="$CACHE_DIR/course_file_prune_result.json"
 ARCHIVE_PRUNE_RESULT_JSON="$CACHE_DIR/course_file_archive_prune_result.json"
+PRUNE_BACKUP_RETENTION_RESULT_JSON="$CACHE_DIR/course_file_prune_backup_retention.json"
 PRUNE_BACKUP_DIR="$CACHE_DIR/prune_backups"
 CLEANUP_RESULT_JSON="$CACHE_DIR/course_file_cleanup_result.json"
 OLD_TERM_CLEANUP_RESULT_JSON="$CACHE_DIR/course_file_old_term_cleanup_result.json"
@@ -137,6 +139,7 @@ if is_truthy "$FILE_DRY_RUN"; then
   DOWNLOAD_RESULT_JSON="$WORK_CACHE_DIR/course_file_download_result.json"
   PRUNE_RESULT_JSON="$WORK_CACHE_DIR/course_file_prune_result.json"
   ARCHIVE_PRUNE_RESULT_JSON="$WORK_CACHE_DIR/course_file_archive_prune_result.json"
+  PRUNE_BACKUP_RETENTION_RESULT_JSON="$WORK_CACHE_DIR/course_file_prune_backup_retention.json"
   CLEANUP_RESULT_JSON="$WORK_CACHE_DIR/course_file_cleanup_result.json"
   OLD_TERM_CLEANUP_RESULT_JSON="$WORK_CACHE_DIR/course_file_old_term_cleanup_result.json"
   SYNC_PREVIEW_JSON="$WORK_CACHE_DIR/course_file_sync_preview.json"
@@ -144,8 +147,13 @@ if is_truthy "$FILE_DRY_RUN"; then
 fi
 
 managed_root_mode_args=(--initialize)
+managed_root_adoption_args=(
+  --adopt-from-manifest "$PERSISTENT_MANIFEST_JSON"
+  --adopt-from-manifest "$DOWNLOAD_LOG_JSON"
+)
 if is_truthy "$FILE_DRY_RUN"; then
   managed_root_mode_args=(--allow-unmarked)
+  managed_root_adoption_args=()
 fi
 managed_root_protection_args=(
   --protected-root "$HOME"
@@ -158,6 +166,7 @@ python3 "$KLMS_PYTHON_DIR/managed_course_file_roots.py" \
   --purpose course-files \
   --approved-root "$KLMS_DATA_DIR/course_files" \
   "${managed_root_protection_args[@]}" \
+  "${managed_root_adoption_args[@]}" \
   "${managed_root_mode_args[@]}" \
   >/dev/null
 python3 "$KLMS_PYTHON_DIR/managed_course_file_roots.py" \
@@ -165,6 +174,7 @@ python3 "$KLMS_PYTHON_DIR/managed_course_file_roots.py" \
   --purpose course-files-archive \
   --approved-root "$FILE_DOWNLOAD_WORK_ROOT/KLMS Files" \
   "${managed_root_protection_args[@]}" \
+  "${managed_root_adoption_args[@]}" \
   "${managed_root_mode_args[@]}" \
   >/dev/null
 
@@ -1448,26 +1458,93 @@ log_files_timing "prune start"
 prune_started_epoch="$(date +%s)"
 prune_backup_args=()
 archive_prune_backup_args=()
-prune_timestamp="$(date +%Y%m%d-%H%M%S)"
+retention_enabled_args=()
+retention_dry_run_args=()
+retention_keep=0
+if [[ "$FILE_PRUNE_BACKUP_MAX_BYTES" != <-> ]] || (( FILE_PRUNE_BACKUP_MAX_BYTES < 1 )); then
+  print -u2 -- "Invalid FILE_PRUNE_BACKUP_MAX_BYTES: $FILE_PRUNE_BACKUP_MAX_BYTES"
+  exit 1
+fi
+if is_truthy "$FILE_PRUNE_BACKUP_ENABLED"; then
+  if [[ "$FILE_PRUNE_BACKUP_KEEP" != <-> ]] || (( FILE_PRUNE_BACKUP_KEEP < 1 )); then
+    print -u2 -- "FILE_PRUNE_BACKUP_KEEP must be at least 1 while recovery backups are enabled."
+    exit 1
+  fi
+  retention_enabled_args=(--enabled)
+  retention_keep="$FILE_PRUNE_BACKUP_KEEP"
+fi
+if is_truthy "$FILE_DRY_RUN"; then
+  retention_dry_run_args=(--dry-run)
+fi
+
+prune_timestamp="$(date +%Y%m%d-%H%M%S)-$$"
 prune_recovery_root="$PRUNE_BACKUP_DIR/${prune_timestamp}_course_files"
 archive_prune_recovery_root="$PRUNE_BACKUP_DIR/${prune_timestamp}_archive"
-if is_truthy "$FILE_PRUNE_BACKUP_ENABLED"; then
+destructive_prune=0
+if is_truthy "$FILE_PRUNE_BACKUP_ENABLED" && ! is_truthy "$FILE_DRY_RUN"; then
+  destructive_prune=1
   prune_backup_args=(--backup-manifest "$PRUNE_BACKUP_DIR/${prune_timestamp}_course_files.json")
   archive_prune_backup_args=(--backup-manifest "$PRUNE_BACKUP_DIR/${prune_timestamp}_archive.json")
 fi
 prune_dry_run_args=()
-if is_truthy "$FILE_DRY_RUN"; then
+if (( destructive_prune == 0 )); then
   prune_dry_run_args=(--dry-run)
+  if ! is_truthy "$FILE_DRY_RUN"; then
+    log_files_timing "destructive prune skipped because recovery backups are disabled"
+  fi
 fi
 prune_tracking_args=()
 if is_truthy "$FILE_DRY_RUN"; then
   prune_tracking_args=(--tracked-relative-paths-json "$SYNC_PREVIEW_JSON")
 fi
+
+if (( destructive_prune == 1 )); then
+  prune_preflight_json="$TMP_DIR/${prune_timestamp}_course_files.preflight.json"
+  archive_prune_preflight_json="$TMP_DIR/${prune_timestamp}_archive.preflight.json"
+  python3 "$KLMS_PYTHON_DIR/prune_course_files.py" \
+    --manifest-json "$MANIFEST_JSON" \
+    --root "$OUTPUT_ROOT" \
+    --root-purpose course-files \
+    --dry-run \
+    > "$prune_preflight_json"
+  python3 "$KLMS_PYTHON_DIR/prune_course_files.py" \
+    --manifest-json "$MANIFEST_JSON" \
+    --root "$DOWNLOAD_ARCHIVE_ROOT" \
+    --root-purpose course-files-archive \
+    --dry-run \
+    > "$archive_prune_preflight_json"
+  planned_recovery_bytes="$(python3 - "$prune_preflight_json" "$archive_prune_preflight_json" "$FILE_PRUNE_BACKUP_MAX_BYTES" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+total = 0
+for value in sys.argv[1:3]:
+    payload = json.loads(Path(value).read_text(encoding="utf-8"))
+    total += int(payload.get("planned_recovery_bytes", 0) or 0)
+maximum = int(sys.argv[3])
+if total > maximum:
+    raise SystemExit(
+        f"Refusing to prune because the combined recovery batch is too large ({total} > {maximum})."
+    )
+print(total)
+PY
+  )"
+  python3 "$KLMS_PYTHON_DIR/prune_backup_retention.py" \
+    --backup-root "$PRUNE_BACKUP_DIR" \
+    --keep-batches "$retention_keep" \
+    --maximum-bytes "$FILE_PRUNE_BACKUP_MAX_BYTES" \
+    --reserve-bytes "$planned_recovery_bytes" \
+    --enabled \
+    > "$TMP_DIR/${prune_timestamp}_retention.preflight.json"
+fi
+
 python3 "$KLMS_PYTHON_DIR/prune_course_files.py" \
   --manifest-json "$MANIFEST_JSON" \
   --root "$OUTPUT_ROOT" \
   --root-purpose course-files \
   --recovery-root "$prune_recovery_root" \
+  --maximum-recovery-bytes "$FILE_PRUNE_BACKUP_MAX_BYTES" \
   "${prune_backup_args[@]}" \
   "${prune_tracking_args[@]}" \
   "${prune_dry_run_args[@]}" \
@@ -1481,24 +1558,20 @@ python3 "$KLMS_PYTHON_DIR/prune_course_files.py" \
   --root "$DOWNLOAD_ARCHIVE_ROOT" \
   --root-purpose course-files-archive \
   --recovery-root "$archive_prune_recovery_root" \
+  --maximum-recovery-bytes "$FILE_PRUNE_BACKUP_MAX_BYTES" \
   "${archive_prune_backup_args[@]}" \
   "${prune_tracking_args[@]}" \
   "${prune_dry_run_args[@]}" \
   > "$ARCHIVE_PRUNE_RESULT_JSON"
 log_files_timing "archive prune finish duration_s=$(($(date +%s) - archive_prune_started_epoch))"
 
-if is_truthy "$FILE_PRUNE_BACKUP_ENABLED"; then
-  python3 - "$PRUNE_BACKUP_DIR" "$FILE_PRUNE_BACKUP_KEEP" <<'PY'
-import sys
-from pathlib import Path
-
-backup_dir = Path(sys.argv[1])
-keep = max(0, int(sys.argv[2]))
-files = sorted(backup_dir.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
-for path in files[keep:]:
-    path.unlink()
-PY
-fi
+python3 "$KLMS_PYTHON_DIR/prune_backup_retention.py" \
+  --backup-root "$PRUNE_BACKUP_DIR" \
+  --keep-batches "$retention_keep" \
+  --maximum-bytes "$FILE_PRUNE_BACKUP_MAX_BYTES" \
+  "${retention_enabled_args[@]}" \
+  "${retention_dry_run_args[@]}" \
+  > "$PRUNE_BACKUP_RETENTION_RESULT_JSON"
 
 cleanup_args=(
   /usr/bin/osascript

@@ -25,6 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--backup-manifest")
     parser.add_argument("--tracked-relative-paths-json")
     parser.add_argument("--recovery-root")
+    parser.add_argument("--maximum-recovery-bytes", type=int)
     parser.add_argument("--root-purpose", default="course-files")
     return parser
 
@@ -43,14 +44,15 @@ def main() -> int:
     )
     if not args.dry_run and not args.recovery_root:
         raise SystemExit("--recovery-root is required for content-backed pruning")
+    if args.maximum_recovery_bytes is not None and args.maximum_recovery_bytes < 1:
+        raise SystemExit("--maximum-recovery-bytes must be positive")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(manifest, list):
         raise SystemExit(f"Manifest must be a JSON array: {manifest_path}")
 
     tracked_paths = load_tracked_paths(args, manifest)
 
-    deleted_files: list[str] = []
-    deleted_file_entries: list[dict[str, Any]] = []
+    deletion_candidates: list[tuple[Path, dict[str, Any]]] = []
     actual_files_before = 0
 
     for path in sorted(root.rglob("*")):
@@ -67,16 +69,31 @@ def main() -> int:
         actual_files_before += 1
         if canonical_relative_path(relative_path) in tracked_paths:
             continue
-        deleted_files.append(relative_path)
         entry: dict[str, Any] = {
             "relative_path": relative_path,
             "absolute_path": str(path),
             "size": metadata.st_size,
             "mtime": metadata.st_mtime,
         }
+        deletion_candidates.append((path, entry))
+
+    planned_recovery_bytes = sum(int(entry["size"]) for _path, entry in deletion_candidates)
+    if (
+        not args.dry_run
+        and args.maximum_recovery_bytes is not None
+        and planned_recovery_bytes > args.maximum_recovery_bytes
+    ):
+        raise SystemExit(
+            "Refusing to prune because recovery data exceeds --maximum-recovery-bytes "
+            f"({planned_recovery_bytes} > {args.maximum_recovery_bytes})"
+        )
+
+    deleted_file_entries: list[dict[str, Any]] = []
+    for path, entry in deletion_candidates:
         if not args.dry_run:
-            entry.update(recover_file(path, root, relative_path, args.recovery_root))
+            entry.update(recover_file(path, root, entry["relative_path"], args.recovery_root))
         deleted_file_entries.append(entry)
+    deleted_files = [entry["relative_path"] for entry in deleted_file_entries]
 
     deleted_dirs: list[str] = []
     if not args.dry_run:
@@ -107,6 +124,7 @@ def main() -> int:
             "root": str(root),
             "dry_run": args.dry_run,
             "deleted_file_count": len(deleted_files),
+            "planned_recovery_bytes": planned_recovery_bytes,
             "deleted_files": deleted_file_entries,
         }
         backup_path.write_text(json.dumps(backup_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -120,6 +138,7 @@ def main() -> int:
         "actual_files_after": actual_files_after,
         "deleted_files": deleted_files,
         "deleted_file_count": len(deleted_files),
+        "planned_recovery_bytes": planned_recovery_bytes,
         "backup_manifest_path": backup_manifest_path,
         "deleted_dirs": deleted_dirs,
         "deleted_dir_count": len(deleted_dirs),

@@ -29,6 +29,7 @@ src/python/klms_sync_v2/pipeline.py
 src/python/klms_sync_v2/render.py
 src/python/klms_sync_v2/text.py
 src/python/klms_transport.py
+src/python/managed_course_file_adoption.py
 src/python/managed_course_file_roots.py
 src/python/process_klms_assignments.py
 src/python/prune_course_files.py
