@@ -27,6 +27,7 @@ const semgrepFindings = (semgrep.results || []).map((finding) => ({
 }));
 verifyAdjudicatedFindings(semgrepFindings, policy.semgrep, "Semgrep");
 for (const reportName of [
+  "semgrep-insecure-object-assign.json",
   "semgrep-expensive-production.json",
   "semgrep-download-jxa.json",
   "semgrep-relay-test.json",

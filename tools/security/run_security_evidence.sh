@@ -10,7 +10,8 @@ source "$script_dir/security-tool-versions.env"
 evidence_dir="${1:-${TMPDIR:-/tmp}/klms-security-evidence}"
 scanner_root="${2:-${KLMS_SECURITY_SCANNER_ROOT:-${TMPDIR:-/tmp}/klms-security-scanners}}"
 rules_root="$scanner_root/semgrep-rules-$SEMGREP_RULES_COMMIT"
-javascript_audit_rules_root="$rules_root/javascript/lang/security/audit"
+javascript_security_rules_root="$rules_root/javascript/lang/security"
+javascript_audit_rules_root="$javascript_security_rules_root/audit"
 scan_tree="$(mktemp -d "${TMPDIR:-/tmp}/klms-security-source.XXXXXX")"
 policy_path="$script_dir/scanner-adjudications.json"
 semgrep_rule_prefix="${rules_root#/}"
@@ -113,6 +114,7 @@ set +e
     --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.detect-non-literal-fs-filename" \
     --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.path-traversal.path-join-resolve-traversal" \
     --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.audit.unsafe-formatstring" \
+    --exclude-rule "$semgrep_rule_prefix.javascript.lang.security.insecure-object-assign" \
     --config "$rules_root/python/lang/security" \
     --config "$rules_root/javascript/lang/security" \
     --config "$rules_root/bash/lang/security" \
@@ -131,17 +133,27 @@ set -e
 # each exceptional file with the applicable rules below. The JXA downloader
 # cannot use the Node sinks those rules model; a non-taint boundary rule makes
 # any future introduction fail closed.
+all_javascript_semgrep_targets=()
 expensive_semgrep_targets=()
 while IFS= read -r -d '' filename; do
-  expensive_semgrep_targets+=("${filename#"$scan_tree/"}")
+  relative_filename="${filename#"$scan_tree/"}"
+  all_javascript_semgrep_targets+=("$relative_filename")
+  case "$relative_filename" in
+    src/js/download_klms_files.js|deploy/relay/test_relay.mjs) ;;
+    *) expensive_semgrep_targets+=("$relative_filename") ;;
+  esac
 done < <(
   find "$scan_tree/src" "$scan_tree/tools" "$scan_tree/deploy" "$scan_tree/apps" \
     -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' \) \
-    ! -path "$scan_tree/src/js/download_klms_files.js" \
-    ! -path "$scan_tree/deploy/relay/test_relay.mjs" \
     -print0 | sort -z
 )
+[[ "${#all_javascript_semgrep_targets[@]}" -gt 0 ]] || fail semgrep-javascript-targets
 [[ "${#expensive_semgrep_targets[@]}" -gt 0 ]] || fail semgrep-expensive-targets
+run_clean_semgrep_report \
+  semgrep-insecure-object-assign \
+  semgrep-insecure-object-assign.json \
+  --config "$javascript_security_rules_root/insecure-object-assign.yaml" \
+  "${all_javascript_semgrep_targets[@]}"
 run_clean_semgrep_report \
   semgrep-expensive-production \
   semgrep-expensive-production.json \

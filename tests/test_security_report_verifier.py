@@ -28,8 +28,11 @@ class SecurityReportVerifierTests(unittest.TestCase):
     def test_runner_enumerates_expensive_semgrep_targets(self) -> None:
         source = SECURITY_RUNNER.read_text(encoding="utf-8")
 
-        self.assertIn('expensive_semgrep_targets+=("${filename#"$scan_tree/"}")', source)
+        self.assertIn('relative_filename="${filename#"$scan_tree/"}"', source)
+        self.assertIn('expensive_semgrep_targets+=("$relative_filename")', source)
+        self.assertIn('all_javascript_semgrep_targets+=("$relative_filename")', source)
         self.assertIn('"${expensive_semgrep_targets[@]}"', source)
+        self.assertIn('"${all_javascript_semgrep_targets[@]}"', source)
         self.assertNotIn('--exclude "src/js/download_klms_files.js"', source)
         self.assertNotIn('--exclude "deploy/relay/test_relay.mjs"', source)
 
@@ -148,6 +151,7 @@ class SecurityReportVerifierTests(unittest.TestCase):
             },
         }
         for filename in (
+            "semgrep-insecure-object-assign.json",
             "semgrep-expensive-production.json",
             "semgrep-download-jxa.json",
             "semgrep-relay-test.json",
