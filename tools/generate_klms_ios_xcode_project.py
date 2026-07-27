@@ -29,6 +29,7 @@ SHARED_SOURCES = [
     "AcademicTerm.swift",
     "CredentialPersistence.swift",
     "DashboardDataModels.swift",
+    "DesignTokens.swift",
     "DisplayText.swift",
     "EngineSnapshot.swift",
     "FileStatusModels.swift",

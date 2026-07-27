@@ -105,7 +105,7 @@ struct SettingsView: View {
         GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7),
     ]
     private let settingsActionColumns = [
-        GridItem(.adaptive(minimum: 118), spacing: 8),
+        GridItem(.adaptive(minimum: 118), spacing: KLMSSpacing.standard),
     ]
 
     init(model: KLMSMacModel) {
@@ -116,7 +116,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             settingsTabBar
             settingsContentPanel
         }
@@ -126,8 +126,8 @@ struct SettingsView: View {
     }
 
     private var settingsTabBar: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(alignment: .firstTextBaseline, spacing: KLMSSpacing.comfortable) {
                 Text("설정")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -143,48 +143,48 @@ struct SettingsView: View {
                 }
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 
     private var settingsContentPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
+                HStack(spacing: KLMSSpacing.comfortable) {
                     settingsHeaderIdentity
                     Spacer(minLength: 8)
                     settingsHeaderBadges
                 }
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     settingsHeaderIdentity
                     settingsHeaderBadges
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 12)
+            .padding(.horizontal, KLMSSpacing.section)
+            .padding(.top, KLMSSpacing.section)
 
             selectedSettingsContent
                 .id(selectedTab.rawValue)
         }
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 
     private var settingsHeaderIdentity: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: KLMSSpacing.comfortable) {
             Image(systemName: selectedTab.systemImage)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(Color.klmsMacCommandAccent)
                 .frame(width: 24)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(selectedTab.title)
                     .font(.headline.weight(.bold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
@@ -198,11 +198,11 @@ struct SettingsView: View {
 
     private var settingsHeaderBadges: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) {
+            HStack(spacing: KLMSSpacing.compact) {
                 settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
                 settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
             }
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 settingsHeaderBadge(selectedTab.primarySectionTitle, primary: true)
                 settingsHeaderBadge(selectedTab.scopeLabel, primary: false)
             }
@@ -233,7 +233,7 @@ struct SettingsView: View {
         } label: {
             HStack(spacing: 7) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                         .fill(
                             isSelected
                                 ? Color.klmsMacSelectedBorder.opacity(0.18)
@@ -252,22 +252,22 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.horizontal, 9)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
+            .padding(.vertical, KLMSSpacing.standard)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .center)
             .background(
                 isSelected
                     ? Color.klmsMacSelectedBackground.opacity(0.96)
                     : Color.klmsMacSubtleCardBackground.opacity(isHovered ? 0.58 : 0.34),
-                in: RoundedRectangle(cornerRadius: 10)
+                in: RoundedRectangle(cornerRadius: KLMSRadius.control)
             )
             .overlay(alignment: .bottom) {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                     .fill(isSelected ? Color.klmsMacSelectedBorder : (isHovered ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.clear))
                     .frame(height: 3)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, KLMSSpacing.comfortable)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .stroke(
                         isSelected
                             ? Color.klmsMacSelectedBorder.opacity(0.92)
@@ -275,7 +275,7 @@ struct SettingsView: View {
                         lineWidth: isSelected ? 1.2 : 1
                     )
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
         }
         .buttonStyle(KLMSMacSettingsTabButtonStyle())
         .onHover { hovering in
@@ -296,7 +296,7 @@ struct SettingsView: View {
             .foregroundStyle(primary ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText)
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, KLMSSpacing.standard)
             .padding(.vertical, 5)
             .background(Color.klmsMacSubtleCardBackground, in: Capsule())
     }
@@ -595,7 +595,7 @@ struct SettingsView: View {
                             .textSelection(.enabled)
                     }
                     LabeledContent("코드 서명") {
-                        VStack(alignment: .trailing, spacing: 2) {
+                        VStack(alignment: .trailing, spacing: KLMSSpacing.hairline) {
                             Text(model.appDiagnostics.codeSigning.statusTitle)
                             Text(model.appDiagnostics.codeSigning.statusDetail)
                                 .font(.caption)
@@ -622,7 +622,7 @@ struct SettingsView: View {
                     LabeledContent("최근 백업") {
                         Text(model.latestBackup.map { "\($0.id) · \($0.fileCount)개" } ?? "없음")
                     }
-                    LazyVGrid(columns: settingsActionColumns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: settingsActionColumns, alignment: .leading, spacing: KLMSSpacing.standard) {
                         Button {
                             model.createBackup()
                         } label: {
@@ -662,7 +662,7 @@ struct SettingsView: View {
             badge: "서버",
             collapsible: true
         ) {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.section) {
                 SettingsActionGroupBox(
                     title: "연결 정보",
                     detail: "서버 주소와 기기별 토큰을 한곳에서 관리합니다.",
@@ -709,7 +709,7 @@ struct SettingsView: View {
                             secure: true
                         )
                     }
-                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: KLMSSpacing.standard) {
                         Button {
                             saveServerRelayConnectionDraft()
                         } label: {
@@ -794,7 +794,7 @@ struct SettingsView: View {
                     detail: "연결 정보를 붙여넣고 서버 응답을 검사합니다.",
                     systemImage: "checkmark.seal"
                 ) {
-                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: KLMSSpacing.standard) {
                         Button {
                             pasteServerRelayConnectionDraft()
                         } label: {
@@ -824,7 +824,7 @@ struct SettingsView: View {
                     detail: "다른 기기에 넣을 연결 정보를 복사합니다.",
                     systemImage: "doc.on.doc"
                 ) {
-                    LazyVGrid(columns: settingsActionColumns, spacing: 8) {
+                    LazyVGrid(columns: settingsActionColumns, spacing: KLMSSpacing.standard) {
                         Button {
                             model.copyServerRelayURL()
                         } label: {
@@ -921,11 +921,11 @@ struct SettingsView: View {
     }
 
     private func settingsForm<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             content()
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
+        .padding(.horizontal, KLMSSpacing.section)
+        .padding(.bottom, KLMSSpacing.section)
         .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
         .buttonStyle(KLMSMacSettingsButtonStyle())
         .textFieldStyle(.roundedBorder)
@@ -977,7 +977,7 @@ struct SettingsView: View {
         text: Binding<String>,
         secure: Bool = false
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsMacPrimaryText)
@@ -1086,14 +1086,14 @@ private struct SettingsDisclosureLabel: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.klmsMacCommandAccent)
                 .frame(width: 26, height: 26)
-                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 2) {
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: KLMSSpacing.compact) {
                         disclosureTitle
                         disclosureBadge
                     }
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                         disclosureTitle
                         disclosureBadge
                     }
@@ -1161,26 +1161,26 @@ private struct SettingsGroupBox<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             header
 
             if !collapsible || isExpanded {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     content()
                 }
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity((!collapsible || isExpanded) ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsMacSubtleCardBackground.opacity((!collapsible || isExpanded) ? 0.72 : 0.48), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.86) : Color.clear)
                 .frame(width: 3)
-                .padding(.vertical, 10)
+                .padding(.vertical, KLMSSpacing.comfortable)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(
                     (!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.46) : Color.klmsMacBorder.opacity(0.92),
                     lineWidth: 1
@@ -1206,7 +1206,7 @@ private struct SettingsGroupBox<Content: View>: View {
     }
 
     private var headerContent: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
             SettingsDisclosureLabel(
                 title: title,
                 detail: detail,
@@ -1218,8 +1218,8 @@ private struct SettingsGroupBox<Content: View>: View {
                 SettingsExpansionBadge(isExpanded: isExpanded)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
     }
 }
 
@@ -1252,7 +1252,7 @@ private struct SettingsFieldRow<Content: View>: View {
             header
 
             if !collapsible || isExpanded {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     if let description = description?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !description.isEmpty {
                         SettingsFieldDescriptionText(description)
@@ -1271,15 +1271,15 @@ private struct SettingsFieldRow<Content: View>: View {
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background((!collapsible || isExpanded) ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
+        .background((!collapsible || isExpanded) ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.38) : Color.klmsMacBorder.opacity(0.86), lineWidth: 1)
         }
     }
@@ -1303,17 +1303,17 @@ private struct SettingsFieldRow<Content: View>: View {
 
     private var headerContent: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                 fieldTitle
                 Spacer(minLength: 8)
                 fieldTrailingContent
             }
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 fieldTitle
                 fieldTrailingContent
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
         .contentShape(RoundedRectangle(cornerRadius: 9))
     }
 
@@ -1326,7 +1326,7 @@ private struct SettingsFieldRow<Content: View>: View {
 
     @ViewBuilder
     private var fieldTrailingContent: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: KLMSSpacing.standard) {
             if let summary = summary?.trimmingCharacters(in: .whitespacesAndNewlines),
                !summary.isEmpty {
                 SettingsCurrentValueBadge(value: summary)
@@ -1342,7 +1342,7 @@ private struct SettingsCurrentValueBadge: View {
     var value: String
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: KLMSSpacing.tight) {
             Text("현재")
                 .font(.caption2.weight(.medium))
                 .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.82))
@@ -1352,8 +1352,8 @@ private struct SettingsCurrentValueBadge: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
+        .padding(.horizontal, KLMSSpacing.standard)
+        .padding(.vertical, KLMSSpacing.tight)
         .background(Color.klmsMacSubtleCardBackground.opacity(0.78), in: Capsule())
         .overlay {
             Capsule()
@@ -1385,9 +1385,9 @@ private struct SettingsFieldDescriptionText: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsMacBorder.opacity(0.48), lineWidth: 1)
         }
     }
@@ -1407,40 +1407,40 @@ private struct SettingsDisclosureCard<Content: View, Label: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Button {
                 settingsPerformWithoutAnimation {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(alignment: .center, spacing: 10) {
+                HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                     label()
                     Spacer(minLength: 8)
                     SettingsExpansionBadge(isExpanded: isExpanded)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
             }
             .buttonStyle(KLMSMacSettingsDisclosureButtonStyle())
             .accessibilityHint(isExpanded ? "설정 세부 항목 접기" : "설정 세부 항목 펼치기")
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     content()
                 }
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.78 : 0.54), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsMacSubtleCardBackground.opacity(isExpanded ? 0.78 : 0.54), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.76) : Color.clear)
                 .frame(width: 3)
-                .padding(.vertical, 10)
+                .padding(.vertical, KLMSSpacing.comfortable)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(isExpanded ? Color.klmsMacSelectedBorder.opacity(0.42) : Color.klmsMacBorder.opacity(0.92), lineWidth: 1)
         }
     }
@@ -1471,7 +1471,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             header
 
             if !collapsible || isExpanded {
@@ -1485,17 +1485,17 @@ private struct SettingsActionGroupBox<Content: View>: View {
                     }
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.66) : Color.clear)
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.34) : Color.klmsMacBorder.opacity(0.74), lineWidth: 1)
         }
     }
@@ -1528,7 +1528,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
                         : Color.klmsMacSubtleCardBackground.opacity(0.82),
                     in: RoundedRectangle(cornerRadius: 7)
                 )
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
@@ -1542,8 +1542,8 @@ private struct SettingsActionGroupBox<Content: View>: View {
                 SettingsExpansionBadge(isExpanded: isExpanded)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -1569,7 +1569,7 @@ private struct SettingsExpansionBadge: View {
                 .font(.caption2.weight(.semibold))
         }
         .foregroundStyle(isExpanded ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, KLMSSpacing.standard)
         .padding(.vertical, 5)
         .background(
             isExpanded ? Color.klmsMacSelectedBackground.opacity(0.78) : Color.klmsMacSubtleCardBackground,
@@ -1624,15 +1624,15 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
         configuration.label
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, KLMSSpacing.comfortable)
             .padding(.vertical, 7)
-            .frame(minHeight: 44)
-            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: 8))
+            .frame(minHeight: KLMSControlSize.minimumInteractive)
+            .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(border(isPressed: configuration.isPressed), lineWidth: isEnabled ? 1.15 : 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .opacity(isEnabled ? (configuration.isPressed ? 0.96 : 1.0) : 0.40)
             .saturation(isEnabled ? 1.0 : 0.28)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)

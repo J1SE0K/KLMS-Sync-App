@@ -2,6 +2,35 @@ import XCTest
 @testable import KLMSShared
 
 final class LiveStatePolicyTests: XCTestCase {
+    func testSharedDesignTokensKeepPlatformRhythmAndMinimumHitTarget() {
+        XCTAssertEqual(
+            [
+                KLMSSpacing.hairline,
+                KLMSSpacing.tight,
+                KLMSSpacing.compact,
+                KLMSSpacing.standard,
+                KLMSSpacing.comfortable,
+                KLMSSpacing.section,
+                KLMSSpacing.roomy,
+                KLMSSpacing.spacious,
+                KLMSSpacing.workstationColumn,
+            ],
+            [2, 4, 6, 8, 10, 12, 14, 16, 18]
+        )
+        XCTAssertEqual(
+            [
+                KLMSRadius.indicator,
+                KLMSRadius.smallSurface,
+                KLMSRadius.control,
+                KLMSRadius.card,
+                KLMSRadius.panel,
+                KLMSRadius.largePanel,
+            ],
+            [2, 8, 10, 12, 14, 16]
+        )
+        XCTAssertEqual(KLMSControlSize.minimumInteractive, 44)
+    }
+
     func testPrelaunchCancellationSurvivesRelayConnectionResetForItsRunOnly() {
         var cancellation = RunCancellationIntent<String>()
         var relaySession = RelaySessionGeneration()
@@ -158,6 +187,52 @@ final class LiveStatePolicyTests: XCTestCase {
         XCTAssertEqual(AdaptiveLayoutPolicy.mode(for: 720), .medium)
         XCTAssertEqual(AdaptiveLayoutPolicy.mode(for: 1_039.99), .medium)
         XCTAssertEqual(AdaptiveLayoutPolicy.mode(for: 1_040), .wide)
+        XCTAssertEqual(AdaptiveLayoutPolicy.mode(for: 1_366, forceCompact: true), .compact)
+        XCTAssertEqual(
+            AdaptiveLayoutPolicy.mode(for: 1_366, preferIconOnlyNavigation: true),
+            .medium
+        )
+    }
+
+    func testDashboardStartupCacheRemainsUsableWhileOfflineAfterTenMinutes() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+
+        XCTAssertTrue(DashboardStartupCachePolicy.shouldApply(
+            schemaVersion: DashboardStartupCachePolicy.schemaVersion,
+            endpoint: "https://relay.example",
+            expectedEndpoint: "https://relay.example",
+            credentialFingerprint: "credential-a",
+            expectedCredentialFingerprint: "credential-a",
+            storedAt: now.addingTimeInterval(-30 * 24 * 60 * 60),
+            now: now
+        ))
+        XCTAssertFalse(DashboardStartupCachePolicy.shouldApply(
+            schemaVersion: DashboardStartupCachePolicy.schemaVersion,
+            endpoint: "https://relay.example",
+            expectedEndpoint: "https://relay.example",
+            credentialFingerprint: "credential-a",
+            expectedCredentialFingerprint: "credential-b",
+            storedAt: now,
+            now: now
+        ))
+        XCTAssertFalse(DashboardStartupCachePolicy.shouldApply(
+            schemaVersion: DashboardStartupCachePolicy.schemaVersion + 1,
+            endpoint: "https://relay.example",
+            expectedEndpoint: "https://relay.example",
+            credentialFingerprint: "credential-a",
+            expectedCredentialFingerprint: "credential-a",
+            storedAt: now,
+            now: now
+        ))
+        XCTAssertFalse(DashboardStartupCachePolicy.shouldApply(
+            schemaVersion: nil,
+            endpoint: "https://relay.example",
+            expectedEndpoint: "https://relay.example",
+            credentialFingerprint: "credential-a",
+            expectedCredentialFingerprint: "credential-a",
+            storedAt: now.addingTimeInterval(DashboardStartupCachePolicy.maximumFutureClockSkew + 1),
+            now: now
+        ))
     }
 
     func testMacNavigationUsesExactlyThreeFixedPresentations() {
@@ -247,12 +322,12 @@ final class LiveStatePolicyTests: XCTestCase {
         let expectations: [(CGFloat, CGFloat, CGFloat, MacWorkspaceNavigationMode)] = [
             (640, 0, 640, .compact),
             (720, 0, 720, .compact),
-            (759, 0, 759, .compact),
+            (759.5, 0, 759.5, .compact),
             (760, 65, 695, .rail),
             (1_040, 65, 975, .rail),
             (1_080, 65, 1_015, .rail),
             (1_120, 65, 1_055, .rail),
-            (1_199, 65, 1_134, .rail),
+            (1_199.5, 65, 1_134.5, .rail),
             (1_200, 185, 1_015, .sidebar),
             (1_240, 185, 1_055, .sidebar),
         ]

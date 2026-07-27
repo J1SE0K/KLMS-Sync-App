@@ -82,7 +82,7 @@ private struct KLMSMacDeferredWorkspaceRootContainerView: View {
             if isReady {
                 KLMSMacWorkspaceRootContainerView(model: model)
             } else {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     Text("KLMS Sync")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
                     Text("화면을 준비하고 있습니다.")
@@ -314,13 +314,13 @@ private struct KLMSAuthDigitsOverlayView: View {
     var digits: String
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: KLMSSpacing.section) {
             Image(systemName: "iphone.radiowaves.left.and.right")
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Color.klmsMacWarningForeground)
                 .frame(width: 28, height: 28)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text("KAIST 인증 번호")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -341,18 +341,18 @@ private struct KLMSAuthDigitsOverlayView: View {
                     .frame(width: 34, height: 34)
             }
             .buttonStyle(.plain)
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
             .contentShape(Rectangle())
             .foregroundStyle(Color.klmsMacWarningForeground)
             .help("인증 번호 복사")
             .accessibilityLabel("KAIST 인증 번호 복사")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, KLMSSpacing.spacious)
+        .padding(.vertical, KLMSSpacing.section)
         .frame(width: 348, height: 74)
-        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.largePanel))
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: KLMSRadius.largePanel)
                 .stroke(Color.klmsMacWarningBorder.opacity(0.8), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)

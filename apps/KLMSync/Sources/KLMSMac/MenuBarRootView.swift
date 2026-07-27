@@ -117,8 +117,8 @@ struct MenuBarRootView: View {
                     layoutMode: metrics.contentMode
                 )
                 .padding(.horizontal, metrics.horizontalContentPadding)
-                .padding(.top, 6)
-                .padding(.bottom, 10)
+                .padding(.top, KLMSSpacing.compact)
+                .padding(.bottom, KLMSSpacing.comfortable)
                 .frame(width: metrics.documentWidth, alignment: .leading)
                 .background(Color.klmsMacScreenBackground)
                 .overlay(alignment: .bottom) {
@@ -143,8 +143,8 @@ struct MenuBarRootView: View {
                             )
                         }
                         .padding(.horizontal, metrics.horizontalContentPadding)
-                        .padding(.top, 10)
-                        .padding(.bottom, 16)
+                        .padding(.top, KLMSSpacing.comfortable)
+                        .padding(.bottom, KLMSSpacing.spacious)
                         .frame(width: metrics.documentWidth, alignment: .topLeading)
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("workspace-content-root-\(selectedSection.rawValue)")
@@ -194,13 +194,13 @@ private struct MacWorkspaceNavigationTransitionView: View {
                         Color.klmsMacSelectedBackground.opacity(0.72),
                         in: RoundedRectangle(cornerRadius: min(8, max(2, width / 5)))
                     )
-                    .padding(.top, 16)
+                    .padding(.top, KLMSSpacing.spacious)
                     .transition(.identity)
             } else if width > 0 {
                 Capsule()
                     .fill(Color.klmsMacSelectedBorder.opacity(0.72))
                     .frame(width: min(3, width), height: 42)
-                    .padding(.top, 16)
+                    .padding(.top, KLMSSpacing.spacious)
             }
         }
         .frame(width: width)
@@ -238,7 +238,7 @@ private struct MacPressFeedbackButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .frame(minHeight: 44)
+            .frame(minHeight: KLMSControlSize.minimumInteractive)
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             .scaleEffect(configuration.isPressed && isEnabled ? 0.985 : 1.0)
             .overlay {
@@ -351,18 +351,18 @@ private struct DeferredMacWorkspacePanel<Content: View>: View {
 
 private struct MacWorkspacePanelPreparingView: View {
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: KLMSSpacing.comfortable) {
             ProgressView()
                 .controlSize(.small)
             Text("화면을 준비하는 중입니다.")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsMacSecondaryText)
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
         .accessibilityLabel("화면을 준비하는 중입니다.")
@@ -384,7 +384,7 @@ private struct MacWorkstationLayoutView: View {
 
     @ViewBuilder
     private var workspace: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.spacious) {
             switch selectedSection {
             case .dashboard:
                 DeferredMacWorkspacePanel(id: "workspace-dashboard", deferContent: false) {
@@ -424,7 +424,7 @@ private struct MacWorkstationLayoutView: View {
                     id: "workspace-activityLogs",
                     contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
                 ) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.spacious) {
                         LogSummaryPanelView(
                             model: model,
                             expandedKind: $expandedLogSummaryKind,
@@ -441,7 +441,7 @@ private struct MacWorkstationLayoutView: View {
                     id: "workspace-diagnostics",
                     contentDelayNanoseconds: MacWorkspacePanelTiming.heavyListContentDelayNanoseconds
                 ) {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.spacious) {
                         VerifyPanelView(snapshot: model.snapshot)
                         DiagnosticToolsPanelView(model: model)
                         DoctorPanelView(snapshot: model.snapshot)
@@ -459,7 +459,7 @@ private struct MacWorkstationLayoutView: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, KLMSSpacing.tight)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspace-container-\(selectedSection.rawValue)")
@@ -572,7 +572,7 @@ private struct MacDashboardCommandCenterView: View {
     }
 
     private var commandColumn: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.spacious) {
             CommandPanelView(model: model, openRunLog: openRunLog)
             DashboardCommandCenterStatusCard(model: model, openRunLog: openRunLog)
         }
@@ -595,8 +595,8 @@ private struct DashboardCommandCenterStatusCard: View {
 
     var body: some View {
         SectionBox(title: "현재 작업") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+                HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                     Image(systemName: statusImage)
                         .font(.subheadline.weight(.bold))
                         .foregroundStyle(statusColor)
@@ -692,7 +692,7 @@ private struct MacWorkspaceSidebarView: View {
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: iconOnly ? .center : .leading, spacing: 14) {
+            VStack(alignment: iconOnly ? .center : .leading, spacing: KLMSSpacing.roomy) {
                 if !iconOnly {
                     VStack(alignment: .leading, spacing: 5) {
                         Text("KLMS Sync")
@@ -702,7 +702,7 @@ private struct MacWorkspaceSidebarView: View {
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     }
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, KLMSSpacing.compact)
                 }
 
                 WorkspaceNavigationView(
@@ -718,7 +718,7 @@ private struct MacWorkspaceSidebarView: View {
                 }
             }
             .padding(.horizontal, iconOnly ? 8 : 14)
-            .padding(.vertical, 16)
+            .padding(.vertical, KLMSSpacing.spacious)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -747,7 +747,7 @@ private struct WorkspaceNavigationView: View {
                 } label: {
                     HStack(spacing: iconOnly ? 0 : 10) {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                                 .fill(iconBackground(isSelected: isSelected, isHovered: isHovered))
                             Image(systemName: section.systemImage)
                                 .font(.subheadline.weight(isSelected ? .bold : .semibold))
@@ -768,22 +768,22 @@ private struct WorkspaceNavigationView: View {
                     }
                     .padding(.horizontal, iconOnly ? 8 : 10)
                     .padding(.vertical, 9)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                     .background(
                         rowBackground(isSelected: isSelected, isHovered: isHovered),
-                        in: RoundedRectangle(cornerRadius: 12)
+                        in: RoundedRectangle(cornerRadius: KLMSRadius.card)
                     )
                     .overlay(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                             .fill(isSelected ? Color.klmsMacSelectedBorder : Color.clear)
                             .frame(width: isSelected ? 4 : 0)
                             .padding(.vertical, 9)
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: KLMSRadius.card)
                             .stroke(rowBorder(isSelected: isSelected, isHovered: isHovered), lineWidth: isSelected ? 1.4 : 1)
                     }
-                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                    .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
                 }
                 .buttonStyle(MacPressFeedbackButtonStyle())
                 .onHover { hovering in
@@ -834,7 +834,7 @@ private struct MacCompactWorkspaceMenu: View {
     var resetCurrentSectionScroll: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: KLMSSpacing.comfortable) {
             Menu {
                 ForEach(KLMSMacSection.allCases) { section in
                     Button {
@@ -860,8 +860,8 @@ private struct MacCompactWorkspaceMenu: View {
             .accessibilityValue(selectedSection.title)
             .accessibilityIdentifier("workspace-compact-menu")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, KLMSSpacing.section)
+        .padding(.vertical, KLMSSpacing.standard)
         .background(Color.klmsMacSidebarBackground)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -881,19 +881,19 @@ private struct DashboardTopBarView: View {
     var body: some View {
         Group {
             if layoutMode == .wide {
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .center, spacing: KLMSSpacing.section) {
                     statusContent
                     TopUtilityActionsView(model: model)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     statusContent
                     TopUtilityActionsView(model: model)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, KLMSSpacing.hairline)
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("workspace-title-\(selectedSection.rawValue)")
@@ -1000,7 +1000,7 @@ private struct MacPrimarySyncActionView: View {
                 }
             }
         } label: {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: KLMSSpacing.section) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.title3.weight(.black))
@@ -1020,16 +1020,16 @@ private struct MacPrimarySyncActionView: View {
             }
             .foregroundStyle(foregroundColor)
             .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-            .padding(.horizontal, 14)
+            .padding(.horizontal, KLMSSpacing.roomy)
             .padding(.vertical, 15)
-            .background(backgroundColor, in: RoundedRectangle(cornerRadius: 12))
+            .background(backgroundColor, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
             .overlay {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(borderColor, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 12, disabledOpacity: 1.0))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.card, disabledOpacity: 1.0))
         .controlSize(.regular)
         .help(helpText)
         .accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")
@@ -1221,7 +1221,7 @@ private struct MacRunningProgressBarView: View, Equatable {
     var progress: MacRunningProgressSnapshot
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
             ProgressView(value: progress.fraction)
                 .progressViewStyle(.linear)
                 .tint(Color.klmsMacCommandAccent)
@@ -1230,7 +1230,7 @@ private struct MacRunningProgressBarView: View, Equatable {
             HStack(spacing: 5) {
                 ForEach(progress.stages.indices, id: \.self) { index in
                     let stage = progress.stages[index]
-                    HStack(spacing: 4) {
+                    HStack(spacing: KLMSSpacing.tight) {
                         Circle()
                             .fill(stageColor(index: index))
                             .frame(width: 5, height: 5)
@@ -1273,7 +1273,7 @@ private struct DashboardTopBarStatusContent: View, Equatable {
     var snapshot: DashboardTopBarSnapshot
 
     var body: some View {
-        HStack(alignment: snapshot.runningProgress == nil ? .center : .top, spacing: 12) {
+        HStack(alignment: snapshot.runningProgress == nil ? .center : .top, spacing: KLMSSpacing.section) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(snapshot.title)
                     .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -1291,14 +1291,14 @@ private struct DashboardTopBarStatusContent: View, Equatable {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 if let runningPhaseLabel = snapshot.runningPhaseLabel {
                     Label(runningPhaseLabel, systemImage: "arrow.triangle.2.circlepath")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Color.klmsMacCommandAccent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.76)
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, KLMSSpacing.standard)
                         .padding(.vertical, 5)
                         .background(Color.klmsMacCommandAccent.opacity(0.12), in: Capsule())
                 }
@@ -1307,7 +1307,7 @@ private struct DashboardTopBarStatusContent: View, Equatable {
                     Text(snapshot.statusBadgeText)
                         .font(.caption2.weight(.semibold))
                         .padding(.horizontal, 9)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, KLMSSpacing.compact)
                         .foregroundStyle(snapshot.tone.color)
                         .background(snapshot.tone.color.opacity(0.12), in: Capsule())
                 }
@@ -1569,9 +1569,9 @@ private struct MacAlertBannerContent: View, Equatable {
             Button {
                 performAction()
             } label: {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .center, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+                    HStack(alignment: .center, spacing: KLMSSpacing.section) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                             Text(snapshot.title)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacPrimaryText)
@@ -1593,30 +1593,30 @@ private struct MacAlertBannerContent: View, Equatable {
                             .truncationMode(.tail)
                             .frame(maxWidth: snapshot.authDigits == nil ? 92 : nil)
                             .padding(.horizontal, snapshot.chipHorizontalPadding)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, KLMSSpacing.standard)
                             .background(chipBackground, in: Capsule())
                     }
                     if let runningProgress = snapshot.runningProgress {
                         MacRunningProgressBarView(progress: runningProgress)
                     }
                 }
-                .padding(12)
+                .padding(KLMSSpacing.section)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(bannerBackground, in: RoundedRectangle(cornerRadius: 14))
+                .background(bannerBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14)
+                    RoundedRectangle(cornerRadius: KLMSRadius.panel)
                         .stroke(bannerBorder, lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 14))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.panel))
             }
-            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.panel))
             .accessibilityLabel(snapshot.title)
             .accessibilityHint(snapshot.detail)
             .accessibilitySortPriority(100)
             .zIndex(1)
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .padding(.bottom, 10)
+            .padding(.horizontal, KLMSSpacing.spacious)
+            .padding(.top, KLMSSpacing.spacious)
+            .padding(.bottom, KLMSSpacing.comfortable)
         }
     }
 
@@ -1786,7 +1786,7 @@ private struct TaskAndExamWorkspaceView: View {
     @State private var selectedKind: DashboardDetailKind = .assignments
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             taskKindSelector
             cachedDashboardDetailPanel(kind: activeKind)
                 .equatable()
@@ -1802,22 +1802,22 @@ private struct TaskAndExamWorkspaceView: View {
     }
 
     private var taskKindSelector: some View {
-        LazyVGrid(columns: taskKindColumns, spacing: 8) {
+        LazyVGrid(columns: taskKindColumns, spacing: KLMSSpacing.standard) {
             ForEach(availableKinds) { kind in
                 taskKindButton(kind)
             }
         }
-        .padding(8)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .padding(KLMSSpacing.standard)
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
 
     private var taskKindColumns: [GridItem] {
         Array(
-            repeating: GridItem(.flexible(minimum: 140), spacing: 8),
+            repeating: GridItem(.flexible(minimum: 140), spacing: KLMSSpacing.standard),
             count: max(1, availableKinds.count)
         )
     }
@@ -1839,21 +1839,21 @@ private struct TaskAndExamWorkspaceView: View {
                     .font(.caption.weight(.bold))
                 Text("\(taskKindCount(kind))")
                     .font(.caption.monospacedDigit().weight(.bold))
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, KLMSSpacing.compact)
                     .padding(.vertical, 3)
                     .background(isSelected ? Color.klmsMacSelectedForeground.opacity(0.16) : Color.klmsMacSubtleCardBackground, in: Capsule())
             }
             .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
             .padding(.horizontal, 11)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground.opacity(0.70), in: RoundedRectangle(cornerRadius: 10))
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
+            .background(isSelected ? Color.klmsMacSelectedBackground : Color.klmsMacSubtleCardBackground.opacity(0.70), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .stroke(isSelected ? Color.klmsMacSelectedBorder : Color.klmsMacBorder.opacity(0.70), lineWidth: isSelected ? 1.25 : 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 10))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.control))
         .accessibilityLabel("\(kind.title) 목록")
         .accessibilityValue(isSelected ? "선택됨, \(taskKindCount(kind))개" : "\(taskKindCount(kind))개")
     }
@@ -1918,7 +1918,7 @@ private struct QuickStatusStripView: View {
     let model: KLMSMacModel
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: KLMSSpacing.compact) {
             StatusChipView(
                 title: "공지 체크리스트",
                 systemImage: "checklist.checked",
@@ -1985,7 +1985,7 @@ private struct StatusChipView: View {
         Label(title, systemImage: systemImage)
             .font(.caption2.weight(.semibold))
             .lineLimit(1)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, KLMSSpacing.standard)
             .padding(.vertical, 5)
             .foregroundStyle(color)
             .background(color.opacity(0.11), in: Capsule())
@@ -1994,14 +1994,14 @@ private struct StatusChipView: View {
 
 private struct ExternalIntegrationStatusView: View {
     let model: KLMSMacModel
-    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 8)]
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: KLMSSpacing.standard)]
 
     var body: some View {
         let verify = model.snapshot.verifyResult
         let statuses = integrationStatuses(for: verify)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(spacing: KLMSSpacing.standard) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Label("연동 상태", systemImage: "link")
                         .font(.caption.weight(.semibold))
 
@@ -2012,9 +2012,9 @@ private struct ExternalIntegrationStatusView: View {
 
                     Spacer(minLength: 8)
                 }
-                .padding(10)
+                .padding(KLMSSpacing.comfortable)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
 
                 Button {
                     Task { await model.run(.verify) }
@@ -2025,15 +2025,15 @@ private struct ExternalIntegrationStatusView: View {
                 .buttonStyle(KLMSMacRootActionButtonStyle())
             }
 
-            LazyVGrid(columns: columns, spacing: 8) {
+            LazyVGrid(columns: columns, spacing: KLMSSpacing.standard) {
                 ForEach(statuses) { status in
                     IntegrationStatusTile(status: status)
                 }
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 10)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, KLMSSpacing.comfortable)
+        .padding(.vertical, KLMSSpacing.comfortable)
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 
     private func integrationStatuses(for verify: VerifyResult?) -> [IntegrationStatusSummary] {
@@ -2266,14 +2266,14 @@ private struct KLMSMacRootActionButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
             .frame(minWidth: 40, minHeight: 40)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, KLMSSpacing.comfortable)
             .padding(.vertical, 7)
             .background {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .fill(background)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(border, lineWidth: isEnabled ? 1.15 : 1)
             }
             .opacity(isEnabled ? 1.0 : 0.42)
@@ -2349,17 +2349,17 @@ private struct KLMSMacCompactDangerIconButtonStyle: ButtonStyle {
             .foregroundStyle(isEnabled ? Color.klmsMacDangerForeground : Color.klmsMacSecondaryText.opacity(0.42))
             .frame(width: 32, height: 32)
             .background {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .fill(background)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(border, lineWidth: isEnabled ? 1.15 : 1)
             }
             .opacity(isEnabled ? 1.0 : 0.40)
             .saturation(isEnabled ? 1.0 : 0.22)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.96 : 1.0)
-            .frame(width: 44, height: 44)
+            .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
             .contentShape(Rectangle())
     }
 
@@ -2386,16 +2386,16 @@ private struct KLMSMacCompactDangerActionButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold))
             .foregroundStyle(isEnabled ? Color.klmsMacDangerForeground : Color.klmsMacSecondaryText.opacity(0.42))
             .lineLimit(1)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, KLMSSpacing.standard)
             .frame(minHeight: 30)
-            .background(background, in: RoundedRectangle(cornerRadius: 8))
+            .background(background, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(border, lineWidth: isEnabled ? 1.1 : 1)
             }
             .opacity(isEnabled ? 1.0 : 0.40)
             .scaleEffect(configuration.isPressed && isEnabled ? 0.97 : 1.0)
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
             .contentShape(Rectangle())
     }
 
@@ -2543,10 +2543,10 @@ private struct IntegrationStatusTile: View {
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, minHeight: 74, alignment: .topLeading)
-        .padding(8)
-        .background(status.health.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .padding(KLMSSpacing.standard)
+        .background(status.health.color.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(status.health.color.opacity(0.18), lineWidth: 1)
         }
     }
@@ -2559,7 +2559,7 @@ private struct ImportantLogPanelView: View {
     @Binding var firstRunReadinessCompleted: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             AuthCodeBannerView(digits: model.currentAuthDigits, statusMessage: model.authStatusMessage)
             NextActionPanelView(
                 model: model,
@@ -2582,11 +2582,11 @@ private struct LogSummaryPanelView: View {
     @Binding var expandedKind: LogSummaryKind?
     var layoutMode: AdaptiveLayoutMode
     private static let terminalSummaryDisplayInterval: TimeInterval = 5 * 60
-    private let tileColumns = [GridItem(.adaptive(minimum: 176), spacing: 8)]
+    private let tileColumns = [GridItem(.adaptive(minimum: 176), spacing: KLMSSpacing.standard)]
     private let renderReferenceDate = Date()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             HStack {
                 Label("로그 요약", systemImage: "list.bullet.rectangle")
                     .font(.caption.weight(.semibold))
@@ -2612,7 +2612,7 @@ private struct LogSummaryPanelView: View {
                 .help("화면의 실행 로그, 서버 요청, 파일 요청, 항목 변경, 설정 변경, 공유 실행 로그를 지웁니다. 진행 중인 요청은 유지됩니다.")
             }
 
-            LazyVGrid(columns: tileColumns, alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: tileColumns, alignment: .leading, spacing: KLMSSpacing.standard) {
                 LogSummaryTile(
                     title: "실행",
                     value: runValue,
@@ -2654,11 +2654,11 @@ private struct LogSummaryPanelView: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsMacBorder.opacity(0.72), lineWidth: 1)
         }
     }
@@ -2859,7 +2859,7 @@ private struct LogSummaryDetailView: View {
     let model: KLMSMacModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             switch kind {
             case .run:
                 runDetail
@@ -2869,11 +2869,11 @@ private struct LogSummaryDetailView: View {
                 fileRequestDetail
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
@@ -2899,7 +2899,7 @@ private struct LogSummaryDetailView: View {
     }
 
     private var remoteDetail: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
                 Text(message)
                     .font(.caption)
@@ -2925,7 +2925,7 @@ private struct LogSummaryDetailView: View {
     }
 
     private var fileRequestDetail: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             Text("파일 요청 기록")
                 .font(.caption.weight(.semibold))
             if model.serverRelayRecentFileAccessRequests.isEmpty {
@@ -2968,7 +2968,7 @@ private struct LogSummaryTile: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                 Image(systemName: systemImage)
                     .foregroundStyle(tint)
                     .frame(width: 18)
@@ -2993,14 +2993,14 @@ private struct LogSummaryTile: View {
             }
             .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
             .padding(9)
-            .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(isExpanded ? tint.opacity(0.42) : tint.opacity(0.16), lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 14))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.panel))
         .help(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
         .accessibilityLabel("\(title) 로그 요약 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "관련 로그 접기" : "관련 로그 펼치기")
@@ -3015,11 +3015,11 @@ private struct NextActionPanelView: View {
 
     var body: some View {
         if let action = nextAction {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: action.systemImage)
                     .foregroundStyle(action.color)
                     .frame(width: 20)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text(action.title)
                         .font(.caption.weight(.semibold))
                         .lineLimit(1)
@@ -3040,9 +3040,9 @@ private struct NextActionPanelView: View {
                 .accessibilityHint(action.detail)
                 .disabled(model.runningCommand != nil && action.kind != .showRunningLog)
             }
-            .padding(10)
+            .padding(KLMSSpacing.comfortable)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(action.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+            .background(action.color.opacity(0.10), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         }
     }
 
@@ -3152,19 +3152,19 @@ private struct NextAction {
 private struct DiagnosticToolsPanelView: View {
     let model: KLMSMacModel
     @State private var isAdvancedExpanded = false
-    private let columns = [GridItem(.adaptive(minimum: 170), spacing: 8)]
+    private let columns = [GridItem(.adaptive(minimum: 170), spacing: KLMSSpacing.standard)]
     private let dryRunCommands: [KLMSEngineCommand] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
         SectionBox(title: "빠른 점검") {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.section) {
                 Text("권장 순서: 상태 검사 → 권한/환경 진단 → 리포트")
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
 
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: KLMSSpacing.standard) {
                     diagnosticButton(.verify)
                     diagnosticButton(.doctor)
                     diagnosticButton(.report)
@@ -3179,7 +3179,7 @@ private struct DiagnosticToolsPanelView: View {
                         .foregroundStyle(Color.klmsMacSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                     diagnosticButton(.v2BuildState)
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: KLMSSpacing.standard) {
                         ForEach(dryRunCommands, id: \.self) { command in
                             dryRunButton(command)
                         }
@@ -3197,7 +3197,7 @@ private struct DiagnosticToolsPanelView: View {
                 await model.run(command)
             }
         } label: {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Label(command.displayName, systemImage: command.systemImage)
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
@@ -3209,7 +3209,7 @@ private struct DiagnosticToolsPanelView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
-            .padding(.vertical, 4)
+            .padding(.vertical, KLMSSpacing.tight)
         }
         .buttonStyle(KLMSMacRootActionButtonStyle())
         .disabled(model.runningCommand != nil)
@@ -3228,7 +3228,7 @@ private struct DiagnosticToolsPanelView: View {
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
         }
         .buttonStyle(KLMSMacRootActionButtonStyle())
         .disabled(model.runningCommand != nil || !command.supportsDryRun)
@@ -3240,7 +3240,7 @@ private struct DiagnosticToolsPanelView: View {
     @ViewBuilder
     private var dryRunReportSummary: some View {
         if !model.snapshot.dryRunReports.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 ForEach(model.snapshot.dryRunReports.keys.sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { scope in
                     if let report = model.snapshot.dryRunReports[scope] {
                         Text("\(scope.displayName): 생성 \(report.wouldCreate) · 수정 \(report.wouldUpdate) · 삭제 \(report.wouldDelete) · 다운로드 \(report.wouldDownload) · 정리 예정 \(report.wouldPrune)")
@@ -3260,7 +3260,7 @@ private struct DiagnosticStageDurationPanelView: View {
     var body: some View {
         if !stageDurations.isEmpty {
             SectionBox(title: "단계별 소요 시간") {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     Text("최근 실행에서 어느 단계가 오래 걸렸는지 확인합니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
@@ -3303,7 +3303,7 @@ private struct LogTextBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             ReadableLogHighlightsView(highlights: highlights, detailed: detailed)
             DiagnosticChecksDisclosure(
                 title: "원본 로그 보기",
@@ -3326,10 +3326,10 @@ private struct LogTextBlock: View {
             .textSelection(.enabled)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .padding(8)
-            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.standard)
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsMacBorder, lineWidth: 1)
             )
     }
@@ -3372,18 +3372,18 @@ private struct ReadableLogHighlightsView: View {
 
     var body: some View {
         if !highlights.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 Text("핵심 로그")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 6)], alignment: .leading, spacing: 6) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: KLMSSpacing.compact)], alignment: .leading, spacing: KLMSSpacing.compact) {
                     ForEach(highlights) { highlight in
                         HStack(alignment: .top, spacing: 7) {
                             Image(systemName: systemImage(for: highlight.level))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(tint(for: highlight.level))
                                 .frame(width: 16)
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                                 Text(highlight.title)
                                     .font(.caption2.weight(.semibold))
                                 Text(highlight.detail.klmsDisplayText)
@@ -3396,11 +3396,11 @@ private struct ReadableLogHighlightsView: View {
                                 }
                             }
                         }
-                        .padding(8)
+                        .padding(KLMSSpacing.standard)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .background(tint(for: highlight.level).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        .background(tint(for: highlight.level).opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                                 .stroke(tint(for: highlight.level).opacity(0.18), lineWidth: 1)
                         }
                     }
@@ -3412,7 +3412,7 @@ private struct ReadableLogHighlightsView: View {
     @ViewBuilder
     private func diagnosticDetailRows(for highlight: KLMSLogHighlight) -> some View {
         if !highlight.explanation.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Label("의미", systemImage: "questionmark.circle")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -3424,7 +3424,7 @@ private struct ReadableLogHighlightsView: View {
             .padding(.top, 5)
         }
         if !highlight.nextAction.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Label("다음 확인", systemImage: "arrow.turn.down.right")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(tint(for: highlight.level))
@@ -3472,13 +3472,13 @@ private struct AuthCodeBannerView: View {
 
     var body: some View {
         if let digits {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: KLMSSpacing.section) {
                 Image(systemName: "iphone.radiowaves.left.and.right")
                     .font(.title3)
                     .foregroundStyle(Color.klmsMacWarningForeground)
                     .frame(width: 28)
                     .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("KAIST 인증 번호")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsMacSecondaryText)
@@ -3499,26 +3499,26 @@ private struct AuthCodeBannerView: View {
                 .buttonStyle(KLMSMacRootActionButtonStyle(tone: .accent(Color.klmsMacWarningForeground)))
                 .accessibilityLabel("KAIST 인증 번호 복사")
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsMacWarningBorder, lineWidth: 1)
             }
         } else if let statusMessage {
-            HStack(alignment: .center, spacing: 10) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(Color.klmsMacSuccessForeground)
                 Text(statusMessage)
                     .font(.callout.weight(.semibold))
                 Spacer()
             }
-            .padding(10)
+            .padding(KLMSSpacing.comfortable)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsMacSuccessBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacSuccessBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsMacSuccessBorder, lineWidth: 1)
             }
         }
@@ -3581,7 +3581,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
             selectedYear: selectedYear,
             selectedSemester: selectedSemester
         )
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             IssueSummaryView(issues: model.cachedIssues)
             DashboardMainScopeBarView(
                 selectedYear: $selectedYear,
@@ -3593,7 +3593,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.section) {
                     metricColumn(
                         primaryMetrics: scopedPresentation.primaryMetrics,
                         attentionMetrics: scopedPresentation.attentionMetrics,
@@ -3667,7 +3667,7 @@ private struct DashboardSummaryContentView: View, @preconcurrency Equatable {
         isArchiveExpanded: Bool,
         activeDetail: DashboardDetailKind?
     ) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             MetricSectionGrid(
                 title: nil,
                 metrics: primaryMetrics,
@@ -3994,8 +3994,8 @@ private struct DashboardDetailHint: View {
     var onSelect: (DashboardDetailKind) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: "rectangle.stack.badge.cursorarrow")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -4017,25 +4017,25 @@ private struct DashboardDetailHint: View {
                     .font(.caption)
                     .foregroundStyle(Color.klmsMacSecondaryText)
             } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 8)], alignment: .leading, spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: KLMSSpacing.standard)], alignment: .leading, spacing: KLMSSpacing.standard) {
                     ForEach(items) { item in
                         Button {
                             onSelect(item.kind)
                         } label: {
                             DashboardQuickWorkItemRow(item: item)
                         }
-                        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+                        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.smallSurface))
                         .help("\(item.kind.title) 상세 열기")
                         .accessibilityLabel("\(item.title) \(item.kind.title) 상세 열기")
                     }
                 }
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
@@ -4045,7 +4045,7 @@ private struct DashboardQuickWorkItemRow: View {
     var item: DashboardQuickWorkItem
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
             Image(systemName: item.systemImage)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(item.tint)
@@ -4070,12 +4070,12 @@ private struct DashboardQuickWorkItemRow: View {
         }
         .padding(9)
         .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
-        .background(Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(item.tint.opacity(0.16), lineWidth: 1)
         }
-        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -4109,17 +4109,17 @@ private struct DashboardMainScopeBarView: View {
     var options: DashboardMainScopeOptions
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
             Label("동기화 범위", systemImage: "calendar.badge.clock")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsMacPrimaryText)
             Spacer(minLength: 4)
             scopePicker("연도", selection: normalizedYearBinding, values: options.years)
                 .frame(width: 132)
-                .frame(minHeight: 44)
+                .frame(minHeight: KLMSControlSize.minimumInteractive)
             scopePicker("학기", selection: normalizedSemesterBinding, values: options.semesters)
                 .frame(width: 150)
-                .frame(minHeight: 44)
+                .frame(minHeight: KLMSControlSize.minimumInteractive)
             if hasActiveScope {
                 Button {
                     selectedYear = DashboardTermFilter.allYears
@@ -4129,17 +4129,17 @@ private struct DashboardMainScopeBarView: View {
                         .labelStyle(.iconOnly)
                 }
                 .buttonStyle(.borderless)
-                .frame(minWidth: 44, minHeight: 44)
+                .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
                 .contentShape(Rectangle())
                 .help("연도와 학기 범위를 전체로 되돌립니다.")
                 .accessibilityLabel("동기화 범위 초기화")
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
@@ -4458,8 +4458,8 @@ private struct DashboardRuntimePanelView: View {
     let model: KLMSMacModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Label("연동 상태", systemImage: "link")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
@@ -4469,14 +4469,14 @@ private struct DashboardRuntimePanelView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(runtimeSummaryBadgeColor)
                         .lineLimit(1)
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, KLMSSpacing.standard)
                         .padding(.vertical, 5)
                         .background(runtimeSummaryBadgeColor.opacity(0.11), in: Capsule())
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 MacRailStatusLine(text: integrationSummaryText)
                 MacRailStatusLine(text: noticeMemoSummaryText)
                 if let slowestSummaryText {
@@ -4484,11 +4484,11 @@ private struct DashboardRuntimePanelView: View {
                 }
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsMacBorder, lineWidth: 1)
         }
     }
@@ -4551,7 +4551,7 @@ private struct MacRailStatusLine: View {
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 9)
-            .padding(.vertical, 8)
+            .padding(.vertical, KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.klmsMacSubtleCardBackground.opacity(0.76), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
@@ -4570,8 +4570,8 @@ private struct RemoteActivityPanelView: View {
         let sharedRunLogs = model.serverRelaySharedRunLogs
         if model.lastRemoteCommand != nil || !fileRequests.isEmpty || !requestLog.isEmpty || !sharedRunLogs.isEmpty || model.remoteProcessingStatusMessage?.nilIfBlank != nil {
             SectionBox(title: "서버·파일 요청 기록") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                    HStack(spacing: KLMSSpacing.standard) {
                         Spacer()
                         KLMSMacConfirmedClearAction(
                             shortLabel: nil,
@@ -4588,7 +4588,7 @@ private struct RemoteActivityPanelView: View {
                     }
 
                     if let message = model.remoteProcessingStatusMessage?.nilIfBlank ?? model.serverRelayStatusMessage?.nilIfBlank {
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                             Image(systemName: "network")
                                 .foregroundStyle(Color.klmsMacCommandAccent)
                                 .frame(width: 18)
@@ -4605,7 +4605,7 @@ private struct RemoteActivityPanelView: View {
                     }
 
                     if !sharedRunLogs.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                             Text("동기화 단계")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacSecondaryText)
@@ -4623,7 +4623,7 @@ private struct RemoteActivityPanelView: View {
                     }
 
                     if !requestLog.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                             Text("서버 요청")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacSecondaryText)
@@ -4634,7 +4634,7 @@ private struct RemoteActivityPanelView: View {
                     }
 
                     if !fileRequests.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                             Text("파일 요청")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacSecondaryText)
@@ -4644,8 +4644,8 @@ private struct RemoteActivityPanelView: View {
                         }
                     }
                 }
-                .padding(10)
-                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .padding(KLMSSpacing.comfortable)
+                .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             }
         }
     }
@@ -4662,12 +4662,12 @@ private struct SharedRunLogActivityRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+                HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                     Image(systemName: systemImage)
                         .foregroundStyle(tint)
                         .frame(width: 16)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                         Text(log.commandTitle.nilIfBlank ?? "동기화")
                             .font(.caption.weight(.semibold))
                         Text("\(log.status) · \(log.duration) · \(log.finishedAt.formatted(date: .abbreviated, time: .shortened))")
@@ -4684,15 +4684,15 @@ private struct SharedRunLogActivityRow: View {
                     LogTextBlock(text: log.outputTail)
                 }
             }
-            .padding(8)
+            .padding(KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(tint.opacity(0.18), lineWidth: 1)
             )
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.smallSurface))
         .accessibilityLabel("\(log.commandTitle.nilIfBlank ?? "동기화") 실행 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "실행 로그 접기" : "실행 로그 펼치기")
     }
@@ -4722,13 +4722,13 @@ private struct ServerRequestLogActivityRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+                HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                     Image(systemName: sourceIcon)
                         .foregroundStyle(statusColor)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Text(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청")
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
@@ -4753,16 +4753,16 @@ private struct ServerRequestLogActivityRow: View {
                     LogTextBlock(text: expandedLog)
                 }
             }
-            .padding(8)
+            .padding(KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(statusColor.opacity(0.16), lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.smallSurface))
         .accessibilityLabel("\(entry.action.nilIfBlank ?? entry.path.nilIfBlank ?? "서버 요청") 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "서버 요청 기록 접기" : "서버 요청 기록 펼치기")
     }
@@ -4831,13 +4831,13 @@ private struct RemoteCommandActivityRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+                HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                     Image(systemName: systemImage)
                         .foregroundStyle(statusColor)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Text(command.kind.displayName)
                                 .font(.caption.weight(.semibold))
                             Text(command.status.displayName)
@@ -4861,16 +4861,16 @@ private struct RemoteCommandActivityRow: View {
                     LogTextBlock(text: expandedLog)
                 }
             }
-            .padding(8)
+            .padding(KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(statusColor.opacity(0.16), lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.smallSurface))
         .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "원격 실행 기록 접기" : "원격 실행 기록 펼치기")
     }
@@ -4975,13 +4975,13 @@ private struct FileAccessActivityRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+                HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                     Image(systemName: systemImage)
                         .foregroundStyle(statusColor)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Text(request.itemTitle.nilIfBlank ?? "파일")
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
@@ -5007,15 +5007,15 @@ private struct FileAccessActivityRow: View {
                     LogTextBlock(text: expandedLog)
                 }
             }
-            .padding(8)
+            .padding(KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .background(statusColor.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(statusColor.opacity(0.16), lineWidth: 1)
             }
         }
-        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+        .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.smallSurface))
         .accessibilityLabel("\(request.itemTitle.nilIfBlank ?? "파일") 파일 요청 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "파일 요청 기록 접기" : "파일 요청 기록 펼치기")
     }
@@ -5083,16 +5083,16 @@ private struct CommandPanelView: View {
     @ObservedObject var model: KLMSMacModel
     var openRunLog: () -> Void
     private let secondaryCommands: [KLMSEngineCommand] = [.filesSync, .coreSync, .noticeSync]
-    private let secondaryCommandColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 8), count: 3)
+    private let secondaryCommandColumns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard), count: 3)
 
     var body: some View {
         SectionBox(title: "동기화") {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                 commandStatusStrip
 
                 MacPrimarySyncActionView(model: model)
 
-                LazyVGrid(columns: secondaryCommandColumns, spacing: 8) {
+                LazyVGrid(columns: secondaryCommandColumns, spacing: KLMSSpacing.standard) {
                     ForEach(secondaryCommands, id: \.self) { command in
                         commandActionCard(command)
                     }
@@ -5102,7 +5102,7 @@ private struct CommandPanelView: View {
             }
 
             if let command = model.runningCommand {
-                HStack(spacing: 10) {
+                HStack(spacing: KLMSSpacing.comfortable) {
                     Label(
                         model.isCancellingCommand ? "중단 요청 중입니다" : "\(command.displayName) 실행 중",
                         systemImage: model.isCancellingCommand ? "hourglass" : "play.circle"
@@ -5126,8 +5126,8 @@ private struct CommandPanelView: View {
                     .accessibilityHint("현재 실행 중인 동기화를 중단합니다.")
                     .accessibilityIdentifier("command-cancel-current")
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, KLMSSpacing.comfortable)
+                .padding(.vertical, KLMSSpacing.standard)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
                 .overlay {
@@ -5144,13 +5144,13 @@ private struct CommandPanelView: View {
                 openRunLog()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(alignment: .center, spacing: KLMSSpacing.standard) {
                     Image(systemName: commandStatusImage)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(commandStatusColor)
                         .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 2) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                         Text(commandStatusText)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsMacPrimaryText)
@@ -5176,8 +5176,8 @@ private struct CommandPanelView: View {
                     )
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
+            .padding(.horizontal, KLMSSpacing.comfortable)
+            .padding(.vertical, KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
@@ -5204,7 +5204,7 @@ private struct CommandPanelView: View {
                     Image(systemName: systemImage)
                         .font(.system(size: 9, weight: .black, design: .rounded))
                 }
-                VStack(spacing: 2) {
+                VStack(spacing: KLMSSpacing.hairline) {
                     Text(shortTitle(for: command))
                         .font(.system(size: 11, weight: .heavy, design: .rounded))
                     if isRunning {
@@ -5217,21 +5217,21 @@ private struct CommandPanelView: View {
                 .minimumScaleFactor(0.72)
             }
             .foregroundStyle(secondaryCommandForeground(isRunning: isRunning, isDisabled: isDisabled))
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
-            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .center)
+            .padding(.horizontal, KLMSSpacing.standard)
             .padding(.vertical, 9)
             .background(
                 secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
-                in: RoundedRectangle(cornerRadius: 10)
+                in: RoundedRectangle(cornerRadius: KLMSRadius.control)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .stroke(
                         secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
                         lineWidth: 1
                     )
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
         }
         .buttonStyle(MacPressFeedbackButtonStyle(disabledOpacity: 1.0))
         .controlSize(.small)
@@ -5358,13 +5358,13 @@ private struct CommandStageDurationSummaryView: View {
 
     var body: some View {
         if !durations.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 Text("단계별 소요 시간")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
-                VStack(spacing: 6) {
+                VStack(spacing: KLMSSpacing.compact) {
                     ForEach(durations) { duration in
-                        HStack(spacing: 6) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Circle()
                                 .fill(tint(for: duration.stage))
                                 .frame(width: 6, height: 6)
@@ -5378,10 +5378,10 @@ private struct CommandStageDurationSummaryView: View {
                                 .foregroundStyle(Color.klmsMacSecondaryText)
                                 .lineLimit(1)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, KLMSSpacing.standard)
+                        .padding(.vertical, KLMSSpacing.compact)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     }
                 }
             }
@@ -5410,7 +5410,7 @@ private struct MetricSectionGrid: View {
 
     var body: some View {
         if !metrics.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 if let title {
                     Text(title)
                         .font(.caption)
@@ -5434,13 +5434,13 @@ private struct DashboardArchiveMetricSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             Button {
                 macPerformWithoutAnimation {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsMacSecondaryText)
@@ -5453,19 +5453,19 @@ private struct DashboardArchiveMetricSection: View {
                         .font(.caption2.weight(.bold))
                         .monospacedDigit()
                         .foregroundStyle(Color.klmsMacSecondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, KLMSSpacing.standard)
+                        .padding(.vertical, KLMSSpacing.tight)
                         .background(Color.klmsMacSubtleCardBackground, in: Capsule())
                 }
                 .padding(.horizontal, 9)
-                .padding(.vertical, 8)
+                .padding(.vertical, KLMSSpacing.standard)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+                .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: KLMSRadius.control)
                         .stroke(Color.klmsMacCommandBorder.opacity(0.62), lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
             }
             .buttonStyle(MacPressFeedbackButtonStyle())
             .accessibilityLabel("기록과 보관 \(totalCount)개 \(isExpanded ? "펼쳐짐" : "접힘")")
@@ -5493,7 +5493,7 @@ private struct LoginPanelView: View {
                     .foregroundStyle(Color.klmsMacSecondaryText)
             }
             if let digits = model.currentAuthDigits {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Text("인증 번호")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText)
@@ -5520,7 +5520,7 @@ private struct VerifyPanelView: View {
                     checks: verify.checks,
                     primaryVisibleIssueCount: primaryVisibleIssueCount
                 )
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     Text(summaryText(for: verify, checkSummary: checkSummary))
                         .font(.caption)
                         .foregroundStyle(!checkSummary.hasIssues && verify.status.lowercased() == "ok" ? Color.klmsMacSecondaryText : Color.klmsMacWarningForeground)
@@ -5606,9 +5606,9 @@ private struct VerifyCheckExplanationRowView: View {
     @State private var isGuidanceExpanded = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
             if !compact {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                     .fill(color.opacity(isIssue ? 0.72 : 0.24))
                     .frame(width: 3)
             }
@@ -5663,9 +5663,9 @@ private struct VerifyCheckExplanationRowView: View {
             }
         }
         .padding(compact ? 6 : 9)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(color.opacity(compact ? 0.10 : (isIssue ? 0.34 : 0.18)), lineWidth: 1)
         }
     }
@@ -5814,7 +5814,7 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .padding(.horizontal, compact ? 6 : 8)
                 .padding(.vertical, compact ? 4 : 6)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                 .background(Color.klmsMacSubtleCardBackground.opacity(compact ? 0.18 : 0.30), in: RoundedRectangle(cornerRadius: 7))
                 .overlay {
                     RoundedRectangle(cornerRadius: 7)
@@ -5836,7 +5836,7 @@ private struct DiagnosticChecksDisclosure<Content: View>: View {
         }
         .padding(compact ? 0 : 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(compact ? Color.clear : Color.klmsMacSubtleCardBackground.opacity(0.34), in: RoundedRectangle(cornerRadius: 8))
+        .background(compact ? Color.clear : Color.klmsMacSubtleCardBackground.opacity(0.34), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -5845,11 +5845,11 @@ private struct DoctorCheckRowView: View {
     var compact = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
             Image(systemName: systemImage)
                 .foregroundStyle(color)
                 .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text("\(check.name) · \(check.status.klmsLocalizedStatus)")
                     .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
                 if !check.detail.isEmpty {
@@ -5863,7 +5863,7 @@ private struct DoctorCheckRowView: View {
             }
         }
         .padding(compact ? 6 : 8)
-        .background(compact ? Color.klmsMacSubtleCardBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(compact ? Color.klmsMacSubtleCardBackground : Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 
     private var systemImage: String {
@@ -5891,7 +5891,7 @@ private struct AppDiagnosticsPanelView: View {
     @ObservedObject var model: KLMSMacModel
     @State private var isExpanded = false
     @State private var isPermissionScopeExpanded = false
-    private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: 8)]
+    private let permissionActionColumns = [GridItem(.adaptive(minimum: 136), spacing: KLMSSpacing.standard)]
 
     var body: some View {
         SectionBox(title: "앱/설치 정보") {
@@ -5899,7 +5899,7 @@ private struct AppDiagnosticsPanelView: View {
             HStack(spacing: 9) {
                 Image(systemName: "app.badge.checkmark")
                     .foregroundStyle(diagnostics.codeSigning.needsAttention ? Color.klmsMacWarningForeground : Color.klmsMacSecondaryText)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text(diagnostics.codeSigning.needsAttention ? "권한이나 서명 상태를 확인하세요." : "앱과 엔진 상태가 준비되어 있습니다.")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsMacPrimaryText)
@@ -5909,14 +5909,14 @@ private struct AppDiagnosticsPanelView: View {
                 }
                 Spacer(minLength: 0)
             }
-            .padding(8)
-            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.standard)
+            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
 
             HStack(alignment: .top, spacing: 9) {
                 Image(systemName: localRealtimeSystemImage)
                     .foregroundStyle(localRealtimeColor)
                     .frame(width: 18)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("로컬 실시간 반영 · \(model.fileSystemRealtimeStatusTitle)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsMacPrimaryText)
@@ -5939,10 +5939,10 @@ private struct AppDiagnosticsPanelView: View {
                     .accessibilityIdentifier("local-realtime-retry")
                 }
             }
-            .padding(8)
-            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.standard)
+            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(
                         model.fileSystemRealtimeNeedsAttention
                             ? Color.klmsMacWarningBorder.opacity(0.34)
@@ -5957,7 +5957,7 @@ private struct AppDiagnosticsPanelView: View {
                 title: "설치·권한 세부 정보",
                 isExpanded: $isExpanded
             ) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     DiagnosticRowView(
                         title: "코드 서명",
                         value: diagnostics.codeSigning.statusTitle,
@@ -5983,7 +5983,7 @@ private struct AppDiagnosticsPanelView: View {
                         isWarning: diagnostics.installedPayloadVersion.isEmpty
                     )
 
-                    LazyVGrid(columns: permissionActionColumns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: permissionActionColumns, alignment: .leading, spacing: KLMSSpacing.standard) {
                         Button {
                             Task {
                                 await model.requestAppPermissions()
@@ -6015,7 +6015,7 @@ private struct AppDiagnosticsPanelView: View {
                     }
 
                     if !model.permissionProbeRows.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                             Text("권한 점검 결과")
                                 .font(.caption.weight(.semibold))
                             ForEach(model.permissionProbeRows) { row in
@@ -6034,7 +6034,7 @@ private struct AppDiagnosticsPanelView: View {
                         isExpanded: $isPermissionScopeExpanded,
                         compact: true
                     ) {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                             PermissionScopeText("손쉬운 사용: 시스템 설정에서 KLMS Sync를 켜야 합니다. KLMS 공지 메모 렌더러가 따로 보이면 그것도 켜 주세요.")
                             PermissionScopeText("손쉬운 사용 사용처: Notes 편집 영역 포커스 확인, 체크리스트와 문단 서식 적용")
                             PermissionScopeText("자동화 · Safari: KLMS 로그인 확인, 페이지 수집, 파일 다운로드")
@@ -6044,11 +6044,11 @@ private struct AppDiagnosticsPanelView: View {
                             PermissionScopeText("캘린더/미리 알림 전체 접근: 일정과 미리 알림 동기화")
                             PermissionScopeText("알림: KAIST 인증번호와 실패 상태를 앱에서 바로 표시")
                         }
-                        .padding(.top, 4)
+                        .padding(.top, KLMSSpacing.tight)
                     }
                     .font(.caption)
                 }
-                .padding(.top, 6)
+                .padding(.top, KLMSSpacing.compact)
             }
         }
     }
@@ -6083,11 +6083,11 @@ private struct PermissionScopeText: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .top, spacing: KLMSSpacing.compact) {
             Image(systemName: "circle.fill")
                 .font(.system(size: 4))
                 .foregroundStyle(Color.klmsMacSecondaryText)
-                .padding(.top, 6)
+                .padding(.top, KLMSSpacing.compact)
             Text(text)
                 .font(.caption2)
                 .foregroundStyle(Color.klmsMacSecondaryText)
@@ -6104,11 +6104,11 @@ private struct DiagnosticRowView: View {
     var isWarning: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
             Image(systemName: isWarning ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(isWarning ? Color.klmsMacWarningForeground : Color.klmsMacSuccessForeground)
                 .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text("\(title): \(value)")
                     .font(.caption.weight(.semibold))
                 Text(detail)
@@ -6118,8 +6118,8 @@ private struct DiagnosticRowView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(8)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .padding(KLMSSpacing.standard)
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -6184,15 +6184,15 @@ private struct RunLogArchivePanelView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Button {
                         macPerformWithoutAnimation {
                             isHistoryExpanded.toggle()
                         }
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: KLMSSpacing.standard) {
                             Image(systemName: "clock.arrow.circlepath")
                                 .foregroundStyle(Color.klmsMacSecondaryText)
                             Text("실행 로그")
@@ -6215,7 +6215,7 @@ private struct RunLogArchivePanelView: View {
                     }
                     .buttonStyle(MacPressFeedbackButtonStyle())
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, KLMSSpacing.tight)
                     .contentShape(Rectangle())
                     .accessibilityLabel("실행 로그")
                     .accessibilityValue(isHistoryExpanded ? "펼쳐짐" : "접힘")
@@ -6235,13 +6235,13 @@ private struct RunLogArchivePanelView: View {
 
                 if isHistoryExpanded {
                     let summary = RunLogArchiveSummary(records: records)
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                         Text("각 실행 기록을 펼치면 마지막 로그를 볼 수 있습니다.")
                             .font(.caption)
                             .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: KLMSSpacing.standard)], spacing: KLMSSpacing.standard) {
                             RunLogStatChip(title: "전체", value: "\(summary.total)", systemImage: "tray.full", tint: .klmsMacCommandAccent)
                             RunLogStatChip(title: "성공", value: "\(summary.succeeded)", systemImage: "checkmark.circle", tint: Color.klmsMacSuccessForeground)
                             RunLogStatChip(title: "실패", value: "\(summary.needsAttention)", systemImage: "exclamationmark.triangle", tint: Color.klmsMacWarningForeground)
@@ -6265,11 +6265,11 @@ private struct RunLogArchivePanelView: View {
                     }
                 }
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
             .overlay {
-                RoundedRectangle(cornerRadius: 14)
+                RoundedRectangle(cornerRadius: KLMSRadius.panel)
                     .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
 
@@ -6285,7 +6285,7 @@ private struct RunLogArchivePanelView: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
-                        LazyVStack(alignment: .leading, spacing: 8) {
+                        LazyVStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                             ForEach(visible) { record in
                                 RunLogArchiveRowView(record: record, model: model)
                             }
@@ -6303,7 +6303,7 @@ private struct RunLogArchivePanelView: View {
                                     }
                                     .padding(9)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                                 }
                                 .buttonStyle(MacPressFeedbackButtonStyle())
                             }
@@ -6313,14 +6313,14 @@ private struct RunLogArchivePanelView: View {
             }
 
             SectionBox(title: "서버 로그") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                    HStack(spacing: KLMSSpacing.standard) {
                         Button {
                             macPerformWithoutAnimation {
                                 showingSystemLogs.toggle()
                             }
                         } label: {
-                            HStack(spacing: 8) {
+                            HStack(spacing: KLMSSpacing.standard) {
                                 Label("서버 로그 보기", systemImage: "network")
                                     .font(.caption.weight(.semibold))
                                 Spacer()
@@ -6351,7 +6351,7 @@ private struct RunLogArchivePanelView: View {
                     }
 
                     if showingSystemLogs {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                             if !model.snapshot.relayLogTail.isEmpty {
                                 Text("서버 릴레이 로그")
                                     .font(.caption.weight(.semibold))
@@ -6363,7 +6363,7 @@ private struct RunLogArchivePanelView: View {
                                     .foregroundStyle(Color.klmsMacSecondaryText)
                             }
                         }
-                        .padding(.top, 6)
+                        .padding(.top, KLMSSpacing.compact)
                     }
                 }
             }
@@ -6419,7 +6419,7 @@ private struct RunLogStatChip: View {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
                 .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
                     .font(.caption2)
                     .foregroundStyle(Color.klmsMacSecondaryText)
@@ -6428,11 +6428,11 @@ private struct RunLogStatChip: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(8)
+        .padding(KLMSSpacing.standard)
         .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(tint.opacity(0.14), lineWidth: 1)
         }
     }
@@ -6445,8 +6445,8 @@ private struct CurrentRunLogCardView: View {
         let output = currentOutput.trimmingCharacters(in: .whitespacesAndNewlines)
         if !output.isEmpty {
             SectionBox(title: model.runningCommand == nil ? "마지막 실행 로그" : "현재 실행 로그") {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                    HStack(spacing: KLMSSpacing.standard) {
                         Label(statusText, systemImage: statusImage)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(statusColor)
@@ -6526,12 +6526,12 @@ private struct RunLogArchiveRowView: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                     Image(systemName: statusImage)
                         .foregroundStyle(statusColor)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Text(record.command.displayName)
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(2)
@@ -6550,7 +6550,7 @@ private struct RunLogArchiveRowView: View {
                     }
                     .layoutPriority(1)
                     Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 4) {
+                    VStack(alignment: .trailing, spacing: KLMSSpacing.tight) {
                         Text(record.statusText)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(statusColor)
@@ -6562,15 +6562,15 @@ private struct RunLogArchiveRowView: View {
                 }
                 .padding(9)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             }
-            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 8))
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.smallSurface))
             .accessibilityLabel("\(record.command.displayName) 실행 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "실행 로그 접기" : "실행 로그 펼치기")
 
             DeferredMacInteractionExpansion(isExpanded: isExpanded) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                    HStack(spacing: KLMSSpacing.standard) {
                         Label(record.command.isDiagnostic ? "진단 명령" : "동기화 명령", systemImage: record.command.isDiagnostic ? "wrench.and.screwdriver" : "arrow.triangle.2.circlepath")
                             .font(.caption2)
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -6597,9 +6597,9 @@ private struct RunLogArchiveRowView: View {
                 .padding(.bottom, 9)
             }
         }
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(statusColor.opacity(record.needsAttention ? 0.35 : 0.12), lineWidth: 1)
         }
     }
@@ -6625,9 +6625,9 @@ private struct CompactStageDurationRowsView: View {
 
     var body: some View {
         if !durations.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 ForEach(visibleDurations) { duration in
-                    HStack(spacing: 4) {
+                    HStack(spacing: KLMSSpacing.tight) {
                         Text(duration.displayName)
                             .font(.caption2.weight(.semibold))
                         Text(duration.secondsText)
@@ -6673,18 +6673,18 @@ private struct IssueSummaryView: View {
         if !issues.isEmpty {
             let primaryIssues = Array(issues.prefix(primaryVisibleIssueCount))
             let remainingIssues = Array(issues.dropFirst(primaryVisibleIssueCount))
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 Button {
                     macPerformWithoutAnimation {
                         isExpanded.toggle()
                     }
                 } label: {
-                    HStack(alignment: .center, spacing: 8) {
+                    HStack(alignment: .center, spacing: KLMSSpacing.standard) {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsMacWarningForeground)
                             .frame(width: 16)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                             Text(compactTitle)
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.klmsMacPrimaryText)
@@ -6699,25 +6699,25 @@ private struct IssueSummaryView: View {
                             .font(.caption2.weight(.bold))
                             .monospacedDigit()
                             .foregroundStyle(Color.klmsMacWarningForeground)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, KLMSSpacing.standard)
+                            .padding(.vertical, KLMSSpacing.tight)
                             .background(Color.klmsMacWarningBackground, in: Capsule())
                     }
                     .padding(9)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                             .stroke(Color.klmsMacWarningBorder.opacity(0.24), lineWidth: 1)
                     }
-                    .contentShape(RoundedRectangle(cornerRadius: 8))
+                    .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                 }
                 .buttonStyle(MacPressFeedbackButtonStyle())
                 .accessibilityLabel("\(compactTitle) \(issues.count)개 \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "확인 항목 접기" : "확인 항목 펼치기")
 
                 if isExpanded {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                         ForEach(primaryIssues) { issue in
                             IssueRowView(issue: issue)
                         }
@@ -6727,7 +6727,7 @@ private struct IssueSummaryView: View {
                                     isRemainingIssuesExpanded.toggle()
                                 }
                             } label: {
-                                HStack(spacing: 6) {
+                                HStack(spacing: KLMSSpacing.compact) {
                                     Image(systemName: isRemainingIssuesExpanded ? "chevron.down" : "chevron.right")
                                         .font(.caption2.weight(.semibold))
                                         .frame(width: 12)
@@ -6736,17 +6736,17 @@ private struct IssueSummaryView: View {
                                     Spacer(minLength: 0)
                                 }
                                 .foregroundStyle(Color.klmsMacSecondaryText)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 6)
-                                .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 8))
-                                .contentShape(RoundedRectangle(cornerRadius: 8))
+                                .padding(.horizontal, KLMSSpacing.standard)
+                                .padding(.vertical, KLMSSpacing.compact)
+                                .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+                                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                             }
                             .buttonStyle(MacPressFeedbackButtonStyle())
                             .accessibilityLabel("나머지 확인 항목 \(remainingIssues.count)개 \(isRemainingIssuesExpanded ? "펼쳐짐" : "접힘")")
                             .accessibilityHint(isRemainingIssuesExpanded ? "나머지 확인 항목 접기" : "나머지 확인 항목 펼치기")
 
                             if isRemainingIssuesExpanded {
-                                VStack(alignment: .leading, spacing: 6) {
+                                VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                                     ForEach(remainingIssues.prefix(remainingVisibleLimit)) { issue in
                                         IssueRowView(issue: issue, compact: true)
                                     }
@@ -6790,14 +6790,14 @@ private struct IssueRowView: View {
     var compact = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            RoundedRectangle(cornerRadius: 2)
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(issue.severity.color.opacity(0.68))
                 .frame(width: 3)
             Image(systemName: issue.severity.systemImage)
                 .foregroundStyle(issue.severity.color)
                 .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(issue.title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
@@ -6814,9 +6814,9 @@ private struct IssueRowView: View {
         }
         .padding(compact ? 7 : 9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(issue.severity.color.opacity(0.30), lineWidth: 1)
         }
     }
@@ -6846,7 +6846,7 @@ private struct TopUtilityActionsView: View {
     let model: KLMSMacModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: KLMSSpacing.standard) {
             Menu {
                 Button {
                     Task {
@@ -6888,7 +6888,7 @@ private struct TopUtilityActionsView: View {
             .font(.caption.weight(.semibold))
             .foregroundStyle(Color.klmsMacPrimaryText)
             .labelStyle(.titleAndIcon)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, KLMSSpacing.comfortable)
             .padding(.vertical, 7)
             .background(Color.klmsMacSubtleCardBackground, in: Capsule())
             .overlay {
@@ -6919,7 +6919,7 @@ struct MetricGrid: View {
 
     private var columns: [GridItem] {
         [
-            GridItem(.adaptive(minimum: 118, maximum: 180), spacing: 8),
+            GridItem(.adaptive(minimum: 118, maximum: 180), spacing: KLMSSpacing.standard),
         ]
     }
 
@@ -6934,7 +6934,7 @@ struct MetricGrid: View {
     }
 
     var body: some View {
-        LazyVGrid(columns: columns, spacing: 8) {
+        LazyVGrid(columns: columns, spacing: KLMSSpacing.standard) {
             ForEach(metrics) { metric in
                 let isInteractive = metric.detail != nil
                 let isSelected = metric.detail?.rawValue == selectedMetricID
@@ -6969,9 +6969,9 @@ private struct MetricTile: View {
     var isHovered: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+            HStack(alignment: .top, spacing: KLMSSpacing.standard) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                     Text("\(metric.value)")
                         .font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
@@ -6990,7 +6990,7 @@ private struct MetricTile: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .background(metricBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay {
             RoundedRectangle(cornerRadius: 13)
@@ -7054,9 +7054,9 @@ struct SectionBox<Content: View>: View {
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
+        .background(backgroundColor, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(borderColor.opacity(0.78), lineWidth: 1)
         }
     }
@@ -7069,13 +7069,13 @@ struct CollapsibleSectionBox<Content: View>: View {
     @ViewBuilder var content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             Button {
                 macPerformWithoutAnimation {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     if let systemImage {
                         Image(systemName: systemImage)
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -7088,20 +7088,20 @@ struct CollapsibleSectionBox<Content: View>: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsMacSecondaryText)
                 }
-                .padding(.horizontal, 10)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, KLMSSpacing.comfortable)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+                .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: KLMSRadius.control)
                         .stroke(Color.klmsMacBorder.opacity(0.58), lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
             }
-            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 10))
+            .buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.control))
             .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
             .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
 
             if isExpanded {
                 content

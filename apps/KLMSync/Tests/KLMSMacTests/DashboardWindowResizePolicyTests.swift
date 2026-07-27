@@ -47,6 +47,23 @@ final class DashboardWindowResizePolicyTests: XCTestCase {
         )
     }
 
+    func testDefaultHitThicknessIncludesTwelvePointInnerBoundaryOnly() {
+        XCTAssertEqual(KLMSDashboardResizePolicy.defaultHitThickness, 12)
+        XCTAssertEqual(
+            KLMSDashboardResizePolicy.edge(
+                at: CGPoint(x: bounds.maxX - 12, y: bounds.midY),
+                in: bounds
+            ),
+            .right
+        )
+        XCTAssertNil(
+            KLMSDashboardResizePolicy.edge(
+                at: CGPoint(x: bounds.maxX - 12.01, y: bounds.midY),
+                in: bounds
+            )
+        )
+    }
+
     @MainActor
     func testOverlayOnlyHitTestsInnerEdgeWhenWindowCanResize() {
         let window = DashboardResizeTestWindow(

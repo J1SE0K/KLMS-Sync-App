@@ -60,12 +60,12 @@ final class KLMSiOSUITests: XCTestCase {
         XCUIDevice.shared.orientation = isPad ? .portrait : .landscapeRight
         RunLoop.current.run(until: Date().addingTimeInterval(1.0))
 
-        let resizedPrefix = "companion-rail"
+        let resizedPrefix = isPad ? "companion-rail" : "companion-compact-tab"
         let resizedNavigation = identifiedElement("\(resizedPrefix)-history", in: app)
         XCTAssertTrue(resizedNavigation.waitForExistence(timeout: 8), "Expected resized navigation did not appear.")
         XCTAssertTrue(historySection.exists, "The selected log section was reset while crossing a layout breakpoint.")
         XCTAssertEqual(resizedNavigation.value as? String, "선택됨")
-        attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-medium-navigation-rail")
+        attachScreenshot(named: "klms-\(isPad ? "ipad-medium-navigation-rail" : "iphone-landscape-compact-navigation")")
         let resizedPrimarySync = identifiedElement("dashboard-primary-full-sync", in: app)
         XCTAssertFalse(resizedPrimarySync.waitForExistence(timeout: 1), "The primary full-sync action must remain hidden outside the dashboard after resizing.")
 
@@ -136,6 +136,8 @@ final class KLMSiOSUITests: XCTestCase {
             let sectionElement = identifiedElement("companion-section-\(section)", in: app)
             XCTAssertTrue(sectionElement.waitForExistence(timeout: 8), "The \(section) screen did not open.")
             assertHorizontallyContained(sectionElement, in: layoutRoot)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-section-\(section)")
             if section != "status" {
                 XCTAssertFalse(
                     identifiedElement("dashboard-primary-full-sync", in: app).waitForExistence(timeout: 0.25),
@@ -166,7 +168,12 @@ final class KLMSiOSUITests: XCTestCase {
         }
         XCUIDevice.shared.orientation = .landscapeRight
 
-        for boundary in [(width: 1_040, stacked: true), (width: 1_046, stacked: true), (width: 1_048, stacked: false)] {
+        for boundary in [
+            (width: 1_040, stacked: true),
+            (width: 1_046, stacked: true),
+            (width: 1_047, stacked: true),
+            (width: 1_048, stacked: false),
+        ] {
             let app = XCUIApplication()
             app.launchArguments = [
                 "KLMS_UI_TEST_CAPTURE",
@@ -200,22 +207,33 @@ final class KLMSiOSUITests: XCTestCase {
                     stacked: boundary.stacked
                 )
             }
+            attachScreenshot(
+                named: "klms-ipad-workstation-\(boundary.width)-\(boundary.stacked ? "stacked" : "columns")"
+            )
             app.terminate()
         }
     }
 
     @MainActor
     func testNavigationStagesAtExactAdaptiveBoundaries() throws {
-        guard UIDevice.current.userInterfaceIdiom == .pad else {
-            throw XCTSkip("Exact adaptive-width injection needs an iPad landscape canvas.")
-        }
-        XCUIDevice.shared.orientation = .landscapeRight
+        let isPad = UIDevice.current.userInterfaceIdiom == .pad
+        XCUIDevice.shared.orientation = isPad ? .landscapeRight : .portrait
 
-        let boundaries: [(width: Int, prefix: String)] = [
+        let boundaries: [(width: Int, prefix: String)] = isPad ? [
             (719, "companion-compact-tab"),
             (720, "companion-rail"),
+            (834, "companion-rail"),
+            (1_024, "companion-rail"),
             (1_039, "companion-rail"),
             (1_040, "companion-sidebar"),
+            (1_047, "companion-sidebar"),
+            (1_048, "companion-sidebar"),
+            (1_366, "companion-sidebar"),
+        ] : [
+            (320, "companion-compact-tab"),
+            (375, "companion-compact-tab"),
+            (390, "companion-compact-tab"),
+            (430, "companion-compact-tab"),
         ]
         for boundary in boundaries {
             let app = XCUIApplication()
@@ -237,7 +255,7 @@ final class KLMSiOSUITests: XCTestCase {
             navigation.tap()
             XCTAssertTrue(identifiedElement("companion-section-history", in: app).waitForExistence(timeout: 8))
             XCTAssertEqual(navigation.value as? String, "선택됨")
-            attachScreenshot(named: "klms-ipad-navigation-\(boundary.width)-\(boundary.prefix)")
+            attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-navigation-\(boundary.width)-\(boundary.prefix)")
 
             for unexpectedPrefix in ["companion-compact-tab", "companion-rail", "companion-sidebar"]
                 where unexpectedPrefix != boundary.prefix {
@@ -322,13 +340,20 @@ final class KLMSiOSUITests: XCTestCase {
             )
         }
 
-        let navigationPrefix = isPad ? "companion-sidebar-" : "companion-compact-tab-"
+        let navigationPrefix = isPad ? "companion-rail-" : "companion-compact-tab-"
         for section in majorSectionIDs {
             let navigation = identifiedElement("\(navigationPrefix)\(section)", in: app)
             XCTAssertTrue(navigation.waitForExistence(timeout: 8), "AX5 navigation is missing for \(section).")
             assertMinimumHitTarget(navigation)
             assertHorizontallyContained(navigation, in: app.windows.firstMatch)
         }
+        if isPad {
+            XCTAssertFalse(
+                identifiedElement("companion-sidebar-status", in: app).exists,
+                "AX5 should use the fixed icon rail instead of clipping sidebar labels."
+            )
+        }
+        attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-ax5-dashboard")
     }
 
     @MainActor
@@ -448,6 +473,8 @@ final class KLMSiOSUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 8), "The dashboard search field is missing.")
         searchField.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         searchField.typeText("PERF-TARGET-1775")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 4))
+        attachScreenshot(named: screenshotName(prefix: "2000-item-search-keyboard-long-korean-unicode"))
         dismissSearchKeyboard(in: app)
 
         let searchedTarget = identifiedElement(targetIdentifier, in: app)

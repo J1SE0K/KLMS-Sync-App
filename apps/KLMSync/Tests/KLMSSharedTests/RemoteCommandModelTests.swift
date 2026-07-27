@@ -501,6 +501,8 @@ final class RemoteCommandModelTests: XCTestCase {
         let expected = ServerRelayFileDownloadPolicy.expectedURL(baseURL: baseURL, requestID: requestID)
 
         XCTAssertTrue(ServerRelayFileDownloadPolicy.isExactURL(expected, baseURL: baseURL, requestID: requestID))
+        XCTAssertTrue(expected.path.contains(requestID.uuidString.lowercased()))
+        XCTAssertFalse(expected.path.contains(requestID.uuidString))
         XCTAssertTrue(ServerRelayFileDownloadPolicy.isValidCapability(String(repeating: "a", count: 32)))
         XCTAssertFalse(ServerRelayFileDownloadPolicy.isValidCapability("short"))
         XCTAssertFalse(ServerRelayFileDownloadPolicy.isExactURL(
@@ -518,6 +520,17 @@ final class RemoteCommandModelTests: XCTestCase {
             baseURL: baseURL,
             requestID: requestID
         ))
+    }
+
+    func testServerRelayDownloadByteBudgetRejectsTheFirstOversizedChunk() {
+        var budget = ServerRelayDownloadByteBudget(maximumBytes: 5)
+
+        XCTAssertTrue(budget.consume(2))
+        XCTAssertTrue(budget.consume(3))
+        XCTAssertEqual(budget.receivedBytes, 5)
+        XCTAssertFalse(budget.consume(1))
+        XCTAssertEqual(budget.receivedBytes, 5)
+        XCTAssertFalse(budget.consume(-1))
     }
 
     func testServerRelayFileAccessRequestDecodesCloudflareFractionalDates() throws {

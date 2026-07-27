@@ -1,6 +1,81 @@
 import Foundation
 
-private final class ServerRelayNoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+public struct ServerRelayDownloadByteBudget: Equatable, Sendable {
+    public let maximumBytes: Int64
+    public private(set) var receivedBytes: Int64 = 0
+
+    public init(maximumBytes: Int64) {
+        self.maximumBytes = max(0, maximumBytes)
+    }
+
+    @discardableResult
+    public mutating func consume(_ byteCount: Int) -> Bool {
+        guard byteCount >= 0,
+              receivedBytes <= maximumBytes,
+              Int64(byteCount) <= maximumBytes - receivedBytes else {
+            return false
+        }
+        receivedBytes += Int64(byteCount)
+        return true
+    }
+}
+
+private final class ServerRelayBoundedDownloadDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let baseURL: URL
+    private let requestID: UUID
+    private let fileHandle: FileHandle
+    private let lock = NSLock()
+    private var byteBudget: ServerRelayDownloadByteBudget
+    private var continuation: CheckedContinuation<HTTPURLResponse, Error>?
+    private var session: URLSession?
+    private var completed = false
+
+    init(baseURL: URL, requestID: UUID, destinationURL: URL, maximumBytes: Int64) throws {
+        self.baseURL = baseURL
+        self.requestID = requestID
+        byteBudget = ServerRelayDownloadByteBudget(maximumBytes: maximumBytes)
+        guard FileManager.default.createFile(
+            atPath: destinationURL.path,
+            contents: nil,
+            attributes: [.posixPermissions: 0o600]
+        ) else {
+            throw ServerRelayClientError.invalidResponse
+        }
+        fileHandle = try FileHandle(forWritingTo: destinationURL)
+    }
+
+    func download(_ request: URLRequest, configuration: URLSessionConfiguration) async throws -> HTTPURLResponse {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                lock.lock()
+                guard !completed else {
+                    lock.unlock()
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                self.continuation = continuation
+                let delegateQueue = OperationQueue()
+                delegateQueue.maxConcurrentOperationCount = 1
+                delegateQueue.qualityOfService = .utility
+                let session = URLSession(
+                    configuration: configuration,
+                    delegate: self,
+                    delegateQueue: delegateQueue
+                )
+                self.session = session
+                let wasCancelled = Task.isCancelled
+                lock.unlock()
+                if wasCancelled {
+                    finish(.failure(CancellationError()))
+                } else {
+                    session.dataTask(with: request).resume()
+                }
+            }
+        } onCancel: {
+            self.cancel()
+        }
+    }
+
     func urlSession(
         _ session: URLSession,
         task: URLSessionTask,
@@ -9,6 +84,91 @@ private final class ServerRelayNoRedirectDelegate: NSObject, URLSessionTaskDeleg
         completionHandler: @escaping (URLRequest?) -> Void
     ) {
         completionHandler(nil)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode),
+              let responseURL = httpResponse.url,
+              ServerRelayFileDownloadPolicy.isExactURL(
+                  responseURL,
+                  baseURL: baseURL,
+                  requestID: requestID
+              ),
+              response.expectedContentLength < 0
+                || response.expectedContentLength <= byteBudget.maximumBytes else {
+            completionHandler(.cancel)
+            finish(.failure(ServerRelayClientError.invalidResponse))
+            return
+        }
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard byteBudget.consume(data.count) else {
+            dataTask.cancel()
+            finish(.failure(ServerRelayClientError.invalidResponse))
+            return
+        }
+        do {
+            try fileHandle.write(contentsOf: data)
+        } catch {
+            dataTask.cancel()
+            finish(.failure(error))
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        if let error {
+            finish(.failure(error))
+            return
+        }
+        guard let response = task.response as? HTTPURLResponse else {
+            finish(.failure(ServerRelayClientError.invalidResponse))
+            return
+        }
+        finish(.success(response))
+    }
+
+    private func finish(_ result: Result<HTTPURLResponse, Error>) {
+        lock.lock()
+        guard !completed else {
+            lock.unlock()
+            return
+        }
+        completed = true
+        let continuation = self.continuation
+        self.continuation = nil
+        let session = self.session
+        self.session = nil
+        lock.unlock()
+
+        let finalResult: Result<HTTPURLResponse, Error>
+        do {
+            try fileHandle.synchronize()
+            try fileHandle.close()
+            finalResult = result
+        } catch {
+            finalResult = .failure(error)
+        }
+        session?.invalidateAndCancel()
+        continuation?.resume(with: finalResult)
+    }
+
+    private func cancel() {
+        lock.lock()
+        let session = self.session
+        lock.unlock()
+        session?.invalidateAndCancel()
     }
 }
 
@@ -24,7 +184,7 @@ public enum ServerRelayFileDownloadPolicy {
 
     public static func expectedURL(baseURL: URL, requestID: UUID) -> URL {
         var url = baseURL
-        for component in ["v1", "file-access", requestID.uuidString, "download"] {
+        for component in ["v1", "file-access", requestID.uuidString.lowercased(), "download"] {
             url.appendPathComponent(component)
         }
         return url
@@ -80,42 +240,12 @@ public extension ServerRelayCommandStore {
         configuration.httpShouldSetCookies = false
         configuration.timeoutIntervalForRequest = 60
         configuration.timeoutIntervalForResource = 12 * 60
-        let redirectDelegate = ServerRelayNoRedirectDelegate()
-        let session = URLSession(
-            configuration: configuration,
-            delegate: redirectDelegate,
-            delegateQueue: nil
-        )
-        defer { session.invalidateAndCancel() }
-
         var request = URLRequest(url: downloadURL)
         request.timeoutInterval = 12 * 60
         request.httpMethod = "GET"
         request.setValue("Bearer \(capability)", forHTTPHeaderField: "Authorization")
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
         request.setValue(Self.downloadClientSourceName, forHTTPHeaderField: "X-KLMS-Client")
-        let (temporaryURL, response) = try await session.download(for: request)
-        defer { try? FileManager.default.removeItem(at: temporaryURL) }
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200..<300).contains(httpResponse.statusCode),
-              let responseURL = httpResponse.url,
-              ServerRelayFileDownloadPolicy.isExactURL(
-                  responseURL,
-                  baseURL: baseURL,
-                  requestID: fileRequest.id
-              ) else {
-            throw ServerRelayClientError.invalidResponse
-        }
-        let attributes = try FileManager.default.attributesOfItem(atPath: temporaryURL.path)
-        let actualBytes = (attributes[.size] as? NSNumber)?.intValue ?? -1
-        guard actualBytes >= 0,
-              actualBytes <= ServerRelayFileDownloadPolicy.maximumBytes else {
-            throw ServerRelayClientError.invalidResponse
-        }
-
-        let filename = ServerRelayFileDownloadPolicy.safeFilename(
-            httpResponse.suggestedFilename ?? fileRequest.itemTitle
-        )
         let destinationDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("KLMS Sync File Access", isDirectory: true)
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -124,8 +254,30 @@ public extension ServerRelayCommandStore {
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700]
         )
+        let partialURL = destinationDirectory.appendingPathComponent(".download.partial", isDirectory: false)
+        let boundedDownload = try ServerRelayBoundedDownloadDelegate(
+            baseURL: baseURL,
+            requestID: fileRequest.id,
+            destinationURL: partialURL,
+            maximumBytes: Int64(ServerRelayFileDownloadPolicy.maximumBytes)
+        )
+        let httpResponse: HTTPURLResponse
+        do {
+            httpResponse = try await boundedDownload.download(request, configuration: configuration)
+        } catch {
+            try? FileManager.default.removeItem(at: destinationDirectory)
+            throw error
+        }
+        let filename = ServerRelayFileDownloadPolicy.safeFilename(
+            httpResponse.suggestedFilename ?? fileRequest.itemTitle
+        )
         let destinationURL = destinationDirectory.appendingPathComponent(filename, isDirectory: false)
-        try FileManager.default.moveItem(at: temporaryURL, to: destinationURL)
+        do {
+            try FileManager.default.moveItem(at: partialURL, to: destinationURL)
+        } catch {
+            try? FileManager.default.removeItem(at: destinationDirectory)
+            throw error
+        }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: destinationURL.path)
         return destinationURL
     }

@@ -75,10 +75,19 @@ private struct CompanionLayoutModeKey: EnvironmentKey {
     static let defaultValue: AdaptiveLayoutMode = .compact
 }
 
+private struct CompanionLayoutWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = .infinity
+}
+
 private extension EnvironmentValues {
     var companionLayoutMode: AdaptiveLayoutMode {
         get { self[CompanionLayoutModeKey.self] }
         set { self[CompanionLayoutModeKey.self] = newValue }
+    }
+
+    var companionLayoutWidth: CGFloat {
+        get { self[CompanionLayoutWidthKey.self] }
+        set { self[CompanionLayoutWidthKey.self] = newValue }
     }
 }
 
@@ -375,9 +384,9 @@ final class CompanionModel: ObservableObject {
     private static let mailDashboardItemsKey = "KLMSCompanionMailDashboardItems"
     private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
     private static let cachedServerSyncDataKey = "KLMSCompanionCachedServerSyncData"
-    private static let cachedServerSyncDataMaxAge: TimeInterval = 10 * 60
 
     private struct CachedServerSyncData: Codable, @unchecked Sendable {
+        var schemaVersion: Int?
         var serverURL: String
         var tokenFingerprint: String?
         var storedAt: Date
@@ -1478,7 +1487,7 @@ final class CompanionModel: ObservableObject {
                 kind = "file"
                 idPrefix = "perf-file"
                 titlePrefix = globalIndex == targetGlobalIndex
-                    ? "ZZZ PERF-TARGET-1775 File Item"
+                    ? "ZZZ PERF-TARGET-1775 한글·Unicode 👩🏽‍💻 매우 긴 강의자료 제목 — 접근성·줄바꿈·검색 상태 검증"
                     : "File Item"
                 timestamp = "2026-07-10T12:00:00+09:00"
                 status = "new"
@@ -5913,12 +5922,14 @@ final class CompanionModel: ObservableObject {
         guard !normalizedURL.isEmpty,
               let data = UserDefaults.standard.data(forKey: cachedServerSyncDataKey),
               let cached = try? JSONDecoder().decode(CachedServerSyncData.self, from: data),
-              cached.serverURL == normalizedURL,
-              cached.tokenFingerprint == tokenFingerprint else {
-            return nil
-        }
-        guard Date().timeIntervalSince(cached.storedAt) <= cachedServerSyncDataMaxAge else {
-            UserDefaults.standard.removeObject(forKey: cachedServerSyncDataKey)
+              DashboardStartupCachePolicy.shouldApply(
+                  schemaVersion: cached.schemaVersion,
+                  endpoint: cached.serverURL,
+                  expectedEndpoint: normalizedURL,
+                  credentialFingerprint: cached.tokenFingerprint,
+                  expectedCredentialFingerprint: tokenFingerprint,
+                  storedAt: cached.storedAt
+              ) else {
             return nil
         }
         return cached.syncData
@@ -5933,6 +5944,7 @@ final class CompanionModel: ObservableObject {
         }
         let tokenFingerprint = Self.serverRelayBootstrapTokenFingerprint(serverToken)
         let cached = CachedServerSyncData(
+            schemaVersion: DashboardStartupCachePolicy.schemaVersion,
             serverURL: normalizedURL,
             tokenFingerprint: tokenFingerprint,
             storedAt: Date(),
@@ -6734,6 +6746,14 @@ private enum CompanionWorkstationMetrics {
     static let listColumnMaxWidth: CGFloat = 700
 
     static let twoColumnMinimumContentWidth = listColumnMinWidth + columnSpacing + detailColumnMinWidth
+
+    static func supportsTwoColumns(for layoutWidth: CGFloat) -> Bool {
+        let contentWidth = layoutWidth
+            - sidebarWidth
+            - 1
+            - (horizontalPadding * 2)
+        return contentWidth > twoColumnMinimumContentWidth
+    }
 }
 
 /// Chooses columns from the width proposed by the screen after the sidebar and
@@ -6744,6 +6764,7 @@ private struct CompanionAdaptiveTwoColumnLayout: Layout {
     var minimumHorizontalWidth: CGFloat = CompanionWorkstationMetrics.twoColumnMinimumContentWidth
     var horizontalSpacing: CGFloat = CompanionWorkstationMetrics.columnSpacing
     var verticalSpacing: CGFloat = 12
+    var allowsHorizontalColumns = true
 
     private struct Measurement {
         var isHorizontal: Bool
@@ -6812,7 +6833,7 @@ private struct CompanionAdaptiveTwoColumnLayout: Layout {
     }
 
     private func measure(availableWidth: CGFloat, subviews: Subviews) -> Measurement {
-        let isHorizontal = availableWidth >= minimumHorizontalWidth
+        let isHorizontal = allowsHorizontalColumns && availableWidth >= minimumHorizontalWidth
         let primaryWidth: CGFloat
         let detailWidth: CGFloat
 
@@ -6853,12 +6874,17 @@ private struct CompanionAdaptiveTwoColumnLayout: Layout {
 struct CompanionRootView: View {
     @StateObject private var model = CompanionModel()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedSection: CompanionAppSection? = .status
 
     var body: some View {
         GeometryReader { proxy in
             let contentWidth = min(proxy.size.width, uiTestRequestedLayoutWidth ?? proxy.size.width)
-            let layoutMode = AdaptiveLayoutPolicy.mode(for: contentWidth)
+            let layoutMode = AdaptiveLayoutPolicy.mode(
+                for: contentWidth,
+                forceCompact: usesPhoneCompactLayout,
+                preferIconOnlyNavigation: dynamicTypeSize.isAccessibilitySize || uiTestUsesAccessibility5
+            )
             HStack(spacing: 0) {
                 CompanionAdaptiveRootView(
                     model: model,
@@ -6867,6 +6893,7 @@ struct CompanionRootView: View {
                 )
                 .frame(width: contentWidth, height: proxy.size.height)
                 .environment(\.companionLayoutMode, layoutMode)
+                .environment(\.companionLayoutWidth, contentWidth)
                 .transformEnvironment(\.dynamicTypeSize) { size in
                     if uiTestUsesAccessibility5 {
                         size = .accessibility5
@@ -6921,6 +6948,14 @@ struct CompanionRootView: View {
         model.isUsingUITestFixture
             && ProcessInfo.processInfo.arguments.contains("KLMS_UI_TEST_AX5")
     }
+
+    private var usesPhoneCompactLayout: Bool {
+        #if canImport(UIKit)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
+    }
 }
 
 private struct CompanionAdaptiveRootView: View {
@@ -6940,9 +6975,9 @@ private struct CompanionAdaptiveRootView: View {
             if layoutMode == .compact {
                 CompanionCompactTabBar(selectedSection: sectionBinding)
                     .id("compact-tab-\(layoutMode.rawValue)")
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, KLMSSpacing.spacious)
                     .padding(.top, 7)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, KLMSSpacing.standard)
                     .background(Color.klmsScreenBackground)
             }
         }
@@ -7029,19 +7064,19 @@ private struct CompanionCompactTabBar: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: KLMSSpacing.compact) {
             ForEach(compactRows, id: \.self) { row in
-                HStack(spacing: 6) {
+                HStack(spacing: KLMSSpacing.compact) {
                     ForEach(row) { section in
                         compactTabButton(section)
                     }
                 }
             }
         }
-        .padding(6)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .padding(KLMSSpacing.compact)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -7068,7 +7103,7 @@ private struct CompanionCompactTabBar: View {
             }
         } label: {
             let isSelected = selectedSection == section
-            VStack(spacing: 4) {
+            VStack(spacing: KLMSSpacing.tight) {
                 Image(systemName: section.systemImage)
                     .font(.caption.weight(.bold))
                 Text(section.compactTitle)
@@ -7079,22 +7114,22 @@ private struct CompanionCompactTabBar: View {
             }
             .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsPrimaryText)
             .frame(maxWidth: .infinity, minHeight: 48)
-            .background(Color.klmsSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.klmsSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
             .overlay(alignment: .top) {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                     .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
                     .frame(height: 3)
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, KLMSSpacing.section)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(Color.klmsBorder.opacity(0.38), lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         }
         .buttonStyle(KLMSCardButtonStyle())
         .frame(maxWidth: .infinity, minHeight: 48)
-        .contentShape(RoundedRectangle(cornerRadius: 12))
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         .accessibilityLabel(section.compactTitle)
         .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(section.compactTitle) 탭으로 이동합니다.")
@@ -7106,15 +7141,15 @@ private struct WorkstationNavigationRail: View {
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: KLMSSpacing.tight) {
             ForEach(CompanionAppSection.workstationSections) { section in
                 railButton(section)
             }
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 12)
+        .padding(.horizontal, KLMSSpacing.comfortable)
+        .padding(.vertical, KLMSSpacing.section)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.klmsCardBackground.opacity(0.72))
     }
@@ -7130,7 +7165,7 @@ private struct WorkstationNavigationRail: View {
         } label: {
             let isSelected = selectedSection == section
             ZStack {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .fill(
                         isSelected
                             ? Color.klmsSelectedBackground.opacity(0.92)
@@ -7138,22 +7173,23 @@ private struct WorkstationNavigationRail: View {
                     )
                 Image(systemName: section.systemImage)
                     .font(.body.weight(.semibold))
+                    .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
             }
-            .frame(width: 44, height: 44)
+            .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
             .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                     .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
                     .frame(width: 3, height: 24)
-                    .padding(.leading, 2)
+                    .padding(.leading, KLMSSpacing.hairline)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(Color.klmsBorder.opacity(0.40), lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card))
         .accessibilityLabel(section.title)
         .accessibilityValue(selectedSection == section ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(section.title) 작업 공간으로 이동합니다.")
@@ -7165,7 +7201,7 @@ private struct WorkstationSidebar: View {
     @Binding var selectedSection: CompanionAppSection?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("KLMS Sync")
                     .font(.title3.weight(.bold))
@@ -7175,7 +7211,7 @@ private struct WorkstationSidebar: View {
                     .foregroundStyle(Color.klmsSecondaryText)
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 ForEach(CompanionAppSection.workstationSections) { section in
                     CompanionSidebarButton(
                         section: section,
@@ -7196,9 +7232,9 @@ private struct WorkstationSidebar: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
+        .padding(.horizontal, KLMSSpacing.roomy)
+        .padding(.top, KLMSSpacing.workstationColumn)
+        .padding(.bottom, KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground.opacity(0.72))
     }
@@ -7217,7 +7253,7 @@ private struct CompanionSidebarButton: View {
             HStack(spacing: isCompact ? 7 : 10) {
                 if showsIcon {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                             .fill(Color.klmsSubtleCardBackground.opacity(0.72))
                         Image(systemName: section.systemImage)
                             .font((isCompact ? Font.subheadline : Font.body).weight(.semibold))
@@ -7238,19 +7274,19 @@ private struct CompanionSidebarButton: View {
             .padding(.leading, isCompact ? 7 : 8)
             .padding(.trailing, isCompact ? 8 : 9)
             .padding(.vertical, isCompact ? 8 : 9)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground.opacity(0.30), in: RoundedRectangle(cornerRadius: 12))
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground.opacity(0.30), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
             .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                     .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
                     .frame(width: 4)
                     .padding(.vertical, 9)
             }
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(Color.klmsBorder.opacity(0.40), lineWidth: 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         }
         .buttonStyle(KLMSCardButtonStyle())
         .accessibilityLabel(section.title)
@@ -7351,7 +7387,7 @@ private struct CompanionStatusScreen: View {
             if layoutMode == .wide {
                 statusRegularWorkspace
             } else {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.roomy) {
                     statusSummaryColumn
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -7406,14 +7442,14 @@ private struct CompanionStatusScreen: View {
     }
 
     private var statusMainColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             statusCommandColumn
             statusMetricColumn
         }
     }
 
     private var statusSummaryColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             if !model.serverRelayConfigured {
                 CompanionDisconnectedRecoveryPanel(openSettings: onOpenSettings)
             } else {
@@ -7484,7 +7520,7 @@ private struct CompanionStatusScreen: View {
     }
 
     private var statusCommandColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             if !model.serverRelayConfigured {
                 CompanionDisconnectedRecoveryPanel(openSettings: onOpenSettings)
             } else {
@@ -7499,7 +7535,7 @@ private struct CompanionStatusScreen: View {
     }
 
     private var statusMetricColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             if !model.serverRelayConfigured {
                 WorkstationDisconnectedDashboardPreviewPanel()
             } else {
@@ -7555,7 +7591,7 @@ private struct CompanionStatusScreen: View {
                 initialSelectedSemester: selectedSemester
             )
         } else if layoutMode == .wide {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.section) {
                 if !model.serverRelayConfigured {
                     WorkstationDisconnectedDetailPanel(openSettings: onOpenSettings)
                 } else if model.hasLoadedServerSyncData {
@@ -7639,8 +7675,8 @@ private struct CompanionDashboardScopeBar: View {
     var options: CompanionDashboardScopeOptions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Label("동기화 범위", systemImage: "calendar.badge.clock")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -7654,7 +7690,7 @@ private struct CompanionDashboardScopeBar: View {
                     } label: {
                         Image(systemName: "arrow.counterclockwise")
                             .font(.caption.weight(.bold))
-                            .frame(width: 44, height: 44)
+                            .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -7663,7 +7699,7 @@ private struct CompanionDashboardScopeBar: View {
                     .accessibilityHint("연도와 학기 범위를 전체로 되돌립니다.")
                 }
             }
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 companionScopePicker(
                     "연도",
                     selection: normalizedYearBinding,
@@ -7678,7 +7714,7 @@ private struct CompanionDashboardScopeBar: View {
                 )
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 13))
         .overlay {
@@ -7796,7 +7832,7 @@ private struct CompanionNativeChoiceField<Option: Hashable>: View {
                             selection = option
                         }
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: KLMSSpacing.standard) {
                             Image(systemName: "checkmark")
                                 .opacity(selection == option ? 1 : 0)
                                 .frame(width: 18, alignment: .center)
@@ -7832,7 +7868,7 @@ private struct CompanionNativeChoiceFieldLabel: View {
     var cornerRadius: CGFloat
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: KLMSSpacing.standard) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .font(.caption.weight(.bold))
@@ -7856,7 +7892,7 @@ private struct CompanionNativeChoiceFieldLabel: View {
                 .foregroundStyle(Color.klmsSecondaryText)
                 .frame(width: 16, alignment: .center)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: cornerRadius))
         .overlay {
@@ -8102,7 +8138,7 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
 
     private var columns: [GridItem] {
         Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+            repeating: GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
             count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
         )
     }
@@ -8122,9 +8158,9 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
             Text("바로 보기")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
-                .padding(.horizontal, 2)
+                .padding(.horizontal, KLMSSpacing.hairline)
             if isDataLoaded {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: KLMSSpacing.standard) {
                     ForEach(quickCategories) { category in
                         quickButton(for: category)
                     }
@@ -8147,16 +8183,16 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
     private func quickButton(for category: DashboardMetricCategory) -> some View {
         let isSelected = selectedCategory == category
         let value = category.value(from: status)
-        return HStack(alignment: .center, spacing: 8) {
+        return HStack(alignment: .center, spacing: KLMSSpacing.standard) {
             Image(systemName: category.systemImage)
                 .font(.system(.subheadline, design: .rounded, weight: .bold))
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
                 .frame(width: 26, height: 26)
                 .background(
                     category.tint.opacity(0.12),
-                    in: RoundedRectangle(cornerRadius: 8)
+                    in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 )
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(category.title)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -8167,12 +8203,12 @@ private struct CompanionDashboardQuickAccessGrid: View, Equatable {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, KLMSSpacing.comfortable)
         .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isSelected ? Color.klmsSelectedForeground : category.tint.opacity(0.26))
                 .frame(width: 3)
                 .padding(.vertical, 9)
@@ -8247,7 +8283,7 @@ private struct CompanionTasksScreen: View {
     }
 
     private var compactTasksWorkspace: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             if model.hasLoadedServerSyncData {
                 WorkstationTaskCategorySelector(
                     categories: taskCategories,
@@ -8331,7 +8367,7 @@ private struct CompanionSettingsScreen: View {
     }
 
     private var settingsStackedColumns: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             settingsPrimaryColumn
             settingsSupportColumn
         }
@@ -8339,7 +8375,7 @@ private struct CompanionSettingsScreen: View {
     }
 
     private var settingsPrimaryColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             CompanionImmediateSettingsPanel(
                 selectedAppearanceMode: KLMSAppearanceMode(rawValue: model.sharedAppearanceModeValue) ?? .system,
                 noticeNotesEnabled: model.sharedNoticeUpdateNotesEnabled,
@@ -8356,7 +8392,7 @@ private struct CompanionSettingsScreen: View {
     }
 
     private var settingsSupportColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             RemoteDiagnosticPanel(
                 verifySummary: model.verifySummary,
                 stageDurations: model.latestSharedRunLogStageDurations,
@@ -8447,14 +8483,14 @@ private struct CompanionImmediateSettingsPanel: View {
     @AppStorage("KLMSShouldUpdateNoticeNotes") private var localNoticeNotesEnabled = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: "slider.horizontal.3")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 44, height: 44)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("바로 반영되는 설정")
                         .font(.headline)
                     Text("화면 모드는 바로 적용됩니다.\n공지 메모는 서버에 저장됩니다.")
@@ -8466,7 +8502,7 @@ private struct CompanionImmediateSettingsPanel: View {
                 Spacer(minLength: 0)
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                 CompanionImmediateSettingRow(
                     title: "화면 모드",
                     statusText: effectiveAppearanceMode.title,
@@ -8492,7 +8528,7 @@ private struct CompanionImmediateSettingsPanel: View {
                             await updateNoticeNotes(enabled)
                         }
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: KLMSSpacing.standard) {
                             Label(
                                 "원격 실행에서 공지 메모도 갱신",
                                 systemImage: effectiveNoticeNotesEnabled ? "checkmark.circle.fill" : "circle"
@@ -8502,7 +8538,7 @@ private struct CompanionImmediateSettingsPanel: View {
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.klmsSecondaryText)
                         }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: effectiveNoticeNotesEnabled ? .success : .soft))
                     .disabled(noticeNotesUpdatePending)
@@ -8512,11 +8548,11 @@ private struct CompanionImmediateSettingsPanel: View {
                 }
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -8563,29 +8599,29 @@ private struct CompanionAppearanceModeSelector: View {
                             .accessibilityHidden(true)
                     }
                     .foregroundStyle(Color.klmsPrimaryText)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                     .background(
                         isSelected
                             ? Color.klmsSelectedBackground.opacity(0.96)
                             : Color.klmsSubtleCardBackground.opacity(0.72),
-                        in: RoundedRectangle(cornerRadius: 12)
+                        in: RoundedRectangle(cornerRadius: KLMSRadius.card)
                     )
                     .overlay(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 2)
+                        RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                             .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
                             .frame(width: 3)
                             .padding(.vertical, 9)
                     }
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: KLMSRadius.card)
                             .stroke(
                                 isSelected ? Color.klmsSelectedBorder.opacity(0.86) : Color.klmsBorder.opacity(0.72),
                                 lineWidth: 1
                             )
                     )
-                    .contentShape(RoundedRectangle(cornerRadius: 12))
+                    .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
                 }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card))
                 .accessibilityLabel("화면 모드 \(mode.title)")
                 .accessibilityValue(effectiveSelectedMode == mode ? "선택됨" : "선택 안 됨")
                 .accessibilityHint("KLMS Sync 화면 모드를 \(mode.title)으로 바꿉니다.")
@@ -8618,8 +8654,8 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(alignment: .center, spacing: KLMSSpacing.standard) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
                         .font(.subheadline.weight(.semibold))
@@ -8637,20 +8673,20 @@ private struct CompanionImmediateSettingRow<Content: View>: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
                     .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, KLMSSpacing.tight)
                     .background(Color.klmsCardBackground, in: Capsule())
             }
 
             CompanionSettingsControlContainer {
                 content()
             }
-            .padding(.top, 2)
+            .padding(.top, KLMSSpacing.hairline)
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
     }
@@ -8660,11 +8696,11 @@ private struct CompanionSettingsControlContainer<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(8)
+        .padding(KLMSSpacing.standard)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsCardBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 9))
         .overlay {
@@ -8704,7 +8740,7 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             if collapsible {
                 Button {
                     companionPerformWithoutAnimation {
@@ -8712,9 +8748,9 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                     }
                 } label: {
                     subsectionHeader
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
                 }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.control))
                 .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
                 .accessibilityIdentifier("companion-settings-section-\(title)")
@@ -8724,38 +8760,38 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
 
             if collapsible {
                 DeferredInteractionExpansion(isExpanded: isExpanded) {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                         content()
                     }
-                    .padding(.top, 2)
+                    .padding(.top, KLMSSpacing.hairline)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     content()
                 }
-                .padding(.top, 2)
+                .padding(.top, KLMSSpacing.hairline)
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             (!collapsible || isExpanded) ? Color.klmsSubtleCardBackground.opacity(0.86) : Color.klmsSubtleCardBackground.opacity(0.58),
-            in: RoundedRectangle(cornerRadius: 12)
+            in: RoundedRectangle(cornerRadius: KLMSRadius.card)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke((!collapsible || isExpanded) ? Color.klmsSelectedBorder.opacity(0.48) : Color.klmsBorder.opacity(0.86), lineWidth: 1)
         }
     }
 
     private var subsectionHeader: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: KLMSSpacing.standard) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.klmsCommandAccent)
                 .frame(width: 28, height: 28)
-                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 2) {
+                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -8767,15 +8803,15 @@ private struct CompanionSettingsSubsectionCard<Content: View>: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(statusTint)
                     .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, KLMSSpacing.tight)
                     .background(Color.klmsCardBackground, in: Capsule())
             }
             if collapsible {
                 CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
     }
 }
 
@@ -8841,7 +8877,7 @@ private struct CompanionHistoryScreen: View {
                     maxWidth: 340,
                     alignment: .topLeading
                 )
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.section) {
                 selectedHistoryDetailPanel
                 historyStageColumn
                 historyRequestColumn
@@ -8852,7 +8888,7 @@ private struct CompanionHistoryScreen: View {
     }
 
     private var historyStackFallback: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             historySummaryColumn
             selectedHistoryDetailPanel
             historyStageColumn
@@ -8862,7 +8898,7 @@ private struct CompanionHistoryScreen: View {
     }
 
     private var historySummaryColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             RemoteLogSummaryPanel(
                 snapshot: remoteLogSummarySnapshot,
                 compact: false,
@@ -8932,7 +8968,7 @@ private struct CompanionHistoryScreen: View {
 
     @ViewBuilder
     private var historyDetailColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             selectedHistoryDetailPanel
             historyStageColumn
         }
@@ -8958,7 +8994,7 @@ private struct CompanionHistoryScreen: View {
     }
 
     private var historyRequestColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             RecentServerRequestLogView(
                 entries: model.recentRequestLog,
                 clearAction: {
@@ -9002,13 +9038,13 @@ private struct CompanionEmptyDetailPanel: View {
     var systemImage: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
-                .frame(width: 44, height: 44)
-                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
-            VStack(alignment: .leading, spacing: 4) {
+                .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.control))
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Text(title)
                     .font(.headline)
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -9018,11 +9054,11 @@ private struct CompanionEmptyDetailPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -9050,7 +9086,7 @@ private struct CompanionScreenContainer<Content: View>: View {
         ZStack {
             Color.klmsScreenBackground
             WholeScreenVerticalScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.spacious) {
                     CompanionScreenHeader(title: title, model: model)
                     content()
                 }
@@ -9100,7 +9136,7 @@ private struct CompanionScreenContainer<Content: View>: View {
             .accessibilitySortPriority(100)
             .padding(.horizontal, layoutMode == .wide ? CompanionWorkstationMetrics.horizontalPadding : 16)
             .padding(.top, layoutMode == .wide ? CompanionWorkstationMetrics.topPadding : 2)
-            .padding(.bottom, 8)
+            .padding(.bottom, KLMSSpacing.standard)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .background(Color.klmsScreenBackground)
         }
@@ -9120,8 +9156,8 @@ private struct CompanionScreenHeader: View {
                 compactHeader
             }
         }
-        .padding(.horizontal, 2)
-        .padding(.vertical, 4)
+        .padding(.horizontal, KLMSSpacing.hairline)
+        .padding(.vertical, KLMSSpacing.tight)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -9135,14 +9171,14 @@ private struct CompanionScreenHeader: View {
 
     private var responsiveHeader: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: KLMSSpacing.section) {
                 headerTitle
                     .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 8)
                 CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
                     .fixedSize(horizontal: true, vertical: false)
             }
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 headerTitle
                 CompanionHeaderStatusPill(snapshot: headerStatusSnapshot)
             }
@@ -9195,7 +9231,7 @@ private struct CompanionHeaderStatusPillContent: View, Equatable {
         Text(headerStatusText)
             .font(.caption2.weight(.semibold))
             .foregroundStyle(Color.klmsSecondaryText)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, KLMSSpacing.standard)
             .padding(.vertical, 5)
             .background(Color.klmsSubtleCardBackground, in: Capsule())
             .fixedSize(horizontal: true, vertical: false)
@@ -9278,7 +9314,7 @@ private struct RemoteAttentionStackContent: View, Equatable {
 
     var body: some View {
         if snapshot.hasAttention {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                 if let authDigits = snapshot.authDigits {
                     AuthCodeHero(digits: authDigits)
                 }
@@ -9306,22 +9342,22 @@ private struct RemoteRunningStatusBanner: View {
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: KLMSSpacing.section) {
                 runningStatusContent
                 Spacer(minLength: 8)
                 cancelControl
             }
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                 runningStatusContent
                 cancelControl
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(bannerBorder.opacity(0.42), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
@@ -9330,7 +9366,7 @@ private struct RemoteRunningStatusBanner: View {
     }
 
     private var runningStatusContent: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: KLMSSpacing.section) {
             leadingStatusSymbol
             VStack(alignment: .leading, spacing: 3) {
                 Text(snapshot.runningTitle)
@@ -9363,7 +9399,7 @@ private struct RemoteRunningStatusBanner: View {
             } label: {
                 Label(cancelButtonTitle, systemImage: cancelAlreadyRequested ? "checkmark.circle" : "stop.fill")
                     .labelStyle(.titleAndIcon)
-                    .frame(minHeight: 44)
+                    .frame(minHeight: KLMSControlSize.minimumInteractive)
             }
             .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
             .disabled(!snapshot.canCancelRunningCommand || localCancelSubmitting)
@@ -9379,14 +9415,14 @@ private struct RemoteRunningStatusBanner: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(statusTint)
                 .frame(width: 28, height: 28)
-                .background(statusTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .background(statusTint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                 .accessibilityHidden(true)
         } else {
             ProgressView()
                 .controlSize(.small)
                 .tint(statusTint)
                 .frame(width: 28, height: 28)
-                .background(statusTint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                .background(statusTint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                 .accessibilityHidden(true)
         }
     }
@@ -9439,23 +9475,23 @@ private struct ServerRelayConnectionPanel: View {
     var clearConnectionInfo: () async -> Void
     @State private var isExpanded = false
     private let actionColumns = [
-        GridItem(.adaptive(minimum: 145), spacing: 8),
+        GridItem(.adaptive(minimum: 145), spacing: KLMSSpacing.standard),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             Button {
                 companionPerformWithoutAnimation {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 10) {
+                HStack(spacing: KLMSSpacing.comfortable) {
                     Image(systemName: connectionStateSymbol)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(connectionStateTint)
-                        .frame(width: 44, height: 44)
-                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 2) {
+                        .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
+                    VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                         Text("서버 릴레이")
                             .font(.headline)
                         Text(connectionStateDetail)
@@ -9468,21 +9504,21 @@ private struct ServerRelayConnectionPanel: View {
                         Text(connectionStateText)
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(connectionStateTint)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, KLMSSpacing.standard)
                             .padding(.vertical, 5)
                             .background(Color.klmsSubtleCardBackground, in: Capsule())
                         CompanionExpansionBadge(isExpanded: isExpanded)
                     }
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card))
             .accessibilityLabel("서버 릴레이 \(connectionStateText) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "서버 릴레이 설정 접기" : "서버 릴레이 설정 펼치기")
             .accessibilityIdentifier("server-relay-disclosure")
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.section) {
                     if !connectionMessage.isEmpty {
                         ConnectionNoticeBanner(
                             message: connectionMessage,
@@ -9520,7 +9556,7 @@ private struct ServerRelayConnectionPanel: View {
                         detail: "붙여넣기, 응답 검사, 요약 갱신을 처리합니다.",
                         systemImage: "checkmark.shield"
                     ) {
-                        LazyVGrid(columns: actionColumns, spacing: 8) {
+                        LazyVGrid(columns: actionColumns, spacing: KLMSSpacing.standard) {
                             connectionAsyncButton("붙여넣기", systemImage: "doc.on.clipboard") {
                                 _ = await pasteConnectionInfo()
                             }
@@ -9541,7 +9577,7 @@ private struct ServerRelayConnectionPanel: View {
                         detail: "다른 기기에 넣을 서버 주소와 토큰을 복사합니다.",
                         systemImage: "doc.on.doc"
                     ) {
-                        LazyVGrid(columns: actionColumns, spacing: 8) {
+                        LazyVGrid(columns: actionColumns, spacing: KLMSSpacing.standard) {
                             connectionButton("URL 복사", systemImage: "link") {
                                 copyURL()
                             }
@@ -9579,10 +9615,10 @@ private struct ServerRelayConnectionPanel: View {
                 }
             }
         }
-        .padding(12)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .padding(KLMSSpacing.section)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -9620,7 +9656,7 @@ private struct ServerRelayConnectionPanel: View {
             Label(title, systemImage: systemImage)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
         }
         .buttonStyle(KLMSActionButtonStyle())
     }
@@ -9638,7 +9674,7 @@ private struct ServerRelayConnectionPanel: View {
             Label(title, systemImage: systemImage)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
         }
         .buttonStyle(KLMSActionButtonStyle())
     }
@@ -9652,7 +9688,7 @@ private struct CompanionConnectionInput: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -9661,18 +9697,18 @@ private struct CompanionConnectionInput: View {
             if secure {
                 SecureField("입력", text: $text)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(minHeight: 44)
+                    .frame(minHeight: KLMSControlSize.minimumInteractive)
             } else {
                 TextField("입력", text: $text)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(minHeight: 44)
+                    .frame(minHeight: KLMSControlSize.minimumInteractive)
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
     }
@@ -9683,7 +9719,7 @@ private struct ConnectionNoticeBanner: View {
     var succeeded: Bool?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
             Image(systemName: systemImage)
                 .foregroundStyle(tint)
                 .frame(width: 18)
@@ -9692,9 +9728,9 @@ private struct ConnectionNoticeBanner: View {
                 .foregroundStyle(Color.klmsPrimaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .background(tint.opacity(0.12))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 
     private var systemImage: String {
@@ -10325,7 +10361,7 @@ private struct CompanionCategoryDataLoadingState: View {
     var failureMessage: String = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             CompanionDashboardDataLoadingCard(
                 isServerConfigured: isServerConfigured,
                 isLoading: isLoading,
@@ -10338,14 +10374,14 @@ private struct CompanionCategoryDataLoadingState: View {
     }
 
     private var categoryGuide: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             HStack(spacing: 9) {
                 Image(systemName: category.systemImage)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(category.tint)
                     .frame(width: 26, height: 26)
-                    .background(category.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-                VStack(alignment: .leading, spacing: 2) {
+                    .background(category.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text(categoryLoadingTitle)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
@@ -10580,8 +10616,8 @@ private struct CompanionItemListControls: View {
     var filteredCount: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Label("\(filteredCount) / \(totalCount)개 표시", systemImage: "line.3.horizontal.decrease.circle")
                     .font(.caption2.monospacedDigit().weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
@@ -10607,7 +10643,7 @@ private struct CompanionItemListControls: View {
             }
 
             CompanionControlBox(title: "범위", systemImage: "line.3.horizontal.decrease.circle") {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     CompanionMenuPickerField(
                         title: "연도",
                         systemImage: "calendar",
@@ -10645,7 +10681,7 @@ private struct CompanionItemListControls: View {
             }
 
             CompanionControlBox(title: "표시", systemImage: "slider.horizontal.3") {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     CompanionMenuPickerField(
                         title: "표시 범위",
                         systemImage: "eye",
@@ -10654,7 +10690,7 @@ private struct CompanionItemListControls: View {
                         titleForOption: \.title
                     )
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                         if supportsNewOnly {
                             filterToggle("새 항목만", isOn: $newOnly)
                         }
@@ -10665,7 +10701,7 @@ private struct CompanionItemListControls: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, KLMSSpacing.tight)
     }
 
     private var hasActiveFilter: Bool {
@@ -10691,7 +10727,7 @@ private struct CompanionItemListControls: View {
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: KLMSSpacing.compact) {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.62))
@@ -10703,15 +10739,15 @@ private struct CompanionItemListControls: View {
                 .foregroundStyle(Color.klmsPrimaryText)
             Spacer(minLength: 0)
         }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, KLMSSpacing.comfortable)
+            .padding(.vertical, KLMSSpacing.compact)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
             .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 9))
             .overlay(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 2)
+                RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                     .fill(isSelected ? Color.klmsSelectedForeground : Color.clear)
                     .frame(width: 3)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, KLMSSpacing.standard)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 9)
@@ -10769,7 +10805,7 @@ private struct CompanionItemListControlsPlaceholder: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Label("목록 기준을 준비하고 있습니다", systemImage: "line.3.horizontal.decrease.circle")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
@@ -10782,7 +10818,7 @@ private struct CompanionItemListControlsPlaceholder: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, KLMSSpacing.tight)
         .redacted(reason: .placeholder)
         .allowsHitTesting(false)
     }
@@ -10833,15 +10869,15 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Label(title, systemImage: "magnifyingglass")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
 
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 TextField(fieldPrompt, text: $query)
                     .textFieldStyle(.roundedBorder)
-                    .frame(minHeight: 44)
+                    .frame(minHeight: KLMSControlSize.minimumInteractive)
                     .focused($isSearchFocused)
                     .submitLabel(.search)
                     .onSubmit {
@@ -10854,21 +10890,21 @@ private struct CompanionSearchFilterPanel<Controls: View>: View {
                         isSearchFocused = false
                     }
                     .buttonStyle(.bordered)
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
                     .accessibilityIdentifier("companion-search-dismiss-keyboard")
                 }
             }
 
             controls
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .transaction { transaction in
             transaction.animation = nil
             transaction.disablesAnimations = true
@@ -10883,13 +10919,13 @@ private struct CompanionControlBox<Content: View>: View {
     @State private var isExpanded = true
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             Button {
                 companionPerformWithoutAnimation {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Label(title, systemImage: systemImage)
                         .font(.caption2.weight(.semibold))
                     Spacer(minLength: 8)
@@ -10910,14 +10946,14 @@ private struct CompanionControlBox<Content: View>: View {
                     }
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .transaction { transaction in
             transaction.animation = nil
             transaction.disablesAnimations = true
@@ -10931,9 +10967,9 @@ private struct RemoteDashboardSyncCard: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 10) {
+                HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                     syncSectionTitle
                     Spacer(minLength: 8)
                     syncStateChip(fixedHorizontal: true)
@@ -10959,7 +10995,7 @@ private struct RemoteDashboardSyncCard: View {
             MailPasteAnalyzerPanel(model: model)
 
             if !snapshot.isRemoteAvailable {
-                HStack(alignment: .top, spacing: 8) {
+                HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                     Image(systemName: "link.badge.plus")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.klmsWarningForeground)
@@ -10968,7 +11004,7 @@ private struct RemoteDashboardSyncCard: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(10)
+                .padding(KLMSSpacing.comfortable)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.klmsWarningBorder.opacity(0.10), in: RoundedRectangle(cornerRadius: 11))
                 .overlay {
@@ -10980,9 +11016,9 @@ private struct RemoteDashboardSyncCard: View {
             }
         }
         .padding(11)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
@@ -11012,7 +11048,7 @@ private struct RemoteDashboardSyncCard: View {
         Text(syncStateTitle)
             .font(.caption2.weight(.bold))
             .foregroundStyle(syncStateColor)
-            .padding(.horizontal, 8)
+            .padding(.horizontal, KLMSSpacing.standard)
             .padding(.vertical, 5)
             .background(syncStateColor.opacity(0.13), in: Capsule())
             .fixedSize(horizontal: fixedHorizontal, vertical: true)
@@ -11114,13 +11150,13 @@ private struct RemoteDashboardPrimarySyncAction: View {
             model.runOrCancelRemoteCommand(.fullSync)
         } label: {
             ViewThatFits(in: .horizontal) {
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .center, spacing: KLMSSpacing.section) {
                     primaryCommandText(isRunning: isRunning)
                         .fixedSize(horizontal: true, vertical: false)
                     Spacer(minLength: 0)
                     primaryCommandIcon(isRunning: isRunning, isDisabled: isDisabled)
                 }
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     primaryCommandText(isRunning: isRunning)
                     primaryCommandIcon(isRunning: isRunning, isDisabled: isDisabled)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -11129,17 +11165,17 @@ private struct RemoteDashboardPrimarySyncAction: View {
             .foregroundStyle(primaryCommandForeground(isDisabled: isDisabled))
             .frame(maxWidth: .infinity, minHeight: compact ? 56 : 60, alignment: .leading)
             .padding(.horizontal, 13)
-            .padding(.vertical, 14)
+            .padding(.vertical, KLMSSpacing.roomy)
             .background(
                 primaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
-                in: RoundedRectangle(cornerRadius: 12)
+                in: RoundedRectangle(cornerRadius: KLMSRadius.card)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(primaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled), lineWidth: 1)
             }
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12, disabledOpacity: 0.78))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card, disabledOpacity: 0.78))
         .disabled(isDisabled)
         .accessibilityLabel(isRunning ? "전체 동기화 중단" : "전체 동기화 실행")
         .accessibilityHint(isRunning ? "서버에 전체 동기화 중단 요청을 보냅니다." : "서버에 전체 동기화 실행 요청을 올립니다.")
@@ -11237,10 +11273,10 @@ private struct RemoteDashboardSyncCardContent: View, Equatable {
             .padding(.vertical, 9)
             .background(
                 secondaryCommandBackground(isRunning: isRunning, isDisabled: isDisabled),
-                in: RoundedRectangle(cornerRadius: 10)
+                in: RoundedRectangle(cornerRadius: KLMSRadius.control)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .stroke(
                         secondaryCommandBorder(isRunning: isRunning, isDisabled: isDisabled),
                         lineWidth: 1
@@ -11314,14 +11350,14 @@ private struct RemoteDashboardMetricOverview: View {
 
     private var compactColumns: [GridItem] {
         if dynamicTypeSize.isAccessibilitySize {
-            return [GridItem(.flexible(minimum: 0), spacing: 8)]
+            return [GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard)]
         }
-        return [GridItem(.adaptive(minimum: 132), spacing: 8)]
+        return [GridItem(.adaptive(minimum: 132), spacing: KLMSSpacing.standard)]
     }
 
     private var workstationColumns: [GridItem] {
         Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+            repeating: GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
             count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
         )
     }
@@ -11357,7 +11393,7 @@ private struct RemoteDashboardMetricOverview: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             if !isDataLoaded {
                 if showsLoadingPlaceholder {
                     CompanionDashboardDataLoadingCard(
@@ -11376,8 +11412,8 @@ private struct RemoteDashboardMetricOverview: View {
                 Text("표시할 대시보드 항목이 없습니다.")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .padding(KLMSSpacing.section)
+                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                     .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13)
@@ -11405,9 +11441,9 @@ private struct RemoteDashboardMetricOverview: View {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, KLMSSpacing.hairline)
                 if layoutMode == .wide {
-                    LazyVGrid(columns: workstationColumns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: workstationColumns, alignment: .leading, spacing: KLMSSpacing.standard) {
                         ForEach(categories) { category in
                             WorkstationMetricCard(
                                 category: category,
@@ -11419,7 +11455,7 @@ private struct RemoteDashboardMetricOverview: View {
                         }
                     }
                 } else {
-                    LazyVGrid(columns: compactColumns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: compactColumns, alignment: .leading, spacing: KLMSSpacing.standard) {
                         ForEach(categories) { category in
                             RemoteMetricTile(
                                 category.title,
@@ -11705,7 +11741,7 @@ private struct RemoteDashboardChangeSummary: View {
 
     var body: some View {
         if !entries.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 Label("변경 요약", systemImage: "sparkles")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
@@ -11768,24 +11804,24 @@ private struct FlowChipLayout: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, KLMSSpacing.standard)
+                .padding(.vertical, KLMSSpacing.compact)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                 .background(
                     entry.kind.chipBackground,
-                    in: RoundedRectangle(cornerRadius: 8)
+                    in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 )
                 .overlay(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                         .fill(isSelected ? Color.klmsSelectedForeground : entry.kind.tint.opacity(0.26))
                         .frame(width: 3)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, KLMSSpacing.standard)
                 }
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                         .stroke(entry.kind.chipBorder, lineWidth: 1)
                 )
-                .companionStableTap(cornerRadius: 8) {
+                .companionStableTap(cornerRadius: KLMSRadius.smallSurface) {
                     onSelect(entry.kind)
                 }
                 .accessibilityLabel("\(entry.kind.title) \(entry.value)개 \(selectedKind == entry.kind ? "펼쳐짐" : "접힘")")
@@ -11825,7 +11861,7 @@ private struct RemoteMetricTile: View {
                     .frame(width: 26, height: 26)
                     .background(
                         Color.klmsCommandAccent.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 8)
+                        in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     )
                 Spacer(minLength: 0)
                 Text("\(value)")
@@ -11840,18 +11876,18 @@ private struct RemoteMetricTile: View {
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .padding(11)
         .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent.opacity(0.28))
                 .frame(width: 3)
-                .padding(.vertical, 10)
+                .padding(.vertical, KLMSSpacing.comfortable)
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
-        .companionStableTap(cornerRadius: 14, action: action)
+        .companionStableTap(cornerRadius: KLMSRadius.panel, action: action)
         .accessibilityLabel("\(label) \(value)개")
         .accessibilityValue(isSelected ? "선택됨" : "선택 안 됨")
         .accessibilityHint("\(label) 상세를 아래에 엽니다.")
@@ -11865,7 +11901,7 @@ private struct KLMSCardButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -11886,7 +11922,7 @@ private struct KLMSStableSelectionButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
             .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
             .opacity(isEnabled ? 1.0 : 0.54)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
@@ -11913,7 +11949,7 @@ private extension View {
             companionPerformWithoutAnimation(action)
         } label: {
             self
-                .frame(minWidth: 44, minHeight: 44)
+                .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
                 .contentShape(RoundedRectangle(cornerRadius: cornerRadius))
         }
             .buttonStyle(KLMSStableSelectionButtonStyle(cornerRadius: cornerRadius))
@@ -12054,7 +12090,7 @@ private struct CompanionDashboardDataLoadingCard: View {
     var failureMessage: String = ""
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
             statusIcon
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
@@ -12067,7 +12103,7 @@ private struct CompanionDashboardDataLoadingCard: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
         .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
         .overlay {
@@ -12080,7 +12116,7 @@ private struct CompanionDashboardDataLoadingCard: View {
     private var statusIcon: some View {
         let tint = iconTint
         ZStack {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .fill(tint.opacity(0.12))
             if isServerConfigured && isLoading && !didFail {
                 ProgressView()
@@ -12138,10 +12174,10 @@ private struct CompanionDisconnectedRecoveryPanel: View {
     var openSettings: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
+            HStack(alignment: .top, spacing: KLMSSpacing.section) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: KLMSRadius.control)
                         .fill(Color.klmsWarningBorder.opacity(0.14))
                     Image(systemName: "link.badge.plus")
                         .font(.headline.weight(.bold))
@@ -12149,7 +12185,7 @@ private struct CompanionDisconnectedRecoveryPanel: View {
                 }
                 .frame(width: 36, height: 36)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                     Text("서버 연결이 필요합니다")
                         .font(.headline.weight(.bold))
                         .foregroundStyle(Color.klmsPrimaryText)
@@ -12168,11 +12204,11 @@ private struct CompanionDisconnectedRecoveryPanel: View {
             .buttonStyle(KLMSActionButtonStyle(tone: .primary))
             .accessibilityIdentifier("server-connection-recovery-settings")
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.largePanel))
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: KLMSRadius.largePanel)
                 .stroke(Color.klmsWarningBorder.opacity(0.34), lineWidth: 1.1)
         }
         .accessibilityElement(children: .contain)
@@ -12187,15 +12223,15 @@ private struct WorkstationMetricCard: View {
     var action: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+            HStack(alignment: .center, spacing: KLMSSpacing.standard) {
                 Image(systemName: category.systemImage)
                     .font(.system(.subheadline, design: .rounded, weight: .semibold))
                     .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent)
                     .frame(width: 26, height: 26)
                     .background(
                         Color.klmsCommandAccent.opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 8)
+                        in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     )
                 Text("\(category.title) \(value)개")
                     .font(.system(.subheadline, design: .rounded, weight: .bold).monospacedDigit())
@@ -12212,10 +12248,10 @@ private struct WorkstationMetricCard: View {
         .frame(maxWidth: .infinity, minHeight: 70, alignment: .leading)
         .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent.opacity(0.28))
                 .frame(width: 3)
-                .padding(.vertical, 10)
+                .padding(.vertical, KLMSSpacing.comfortable)
         }
         .overlay(
             RoundedRectangle(cornerRadius: 13)
@@ -12270,9 +12306,9 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                     Text("대시보드")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
@@ -12285,7 +12321,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 Text("최신순")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, KLMSSpacing.comfortable)
                     .padding(.vertical, 7)
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
                     .overlay(
@@ -12305,7 +12341,7 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                     Text("표시할 대시보드 항목이 없습니다.")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .padding(12)
+                        .padding(KLMSSpacing.section)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 13))
                         .overlay(
@@ -12313,15 +12349,15 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                                 .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
                         )
                 } else {
-                    LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: 8) {
+                    LazyVGrid(columns: overviewColumns, alignment: .leading, spacing: KLMSSpacing.standard) {
                         ForEach(overviewMetrics) { metric in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(alignment: .center, spacing: 8) {
+                            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
+                                HStack(alignment: .center, spacing: KLMSSpacing.standard) {
                                     Image(systemName: metric.systemImage)
                                         .font(.system(.subheadline, design: .rounded, weight: .semibold))
                                         .foregroundStyle(metric.tint)
                                         .frame(width: 26, height: 26)
-                                        .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                        .background(metric.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                                     Spacer(minLength: 0)
                                     Text("\(metric.value)")
                                         .font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())
@@ -12393,18 +12429,18 @@ private struct WorkstationDashboardOverviewPanel: View, Equatable {
                 WorkstationChangeSummaryCard(status: data.status)
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
 
     private var overviewColumns: [GridItem] {
         Array(
-            repeating: GridItem(.flexible(minimum: 0), spacing: 8),
+            repeating: GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
             count: dynamicTypeSize.isAccessibilitySize ? 1 : 2
         )
     }
@@ -12463,7 +12499,7 @@ private struct WorkstationDashboardEmptyGuidePanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Image(systemName: "rectangle.3.group")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsCommandAccent)
@@ -12480,14 +12516,14 @@ private struct WorkstationDashboardEmptyGuidePanel: View {
                 .foregroundStyle(Color.klmsSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 ForEach(guideLines, id: \.0) { line in
-                    HStack(alignment: .top, spacing: 8) {
+                    HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsCommandAccent)
                             .frame(width: 18, height: 18)
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                             Text(line.0)
                                 .font(.caption.weight(.bold))
                                 .foregroundStyle(Color.klmsPrimaryText)
@@ -12502,9 +12538,9 @@ private struct WorkstationDashboardEmptyGuidePanel: View {
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
@@ -12521,20 +12557,20 @@ private struct WorkstationDisconnectedDashboardPreviewPanel: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             Text("연결 후 표시될 항목")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(Color.klmsPrimaryText)
 
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(rows, id: \.0.rawValue) { category, detail in
-                    HStack(spacing: 10) {
+                    HStack(spacing: KLMSSpacing.comfortable) {
                         Image(systemName: category.systemImage)
                             .font(.caption.weight(.bold))
                             .foregroundStyle(category.tint.opacity(0.92))
                             .frame(width: 28, height: 28)
-                            .background(category.tint.opacity(0.11), in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
+                            .background(category.tint.opacity(0.11), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+                        VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                             Text(category.title)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.klmsPrimaryText)
@@ -12547,14 +12583,14 @@ private struct WorkstationDisconnectedDashboardPreviewPanel: View {
                             .font(.caption2.weight(.bold))
                             .foregroundStyle(Color.klmsSecondaryText)
                             .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
+                            .padding(.vertical, KLMSSpacing.tight)
                             .background(Color.klmsSubtleCardBackground.opacity(0.72), in: Capsule())
                     }
-                    .padding(10)
+                    .padding(KLMSSpacing.comfortable)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: KLMSRadius.card)
                             .stroke(Color.klmsBorder.opacity(0.66), lineWidth: 1)
                     }
                 }
@@ -12562,9 +12598,9 @@ private struct WorkstationDisconnectedDashboardPreviewPanel: View {
         }
         .padding(13)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.largePanel))
         .overlay {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: KLMSRadius.largePanel)
                 .stroke(Color.klmsBorder.opacity(0.86), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
@@ -12582,8 +12618,8 @@ private struct WorkstationDisconnectedDetailPanel: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(Color.klmsCommandAccent)
                     .frame(width: 34, height: 34)
-                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                VStack(alignment: .leading, spacing: 4) {
+                    .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
+                VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                     Text("서버를 연결하면 바로 채워집니다")
                         .font(.title3.weight(.bold))
                         .foregroundStyle(Color.klmsPrimaryText)
@@ -12594,7 +12630,7 @@ private struct WorkstationDisconnectedDetailPanel: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 WorkstationDisconnectedDetailRow(
                     title: "대시보드",
                     detail: "최근 파일, 과제, 공지, 캘린더 상태가 한 화면에 표시됩니다."
@@ -12632,12 +12668,12 @@ private struct WorkstationDisconnectedDetailRow: View {
     var detail: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsCommandAccent)
                 .frame(width: 18, height: 18)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -12654,8 +12690,8 @@ private struct WorkstationDashboardRunSummaryCard: View {
     var status: SanitizedRemoteStatus
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Image(systemName: "waveform.path.ecg")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsCommandAccent)
@@ -12667,13 +12703,13 @@ private struct WorkstationDashboardRunSummaryCard: View {
                 Spacer(minLength: 0)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 runSummaryLine("상태", status.phase.klmsRemotePhaseName)
                 runSummaryLine("파일", "\(status.fileTotal)개 · 새 파일 \(status.newFiles)개")
                 runSummaryLine("일정", "시험 \(status.exams)개 · 과제 \(status.assignments)개")
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground.opacity(0.70), in: RoundedRectangle(cornerRadius: 13))
         .overlay(
@@ -12683,7 +12719,7 @@ private struct WorkstationDashboardRunSummaryCard: View {
     }
 
     private func runSummaryLine(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: KLMSSpacing.standard) {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
@@ -12707,7 +12743,7 @@ private struct WorkstationDashboardPreviewSection: View {
     var onOpenCategory: (DashboardMetricCategory) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             HStack(spacing: 7) {
                 Image(systemName: systemImage)
                     .font(.caption.weight(.bold))
@@ -12729,11 +12765,11 @@ private struct WorkstationDashboardPreviewSection: View {
                 Text(emptyMessage)
                     .font(.caption)
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(10)
+                    .padding(KLMSSpacing.comfortable)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: 10))
+                    .background(Color.klmsSubtleCardBackground.opacity(0.74), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10)
+                        RoundedRectangle(cornerRadius: KLMSRadius.control)
                             .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
                     }
             } else {
@@ -12748,11 +12784,11 @@ private struct WorkstationDashboardPreviewSection: View {
                 }
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
         }
     }
@@ -12771,7 +12807,7 @@ private struct WorkstationChangeSummaryCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             Text("변경 요약")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(Color.klmsPrimaryText)
@@ -12780,11 +12816,11 @@ private struct WorkstationChangeSummaryCard: View {
                 .foregroundStyle(Color.klmsSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.largePanel))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: KLMSRadius.largePanel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -12796,9 +12832,9 @@ private struct CompactDashboardSelectedRow: View {
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                     Text(item.title.isEmpty ? "제목 없음" : item.title)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsPrimaryText)
@@ -12812,17 +12848,17 @@ private struct CompactDashboardSelectedRow: View {
                 Text(rowBadge)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, KLMSSpacing.standard)
+                    .padding(.vertical, KLMSSpacing.compact)
                     .background(Color.klmsCardBackground, in: Capsule())
                 Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 14))
-            .companionStableTap(cornerRadius: 14) {
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
+            .companionStableTap(cornerRadius: KLMSRadius.panel) {
                 expanded.toggle()
             }
             .accessibilityLabel("\(rowBadge) \(item.title.nilIfEmpty ?? "제목 없음")")
@@ -12874,15 +12910,15 @@ private struct KLMSActionButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(.caption, design: .rounded, weight: .semibold))
             .foregroundStyle(foreground)
-            .frame(minWidth: 44, minHeight: 44)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
+            .padding(.horizontal, KLMSSpacing.standard)
+            .padding(.vertical, KLMSSpacing.comfortable)
             .background {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .fill(background)
             }
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .stroke(border, lineWidth: isEnabled ? 1.15 : 1)
             }
             .opacity(isEnabled ? 1.0 : 0.42)
@@ -12956,8 +12992,8 @@ private struct KLMSCompactResetButtonStyle: ButtonStyle {
             .font(.system(.caption, design: .rounded, weight: .semibold))
             .foregroundStyle(Color.klmsSecondaryText)
             .labelStyle(.titleAndIcon)
-            .padding(.horizontal, 8)
-            .frame(minHeight: 44)
+            .padding(.horizontal, KLMSSpacing.standard)
+            .frame(minHeight: KLMSControlSize.minimumInteractive)
             .background(Color.klmsCommandButtonBackground.opacity(isEnabled ? 0.54 : 0.18), in: Capsule())
             .overlay {
                 Capsule()
@@ -12975,7 +13011,7 @@ private struct KLMSCompactTrashButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(.caption, design: .rounded, weight: .bold))
             .foregroundStyle(isEnabled ? Color.klmsDangerForeground : Color.klmsSecondaryText.opacity(0.56))
-            .frame(width: 44, height: 44)
+            .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
             .background(compactTrashBackground(configuration: configuration), in: RoundedRectangle(cornerRadius: 9))
             .overlay {
                 RoundedRectangle(cornerRadius: 9)
@@ -13039,9 +13075,9 @@ private struct KLMSToolbarButtonStyle: ButtonStyle {
         configuration.label
             .font(.system(.caption, design: .rounded, weight: .semibold))
             .foregroundStyle(foreground)
-            .frame(minWidth: 44, minHeight: 44)
+            .frame(minWidth: KLMSControlSize.minimumInteractive, minHeight: KLMSControlSize.minimumInteractive)
             .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .padding(.vertical, KLMSSpacing.compact)
             .background {
                 RoundedRectangle(cornerRadius: 9)
                     .fill(background)
@@ -13166,7 +13202,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
     var body: some View {
         Group {
             if model.hasLoadedServerSyncData {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.roomy) {
                     summaryHeader
                     detailContent
                 }
@@ -13180,12 +13216,12 @@ private struct DashboardCategoryInlineDetailPanel: View {
                 )
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .task(id: listInputKey) {
@@ -13212,12 +13248,12 @@ private struct DashboardCategoryInlineDetailPanel: View {
     }
 
     private var summaryHeader: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: KLMSSpacing.section) {
             Image(systemName: category.systemImage)
                 .font(.title2)
                 .foregroundStyle(category.tint)
-                .frame(width: 44, height: 44)
-            VStack(alignment: .leading, spacing: 4) {
+                .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Text(category.title)
                     .font(.headline)
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -13230,16 +13266,16 @@ private struct DashboardCategoryInlineDetailPanel: View {
             Text("열림")
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(category.tint)
-                .padding(.horizontal, 8)
+                .padding(.horizontal, KLMSSpacing.standard)
                 .padding(.vertical, 5)
                 .background(category.tint.opacity(0.12), in: Capsule())
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .accessibilityElement(children: .ignore)
@@ -13250,8 +13286,8 @@ private struct DashboardCategoryInlineDetailPanel: View {
     private var detailContent: some View {
         if category == .calendar {
             let visibleChanges = calendarChanges.prefix(calendarVisibleLimit)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(spacing: KLMSSpacing.standard) {
                     DashboardCountPill(title: "생성", value: status.calendarCreated, tint: category.tint)
                     DashboardCountPill(title: "수정", value: status.calendarUpdated, tint: category.tint)
                     DashboardCountPill(title: "삭제", value: status.calendarDeleted, tint: category.tint)
@@ -13281,7 +13317,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
         } else if category == .quarantine {
             panelEmptyText(category.emptyMessage)
         } else {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 CompanionSearchFilterPanel(title: "검색과 필터", fieldPrompt: "\(category.title) 검색", query: $query) {
                     if let listData = cachedListData {
                         DeferredCompanionItemListControls(
@@ -13461,17 +13497,17 @@ private struct DashboardCategoryInlineDetailPanel: View {
             .font(.subheadline)
             .foregroundStyle(Color.klmsSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.klmsSubtleCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 
     private func extraCountText(_ count: Int) -> some View {
         Text("외 \(count)개")
             .font(.caption)
             .foregroundStyle(Color.klmsSecondaryText)
-            .padding(.horizontal, 2)
+            .padding(.horizontal, KLMSSpacing.hairline)
     }
 
 }
@@ -13479,6 +13515,7 @@ private struct DashboardCategoryInlineDetailPanel: View {
 private struct WorkstationDashboardCategoryWorkspace: View {
     var category: DashboardMetricCategory
     let model: CompanionModel
+    @Environment(\.companionLayoutWidth) private var companionLayoutWidth
     @State private var selectedItemID: String?
 
     init(category: DashboardMetricCategory, model: CompanionModel) {
@@ -13519,7 +13556,11 @@ private struct WorkstationDashboardCategoryWorkspace: View {
     }
 
     private var categoryRegularWorkspace: some View {
-        CompanionAdaptiveTwoColumnLayout {
+        CompanionAdaptiveTwoColumnLayout(
+            allowsHorizontalColumns: CompanionWorkstationMetrics.supportsTwoColumns(
+                for: companionLayoutWidth
+            )
+        ) {
             categoryListPanel
                 .frame(
                     maxWidth: .infinity,
@@ -13609,6 +13650,7 @@ private struct WorkstationDashboardCategoryWorkspace: View {
 
 private struct WorkstationTasksWorkspace: View {
     let model: CompanionModel
+    @Environment(\.companionLayoutWidth) private var companionLayoutWidth
     @State private var selectedTaskCategory = DashboardMetricCategory.assignments
     @State private var selectedItemID: String?
 
@@ -13680,7 +13722,11 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var tasksRegularWorkspace: some View {
-        CompanionAdaptiveTwoColumnLayout {
+        CompanionAdaptiveTwoColumnLayout(
+            allowsHorizontalColumns: CompanionWorkstationMetrics.supportsTwoColumns(
+                for: companionLayoutWidth
+            )
+        ) {
             tasksListPanel
                 .frame(
                     maxWidth: .infinity,
@@ -13709,7 +13755,7 @@ private struct WorkstationTasksWorkspace: View {
     }
 
     private var tasksListPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             WorkstationTaskCategorySelector(
                 categories: taskCategories,
                 status: model.dashboardStatus,
@@ -13779,26 +13825,26 @@ private struct WorkstationTaskCategorySelector: View {
     @Binding var selectedCategory: DashboardMetricCategory
 
     private let columns = [
-        GridItem(.adaptive(minimum: 132), spacing: 8),
+        GridItem(.adaptive(minimum: 132), spacing: KLMSSpacing.standard),
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             Label("작업 종류", systemImage: "square.grid.2x2")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
 
-            LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: KLMSSpacing.standard) {
                 ForEach(categories) { category in
                     categoryButton(category)
                 }
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(Color.klmsBorder.opacity(0.78), lineWidth: 1)
         }
     }
@@ -13806,16 +13852,16 @@ private struct WorkstationTaskCategorySelector: View {
     private func categoryButton(_ category: DashboardMetricCategory) -> some View {
         let isSelected = selectedCategory == category
         let value = category.value(from: status)
-        return HStack(spacing: 8) {
+        return HStack(spacing: KLMSSpacing.standard) {
             Image(systemName: category.systemImage)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : category.tint)
                 .frame(width: 26, height: 26)
                 .background(
                     category.tint.opacity(0.11),
-                    in: RoundedRectangle(cornerRadius: 8)
+                    in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 )
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(category.title)
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -13827,20 +13873,20 @@ private struct WorkstationTaskCategorySelector: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 9)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .background(Color.klmsCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.vertical, KLMSSpacing.standard)
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+        .background(Color.klmsCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isSelected ? Color.klmsSelectedForeground : category.tint.opacity(0.25))
                 .frame(width: 3)
-                .padding(.vertical, 8)
+                .padding(.vertical, KLMSSpacing.standard)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.62), lineWidth: 1)
         }
-        .companionStableTap(cornerRadius: 10) {
+        .companionStableTap(cornerRadius: KLMSRadius.control) {
             guard selectedCategory != category else { return }
             selectedCategory = category
         }
@@ -13852,6 +13898,7 @@ private struct WorkstationTaskCategorySelector: View {
 
 private struct WorkstationCalendarWorkspace: View {
     let model: CompanionModel
+    @Environment(\.companionLayoutWidth) private var companionLayoutWidth
     @State private var selectedChangeID: String?
     @State private var calendarVisibleLimit = CompanionLargeList.regularCalendarVisibleLimit
 
@@ -13887,7 +13934,11 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     private var calendarRegularWorkspace: some View {
-        CompanionAdaptiveTwoColumnLayout {
+        CompanionAdaptiveTwoColumnLayout(
+            allowsHorizontalColumns: CompanionWorkstationMetrics.supportsTwoColumns(
+                for: companionLayoutWidth
+            )
+        ) {
             calendarListPanel
                 .frame(
                     maxWidth: .infinity,
@@ -13916,14 +13967,14 @@ private struct WorkstationCalendarWorkspace: View {
     }
 
     private var calendarListPanel: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
+            HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: DashboardMetricCategory.calendar.systemImage)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(DashboardMetricCategory.calendar.tint)
-                    .frame(width: 44, height: 44)
-                    .background(DashboardMetricCategory.calendar.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 4) {
+                    .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                    .background(DashboardMetricCategory.calendar.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
+                VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                     Text("캘린더")
                         .font(.headline)
                         .foregroundStyle(Color.klmsPrimaryText)
@@ -13935,7 +13986,7 @@ private struct WorkstationCalendarWorkspace: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 DashboardCountPill(title: "생성", value: model.dashboardStatus.calendarCreated, tint: DashboardMetricCategory.calendar.tint)
                 DashboardCountPill(title: "수정", value: model.dashboardStatus.calendarUpdated, tint: DashboardMetricCategory.calendar.tint)
                 DashboardCountPill(title: "삭제", value: model.dashboardStatus.calendarDeleted, tint: DashboardMetricCategory.calendar.tint)
@@ -13947,11 +13998,11 @@ private struct WorkstationCalendarWorkspace: View {
                 Text("최근 캘린더 변경 상세가 아직 서버에 올라오지 않았습니다.")
                     .font(.subheadline)
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             } else {
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     ForEach(changes.prefix(calendarVisibleLimit)) { change in
                         calendarChangeButton(change)
                     }
@@ -13966,18 +14017,18 @@ private struct WorkstationCalendarWorkspace: View {
                 }
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
 
     private var calendarDetailPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.roomy) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Text("캘린더 상세")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -13998,16 +14049,16 @@ private struct WorkstationCalendarWorkspace: View {
                 Text("캘린더 변경 목록에서 항목을 선택해 주세요.")
                     .font(.subheadline)
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -14018,7 +14069,7 @@ private struct WorkstationCalendarWorkspace: View {
             Text(change.actionDisplayName)
                 .font(.caption2.weight(.bold))
                 .padding(.horizontal, 7)
-                .padding(.vertical, 4)
+                .padding(.vertical, KLMSSpacing.tight)
                 .foregroundStyle(calendarActionTint(change))
                 .background(
                     calendarActionTint(change).opacity(0.13),
@@ -14038,22 +14089,22 @@ private struct WorkstationCalendarWorkspace: View {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(isSelected ? Color.klmsSelectedForeground : Color.klmsSecondaryText.opacity(0.76))
-                .padding(.top, 2)
+                .padding(.top, KLMSSpacing.hairline)
         }
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isSelected ? Color.klmsSelectedForeground : calendarActionTint(change).opacity(0.24))
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.74), lineWidth: 1)
         }
-        .companionStableTap(cornerRadius: 10) {
+        .companionStableTap(cornerRadius: KLMSRadius.control) {
             selectChange(change)
         }
         .accessibilityLabel("\(change.title.nilIfBlank ?? "캘린더 변경") \(change.actionDisplayName)")
@@ -14109,8 +14160,8 @@ private struct WorkstationExternalDetailPanel: View {
     let model: CompanionModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.roomy) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Text(title)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -14126,16 +14177,16 @@ private struct WorkstationExternalDetailPanel: View {
                 Text(emptyMessage)
                     .font(.subheadline)
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -14184,10 +14235,10 @@ private struct CompanionInlineItemRowsView: View {
 
     var body: some View {
         let visibleItems = items.prefix(visibleLimit)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             inlineSelectedDetail
 
-            LazyVStack(alignment: .leading, spacing: 8) {
+            LazyVStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 ForEach(visibleItems) { item in
                     let isSelected = activeSelectedItemID == item.id
                     ServerSyncDataRow(
@@ -14349,8 +14400,8 @@ private struct CompanionFloatingItemDetailOverlay: View {
     var onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Label("선택한 항목", systemImage: "rectangle.on.rectangle")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -14359,7 +14410,7 @@ private struct CompanionFloatingItemDetailOverlay: View {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .frame(width: 44, height: 44)
+                        .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -14372,11 +14423,11 @@ private struct CompanionFloatingItemDetailOverlay: View {
             .scrollBounceBehavior(.basedOnSize)
             .frame(maxHeight: 360)
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: KLMSRadius.largePanel))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: KLMSRadius.largePanel)
                 .stroke(Color.klmsBorder.opacity(0.92), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.16), radius: 18, x: 0, y: 10)
@@ -14394,8 +14445,8 @@ private struct CompanionFloatingMailDetailOverlay: View {
     var onClose: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Label("관련 항목", systemImage: "rectangle.on.rectangle")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -14404,7 +14455,7 @@ private struct CompanionFloatingMailDetailOverlay: View {
                     Image(systemName: "xmark")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
-                        .frame(width: 44, height: 44)
+                        .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -14417,11 +14468,11 @@ private struct CompanionFloatingMailDetailOverlay: View {
             .scrollBounceBehavior(.basedOnSize)
             .frame(maxHeight: 360)
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: KLMSRadius.largePanel))
         .overlay(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: KLMSRadius.largePanel)
                 .stroke(Color.klmsBorder.opacity(0.92), lineWidth: 1)
         )
         .shadow(color: Color.black.opacity(0.16), radius: 18, x: 0, y: 10)
@@ -14452,7 +14503,7 @@ private struct CompanionSelectableItemListRows: View {
 
     var body: some View {
         let visibleItems = items.prefix(visibleLimit)
-        LazyVStack(alignment: .leading, spacing: 8) {
+        LazyVStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             ForEach(visibleItems) { item in
                 ServerSyncDataRow(item: item, isSelected: selectedItemID == item.id)
                     .equatable()
@@ -14529,7 +14580,7 @@ private struct CompanionShowMoreRowsButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Image(systemName: "chevron.down.circle")
                     .font(.subheadline.weight(.semibold))
                 Text("더 보기")
@@ -14540,12 +14591,12 @@ private struct CompanionShowMoreRowsButton: View {
                     .foregroundStyle(Color.klmsSecondaryText)
             }
             .foregroundStyle(Color.klmsPrimaryText)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, KLMSSpacing.section)
             .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsBorder, lineWidth: 1)
             }
         }
@@ -14570,7 +14621,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
     @State private var cleanupVisibleLimit = CompanionLargeList.previewVisibleLimit
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             header
             if let selectedChangedItem {
                 CompanionFloatingItemDetailOverlay(item: selectedChangedItem, model: model) {
@@ -14581,12 +14632,12 @@ private struct RemoteChangeSummaryDetailPanel: View {
             }
             detailContent
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .onChange(of: visibleContentResetKey) { _, _ in
@@ -14645,12 +14696,12 @@ private struct RemoteChangeSummaryDetailPanel: View {
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
             Image(systemName: kind.systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(kind.tint)
-                .frame(width: 44, height: 44)
-                .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                .background(kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
             VStack(alignment: .leading, spacing: 3) {
                 Text(kind.detailTitle)
                     .font(.headline)
@@ -14661,12 +14712,12 @@ private struct RemoteChangeSummaryDetailPanel: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder.opacity(0.95), lineWidth: 1)
         )
     }
@@ -14678,7 +14729,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
                 emptyState
             } else {
                 let visibleCalendarItems = changedCalendarItems.prefix(calendarVisibleLimit)
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     ForEach(visibleCalendarItems) { change in
                         DashboardCalendarChangeDetailRow(
                             change: change,
@@ -14703,7 +14754,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
             emptyState
         } else {
                 let visibleChangedItems = changedItems.prefix(visibleItemLimit)
-                LazyVStack(alignment: .leading, spacing: 8) {
+                LazyVStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     ForEach(visibleChangedItems) { item in
                         ServerSyncDataRow(
                             item: item,
@@ -14711,7 +14762,7 @@ private struct RemoteChangeSummaryDetailPanel: View {
                             accessorySystemImage: selectedItemID == item.id ? "checkmark.circle.fill" : "info.circle"
                         )
                         .equatable()
-                        .companionStableTap(cornerRadius: 8) {
+                        .companionStableTap(cornerRadius: KLMSRadius.smallSurface) {
                             selectedItemID = selectedItemID == item.id ? nil : item.id
                         }
                         .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
@@ -14735,8 +14786,8 @@ private struct RemoteChangeSummaryDetailPanel: View {
         if cleanupTotal <= 0 && fileCleanupReports.isEmpty {
             emptyState
         } else {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(spacing: KLMSSpacing.standard) {
                     DashboardCountPill(title: "정리", value: status.filePruned, tint: kind.tint)
                     DashboardCountPill(title: "보관 정리", value: status.fileArchivePruned, tint: kind.tint)
                 }
@@ -14745,8 +14796,8 @@ private struct RemoteChangeSummaryDetailPanel: View {
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(10)
-                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(KLMSSpacing.comfortable)
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                 } else {
                     let visibleReports = fileCleanupReports.prefix(cleanupVisibleLimit)
                     ForEach(visibleReports, id: \.scope) { report in
@@ -14770,9 +14821,9 @@ private struct RemoteChangeSummaryDetailPanel: View {
             .font(.subheadline)
             .foregroundStyle(Color.klmsSecondaryText)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 
     private var summaryText: String {
@@ -14811,14 +14862,14 @@ private struct MailPasteAnalyzerPanel: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Button {
                 companionPerformWithoutAnimation {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: KLMSSpacing.comfortable) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                         Text("메일·캘린더 분석")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.klmsPrimaryText)
@@ -14832,23 +14883,23 @@ private struct MailPasteAnalyzerPanel: View {
                         Text(analysis.kind.title)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(analysis.kind.tint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, KLMSSpacing.standard)
+                            .padding(.vertical, KLMSSpacing.tight)
                             .background(analysis.kind.tint.opacity(0.12), in: Capsule())
                     }
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, KLMSSpacing.comfortable)
                 .padding(.vertical, 9)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .background(Color.klmsCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: 10))
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+                .background(Color.klmsCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: KLMSRadius.control)
                         .stroke(Color.klmsCommandButtonBorder.opacity(colorScheme == .dark ? 0.72 : 0.92), lineWidth: 1)
                 )
-                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
             }
             .buttonStyle(KLMSCardButtonStyle())
             .accessibilityLabel("메일·캘린더 분석 \(analysis.isEmpty ? "입력 대기" : analysis.kind.title) \(isExpanded ? "펼쳐짐" : "접힘")")
@@ -14856,15 +14907,15 @@ private struct MailPasteAnalyzerPanel: View {
             .accessibilityIdentifier("mail-paste-analyzer-disclosure")
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     MailPasteInputBox(mailText: $mailText)
 
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 8)], spacing: 8) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: KLMSSpacing.standard)], spacing: KLMSSpacing.standard) {
                         Button {
                             pasteFromClipboard()
                         } label: {
                             Label("클립보드 붙여넣기", systemImage: "doc.on.clipboard")
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .accessibilityHint("클립보드의 메일 본문을 입력칸에 붙여넣고 바로 판독합니다.")
@@ -14873,7 +14924,7 @@ private struct MailPasteAnalyzerPanel: View {
                             runAnalysis()
                         } label: {
                             Label("판독하기", systemImage: "wand.and.stars")
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -14884,7 +14935,7 @@ private struct MailPasteAnalyzerPanel: View {
                             analysis = .empty
                         } label: {
                             Label("입력 비우기", systemImage: "xmark.circle")
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(mailText.isEmpty)
@@ -14896,11 +14947,11 @@ private struct MailPasteAnalyzerPanel: View {
                 }
             }
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .onChange(of: mailText) { _, _ in
@@ -14982,13 +15033,13 @@ private struct MailPasteInputBox: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: "text.badge.checkmark")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(accent)
                     .frame(width: 28, height: 28)
-                    .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.13), in: RoundedRectangle(cornerRadius: 8))
+                    .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.13), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                 VStack(alignment: .leading, spacing: 3) {
                     Text("메일 원문 붙여넣기")
                         .font(.subheadline.weight(.semibold))
@@ -15001,8 +15052,8 @@ private struct MailPasteInputBox: View {
                 Text("1단계")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(accent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, KLMSSpacing.standard)
+                    .padding(.vertical, KLMSSpacing.tight)
                     .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.11), in: Capsule())
             }
 
@@ -15011,23 +15062,23 @@ private struct MailPasteInputBox: View {
                     .font(.callout)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 144)
-                    .padding(8)
-                    .background(accent.opacity(colorScheme == .dark ? 0.10 : 0.045), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(KLMSSpacing.standard)
+                    .background(accent.opacity(colorScheme == .dark ? 0.10 : 0.045), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                             .stroke(accent.opacity(colorScheme == .dark ? 0.28 : 0.18), lineWidth: 1)
                     )
                 if mailText.isEmpty {
                     Text("예: 시험 일정, 과제 마감, 첨부파일 안내가 들어 있는 메일 본문")
                         .font(.callout)
                         .foregroundStyle(Color.klmsPrimaryText.opacity(0.48))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 16)
+                        .padding(.horizontal, KLMSSpacing.roomy)
+                        .padding(.vertical, KLMSSpacing.spacious)
                         .allowsHitTesting(false)
                 }
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Label(trimmedText.isEmpty ? "입력 대기" : "\(lineCount)줄 · \(trimmedText.count)자", systemImage: trimmedText.isEmpty ? "square.and.pencil" : "doc.text.magnifyingglass")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(trimmedText.isEmpty ? Color.klmsSecondaryText : accent)
@@ -15037,10 +15088,10 @@ private struct MailPasteInputBox: View {
                     .foregroundStyle(Color.klmsSecondaryText)
             }
         }
-        .padding(12)
-        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.07), in: RoundedRectangle(cornerRadius: 8))
+        .padding(KLMSSpacing.section)
+        .background(accent.opacity(colorScheme == .dark ? 0.08 : 0.07), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(accent.opacity(colorScheme == .dark ? 0.22 : 0.20), lineWidth: 1)
         )
     }
@@ -15100,7 +15151,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
 
     var body: some View {
         if analysis.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                 Label("판독 결과", systemImage: "sparkles")
                     .font(.caption.weight(.semibold))
                 Text("메일 원문을 붙여넣고 `판독하기`를 누르면 분류, 과목, 일정, 대시보드 반영 후보를 여기에서 확인합니다.")
@@ -15108,33 +15159,33 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                     .foregroundStyle(Color.klmsSecondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsBorder, lineWidth: 1)
             )
         } else {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Label("판독 결과", systemImage: "sparkles")
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 0)
                     Text("2단계")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(analysis.kind.tint)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, KLMSSpacing.standard)
+                        .padding(.vertical, KLMSSpacing.tight)
                         .background(analysis.kind.tint.opacity(0.12), in: Capsule())
                 }
 
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                     Image(systemName: analysis.kind.systemImage)
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(analysis.kind.tint)
                         .frame(width: 30, height: 30)
-                        .background(analysis.kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                        .background(analysis.kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     VStack(alignment: .leading, spacing: 3) {
                         Text(analysis.title.nilIfEmpty ?? "제목을 찾지 못했습니다.")
                             .font(.subheadline.weight(.semibold))
@@ -15147,7 +15198,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                     Spacer(minLength: 0)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 8)], alignment: .leading, spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: KLMSSpacing.standard)], alignment: .leading, spacing: KLMSSpacing.standard) {
                     MailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
                     MailAnalysisPill(title: "과목", value: analysis.course.nilIfEmpty ?? "미확인", tint: Color.klmsCommandAccent)
                     MailAnalysisPill(title: "일정", value: analysis.dueText.nilIfEmpty ?? "미확인", tint: Color.klmsWarningForeground)
@@ -15157,11 +15208,11 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                 MailAnalysisProcessView(steps: analysis.analysisSteps)
 
                 if !analysis.detectedTargets.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                         Text("처리 대상")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsSecondaryText)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: 8)], alignment: .leading, spacing: 8) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 106), spacing: KLMSSpacing.standard)], alignment: .leading, spacing: KLMSSpacing.standard) {
                             ForEach(analysis.detectedTargets, id: \.self) { target in
                                 MailAnalysisPill(title: "판독", value: target, tint: analysis.kind.tint)
                             }
@@ -15178,7 +15229,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                 if analysis.matchedItems.isEmpty {
                     MailActionPlanView(lines: analysis.actionPlan)
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                         Text("관련 KLMS 항목")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsSecondaryText)
@@ -15189,7 +15240,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 accessorySystemImage: selectedItemID == item.id ? "checkmark.circle.fill" : "info.circle"
                             )
                             .equatable()
-                            .companionStableTap(cornerRadius: 8) {
+                            .companionStableTap(cornerRadius: KLMSRadius.smallSurface) {
                                 selectedItemID = selectedItemID == item.id ? nil : item.id
                             }
                             .accessibilityValue(selectedItemID == item.id ? "선택됨" : "선택 안 됨")
@@ -15214,7 +15265,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                         isShowingCreateSheet = true
                     } label: {
                         Label("이 기기 Calendar에 등록", systemImage: "calendar.badge.plus")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: .success))
                     .accessibilityHint("판독한 일정을 확인한 뒤 이 기기 Calendar에 바로 등록합니다.")
@@ -15223,7 +15274,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                 if let dashboardItem = analysis.dashboardItem {
                     let editableItem = registeredDashboardItem ?? dashboardItem
                     if registeredDashboardItem != nil {
-                        HStack(spacing: 8) {
+                        HStack(spacing: KLMSSpacing.standard) {
                             Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(Color.klmsSuccessForeground)
@@ -15232,7 +15283,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 dashboardEditItem = editableItem
                             } label: {
                                 Label("수정", systemImage: "pencil")
-                                    .frame(minHeight: 44)
+                                    .frame(minHeight: KLMSControlSize.minimumInteractive)
                             }
                             .buttonStyle(KLMSActionButtonStyle())
                             .accessibilityHint("메일 판독 항목의 제목, 분류, 과목, 시간을 수정합니다.")
@@ -15242,18 +15293,18 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 }
                             } label: {
                                 Label("제거", systemImage: "minus.circle")
-                                    .frame(minHeight: 44)
+                                    .frame(minHeight: KLMSControlSize.minimumInteractive)
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                             .accessibilityHint("메일 판독으로 추가한 대시보드 항목을 제거합니다.")
                         }
                     } else {
-                        HStack(spacing: 8) {
+                        HStack(spacing: KLMSSpacing.standard) {
                             Button {
                                 dashboardEditItem = editableItem
                             } label: {
                                 Label("수정", systemImage: "pencil")
-                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                             }
                             .buttonStyle(KLMSActionButtonStyle())
                             .accessibilityHint("메일 판독 항목을 등록하기 전에 내용을 수정합니다.")
@@ -15263,7 +15314,7 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                                 }
                             } label: {
                                 Label("등록", systemImage: "plus.circle")
-                                    .frame(maxWidth: .infinity, minHeight: 44)
+                                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                             }
                             .buttonStyle(KLMSActionButtonStyle(tone: .accent(analysis.kind.tint)))
                             .accessibilityHint("판독한 항목을 서버 대시보드에 바로 반영합니다.")
@@ -15271,10 +15322,10 @@ private struct MailPasteAnalysisResultContent: View, Equatable {
                     }
                 }
             }
-            .padding(12)
-            .background(analysis.kind.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.section)
+            .background(analysis.kind.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(analysis.kind.tint.opacity(0.22), lineWidth: 1)
             )
             .sheet(isPresented: $isShowingCreateSheet) {
@@ -15474,7 +15525,7 @@ private struct MailAnalysisPill: View {
     var tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
             Text(title)
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
@@ -15486,7 +15537,7 @@ private struct MailAnalysisPill: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -15533,7 +15584,7 @@ private struct MailAnalysisProcessView: View {
     var body: some View {
         if !steps.isEmpty {
             VStack(alignment: .leading, spacing: 9) {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Label("분석 과정", systemImage: "list.bullet.clipboard")
                         .font(.caption.weight(.semibold))
                     Spacer(minLength: 0)
@@ -15541,7 +15592,7 @@ private struct MailAnalysisProcessView: View {
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                     ForEach(steps) { step in
                         HStack(alignment: .top, spacing: 9) {
                             Image(systemName: step.systemImage)
@@ -15549,7 +15600,7 @@ private struct MailAnalysisProcessView: View {
                                 .foregroundStyle(step.tone.color)
                                 .frame(width: 22, height: 22)
                                 .background(step.tone.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                                 Text(step.title)
                                     .font(.caption.weight(.semibold))
                                 Text(step.detail)
@@ -15559,15 +15610,15 @@ private struct MailAnalysisProcessView: View {
                             }
                             Spacer(minLength: 0)
                         }
-                        .padding(8)
-                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                        .padding(KLMSSpacing.standard)
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     }
                 }
             }
-            .padding(10)
-            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.comfortable)
+            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsBorder, lineWidth: 1)
             )
         }
@@ -15589,9 +15640,9 @@ private struct MailActionPlanView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -16413,7 +16464,7 @@ private struct RemoteCalendarActionPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                 Image(systemName: "calendar.badge.clock")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Color.klmsWarningForeground)
@@ -16437,15 +16488,15 @@ private struct RemoteCalendarActionPanel: View {
                 Label("캘린더에서 열기", systemImage: "calendar")
                     .font(.caption.weight(.semibold))
                     .frame(maxWidth: .infinity)
-                    .frame(minHeight: 44)
+                    .frame(minHeight: KLMSControlSize.minimumInteractive)
             }
             .buttonStyle(KLMSActionButtonStyle(tone: .accent(Color.klmsWarningForeground)))
         }
         .padding(compact ? 10 : 0)
         .background(compact ? Color.klmsSubtleCardBackground : Color.clear)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(compact ? Color.klmsBorder : Color.clear, lineWidth: 1)
         )
     }
@@ -16483,7 +16534,7 @@ private struct DashboardCalendarChangeDetailRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(alignment: .top, spacing: 8) {
+            HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                 Text(change.actionDisplayName)
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 7)
@@ -16491,7 +16542,7 @@ private struct DashboardCalendarChangeDetailRow: View {
                     .background(tint.opacity(0.14))
                     .foregroundStyle(tint)
                     .clipShape(Capsule())
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text(change.title.nilIfEmpty ?? "제목 없음")
                         .font(.subheadline.weight(.semibold))
                     Text([change.course, change.calendar, change.startAt.nilIfEmpty ?? change.dueAt].compactMap(\.nilIfEmpty).joined(separator: " · "))
@@ -16513,9 +16564,9 @@ private struct DashboardCalendarChangeDetailRow: View {
                 )
             } else if hasLocalActions {
                 LazyVGrid(columns: [
-                    GridItem(.flexible(minimum: 0), spacing: 8),
-                    GridItem(.flexible(minimum: 0), spacing: 8),
-                ], spacing: 8) {
+                    GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
+                    GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
+                ], spacing: KLMSSpacing.standard) {
                     Button {
                         Task {
                             if let onCreate {
@@ -16524,14 +16575,14 @@ private struct DashboardCalendarChangeDetailRow: View {
                         }
                     } label: {
                         Label("등록", systemImage: "calendar.badge.plus")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                     }
                     .buttonStyle(KLMSActionButtonStyle(tone: .success))
                     Button {
                         calendarSheetAction = .calendarEdit
                     } label: {
                         Label("수정", systemImage: "pencil")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                     }
                     .buttonStyle(KLMSActionButtonStyle())
                     if change.isDeletedAction {
@@ -16543,7 +16594,7 @@ private struct DashboardCalendarChangeDetailRow: View {
                             }
                         } label: {
                             Label("확인", systemImage: "checkmark.circle")
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                     } else {
@@ -16555,7 +16606,7 @@ private struct DashboardCalendarChangeDetailRow: View {
                             }
                         } label: {
                             Label("삭제", systemImage: "calendar.badge.minus")
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                         }
                         .buttonStyle(KLMSActionButtonStyle(tone: .destructive))
                     }
@@ -16563,15 +16614,15 @@ private struct DashboardCalendarChangeDetailRow: View {
                         openSystemCalendar()
                     } label: {
                         Label("캘린더에서 열기", systemImage: "calendar")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                     }
                     .buttonStyle(KLMSActionButtonStyle())
                 }
                 .font(.caption)
-                .padding(.top, 2)
+                .padding(.top, KLMSSpacing.hairline)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, KLMSSpacing.tight)
         .sheet(
             isPresented: Binding(
                 get: { calendarSheetAction != nil },
@@ -16775,10 +16826,10 @@ private struct CalendarChangeExplanationPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsWarningBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -16788,7 +16839,7 @@ private struct DashboardCountPill: View {
     var tint: Color
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
             Text("\(value)")
                 .font(.headline.monospacedDigit())
                 .foregroundStyle(Color.klmsPrimaryText)
@@ -16797,18 +16848,18 @@ private struct DashboardCountPill: View {
                 .foregroundStyle(Color.klmsSecondaryText)
         }
         .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
-        .padding(.horizontal, 10)
+        .padding(.horizontal, KLMSSpacing.comfortable)
         .background(Color.klmsCommandButtonBackground.opacity(0.92))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder.opacity(0.95), lineWidth: 1)
         )
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(tint)
                 .frame(width: 3)
-                .padding(.vertical, 8)
+                .padding(.vertical, KLMSSpacing.standard)
         }
     }
 }
@@ -16831,7 +16882,7 @@ private struct ServerSyncDataPanel: View {
 
     var body: some View {
         if !items.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                 HStack {
                     Label("동기화 데이터", systemImage: "tray.full")
                         .font(.headline)
@@ -16875,9 +16926,9 @@ private struct ServerSyncDataPanel: View {
                         .foregroundStyle(Color.klmsSecondaryText)
                 }
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .background(Color.klmsSubtleCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .task(id: listInputKey) {
                 await rebuildCachedListDataAfterInputSettles()
             }
@@ -16970,7 +17021,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
     @State private var previewURL: URL?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.section) {
             header
             detailFields
             if item.kind == "file" {
@@ -16992,19 +17043,19 @@ private struct ServerSyncItemInlineDetailPanel: View {
             }
             InfoBanner(message: detailHelpMessage)
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(Color.klmsCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(tint.opacity(0.22), lineWidth: 1)
         )
         .quickLookPreview($previewURL)
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
             Label(kindName, systemImage: systemImage)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(tint)
@@ -17018,13 +17069,13 @@ private struct ServerSyncItemInlineDetailPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .background(tint.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 
     private var detailFields: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             DetailFieldRow(title: "상태", value: item.status)
             if item.kind == "notice" {
                 DetailFieldRow(title: "읽음", value: item.isRead ? "읽음" : "읽지 않음")
@@ -17036,21 +17087,21 @@ private struct ServerSyncItemInlineDetailPanel: View {
             DetailFieldRow(title: "첨부", value: item.attachmentCount > 0 ? "\(item.attachmentCount)개" : "")
             DetailFieldRow(title: "서버 갱신", value: item.updatedAt)
         }
-        .padding(12)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .padding(KLMSSpacing.section)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
 
     private var actionPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             if !itemActions.isEmpty {
                 Text("항목 처리")
                     .font(.subheadline.weight(.semibold))
                 if item.kind == "notice" {
-                    VStack(spacing: 8) {
+                    VStack(spacing: KLMSSpacing.standard) {
                         RemoteItemToggleButton(
                             title: "읽음",
                             isOn: item.isRead,
@@ -17075,9 +17126,9 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 }
                 if !regularItemActions.isEmpty {
                     LazyVGrid(columns: [
-                        GridItem(.flexible(minimum: 0), spacing: 8),
-                        GridItem(.flexible(minimum: 0), spacing: 8),
-                    ], spacing: 8) {
+                        GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
+                        GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.standard),
+                    ], spacing: KLMSSpacing.standard) {
                         ForEach(regularItemActions) { action in
                             let requiresMac = !action.isServerDisplayOnlyAction
                             Button {
@@ -17086,7 +17137,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                             }
                         } label: {
                             Label(action.companionActionTitle, systemImage: action.companionActionImage)
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
                         }
                         .buttonStyle(KLMSActionButtonStyle())
                         .disabled(!model.serverRelayConfigured || (requiresMac && (model.isSubmitting || model.hasInFlightRequest)))
@@ -17112,7 +17163,7 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 }
             } label: {
                 Label("\(relevantCommand.displayName) 다시 실행", systemImage: relevantCommand.engineCommand.systemImage)
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
             }
             .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.isRemoteAvailable || model.isSubmitting || model.hasInFlightRequest)
@@ -17121,11 +17172,11 @@ private struct ServerSyncItemInlineDetailPanel: View {
 
     private var fileAccessPanel: some View {
         let request = model.latestFileAccessRequest(for: item)
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Text("파일 열기")
                 .font(.subheadline.weight(.semibold))
             if let request {
-                HStack(alignment: .top, spacing: 10) {
+                HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(request.status.displayName)
                             .font(.subheadline.weight(.semibold))
@@ -17158,15 +17209,15 @@ private struct ServerSyncItemInlineDetailPanel: View {
                 }
             } label: {
                 Label("파일 링크 요청", systemImage: "link.badge.plus")
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
             }
             .buttonStyle(KLMSActionButtonStyle())
             .disabled(!model.serverRelayConfigured || request?.status.isInFlight == true)
         }
-        .padding(12)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .padding(KLMSSpacing.section)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -17294,7 +17345,7 @@ private struct LongDetailFieldRow: View {
     var body: some View {
         if let displayValue = value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty {
             let collapsible = isCollapsible(displayValue)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
@@ -17306,19 +17357,19 @@ private struct LongDetailFieldRow: View {
                         }
                     } label: {
                         longDetailBody(displayValue)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(KLMSSpacing.comfortable)
+                            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                             .background(
                                 isExpanded ? Color.klmsSelectedBackground.opacity(0.72) : Color.klmsSubtleCardBackground.opacity(0.64),
-                                in: RoundedRectangle(cornerRadius: 10)
+                                in: RoundedRectangle(cornerRadius: KLMSRadius.control)
                             )
                             .overlay {
-                                RoundedRectangle(cornerRadius: 10)
+                                RoundedRectangle(cornerRadius: KLMSRadius.control)
                                     .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.70) : Color.klmsBorder.opacity(0.78), lineWidth: 1)
                             }
-                            .contentShape(RoundedRectangle(cornerRadius: 10))
+                            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
                     }
-                    .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                    .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.control))
                     .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
                     .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 전체 보기")
                 } else {
@@ -17333,7 +17384,7 @@ private struct LongDetailFieldRow: View {
     }
 
     private func longDetailBody(_ displayValue: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             if isExpanded {
                 Text(displayValue)
                     .font(.subheadline)
@@ -17347,7 +17398,7 @@ private struct LongDetailFieldRow: View {
             Label(isExpanded ? "접기" : "전체 보기", systemImage: isExpanded ? "chevron.up" : "chevron.down")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsSecondaryText)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
         }
     }
 
@@ -17385,11 +17436,11 @@ private struct RemoteItemRequestPendingView: View {
     var message: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
             ProgressView()
                 .controlSize(.small)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
+                .padding(.top, KLMSSpacing.hairline)
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                 Text(message)
@@ -17399,12 +17450,12 @@ private struct RemoteItemRequestPendingView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
     }
@@ -17421,12 +17472,12 @@ private struct RemoteItemToggleButton: View {
     let model: CompanionModel
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: KLMSSpacing.section) {
             Image(systemName: systemImage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(isOn ? Color.klmsCommandAccent : Color.klmsSecondaryText)
                 .frame(width: 28)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -17444,14 +17495,14 @@ private struct RemoteItemToggleButton: View {
                 .clipShape(Capsule())
         }
         .frame(maxWidth: .infinity, minHeight: 50)
-        .padding(10)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .padding(KLMSSpacing.comfortable)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(isOn ? Color.klmsCommandBorder : Color.klmsBorder, lineWidth: 1)
         }
         .opacity(isDisabled ? 0.54 : 1.0)
-        .companionStableTap(cornerRadius: 8) {
+        .companionStableTap(cornerRadius: KLMSRadius.smallSurface) {
             guard !isDisabled else { return }
             Task {
                 await model.createItemAction(action, item: item)
@@ -17985,12 +18036,12 @@ private struct ServerSyncDataRow: View, Equatable {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
             Image(systemName: snapshot.systemImage)
                 .foregroundStyle(primaryForeground)
                 .frame(width: 24, height: 24)
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+                HStack(spacing: KLMSSpacing.compact) {
                     Text(snapshot.kindName)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(primaryForeground)
@@ -18019,25 +18070,25 @@ private struct ServerSyncDataRow: View, Equatable {
                 Image(systemName: accessorySystemImage)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(secondaryForeground)
-                    .padding(.top, 2)
+                    .padding(.top, KLMSSpacing.hairline)
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
         .background(Color.klmsSubtleCardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 2)
+            RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill(isSelected ? Color.klmsSelectedForeground : tint.opacity(0.30))
                 .frame(width: 3)
                 .padding(.vertical, 9)
         }
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .transaction { transaction in
             transaction.animation = nil
         }
@@ -18153,13 +18204,13 @@ private struct RemoteStageDurationSummaryView: View {
 
     var body: some View {
         if !durations.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 Text("단계별 소요 시간")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                VStack(spacing: 6) {
+                VStack(spacing: KLMSSpacing.compact) {
                     ForEach(durations) { duration in
-                        HStack(spacing: 6) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Circle()
                                 .fill(tint(for: duration.stage))
                                 .frame(width: 6, height: 6)
@@ -18173,10 +18224,10 @@ private struct RemoteStageDurationSummaryView: View {
                                 .foregroundStyle(Color.klmsSecondaryText)
                                 .lineLimit(1)
                         }
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .padding(.horizontal, KLMSSpacing.standard)
+                        .padding(.vertical, KLMSSpacing.compact)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     }
                 }
             }
@@ -18208,11 +18259,11 @@ private struct RemoteVerifySummaryPanel: View {
             summary: summary,
             primaryVisibleIssueCount: primaryVisibleIssueCount
         )
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(spacing: KLMSSpacing.standard) {
                 Image(systemName: checkSummary.hasIssues ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
                     .foregroundStyle(checkSummary.hasIssues ? Color.klmsWarningForeground : Color.klmsSuccessForeground)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("상태 검사 해설")
                         .font(.subheadline.weight(.semibold))
                     Text(summaryText(checkSummary: checkSummary))
@@ -18259,10 +18310,10 @@ private struct RemoteVerifySummaryPanel: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(10)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .padding(KLMSSpacing.comfortable)
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -18321,14 +18372,14 @@ private struct RemoteVerifyCheckRow: View {
         VStack(alignment: .leading, spacing: compact ? 2 : 5) {
             HStack(alignment: .top, spacing: 7) {
                 if !compact {
-                    RoundedRectangle(cornerRadius: 2)
+                    RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                         .fill(tint.opacity(isIssue ? 0.72 : 0.24))
                         .frame(width: 3)
                 }
                 Image(systemName: systemImage)
                     .foregroundStyle(tint)
                     .frame(width: 16)
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("\(check.diagnosticTitle) · \(check.status.klmsLocalizedStatus)")
                         .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
                     if compact {
@@ -18377,9 +18428,9 @@ private struct RemoteVerifyCheckRow: View {
             }
         }
         .padding(compact ? 7 : 9)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 .stroke(tint.opacity(compact ? 0.10 : (isIssue ? 0.34 : 0.18)), lineWidth: 1)
         }
     }
@@ -18430,7 +18481,7 @@ private struct CompanionDiagnosticDisclosure<Content: View>: View {
                     isExpanded.toggle()
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(Color.klmsSecondaryText)
@@ -18442,18 +18493,18 @@ private struct CompanionDiagnosticDisclosure<Content: View>: View {
                 }
                 .padding(.horizontal, compact ? 8 : 10)
                 .padding(.vertical, compact ? 6 : 8)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
                 .background(
                     isExpanded ? Color.klmsSelectedBackground.opacity(0.72) : Color.klmsSubtleCardBackground.opacity(0.64),
-                    in: RoundedRectangle(cornerRadius: 8)
+                    in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                         .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.70) : Color.klmsBorder.opacity(0.78), lineWidth: 1)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8))
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.smallSurface))
             .accessibilityLabel("\(title) \(isExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isExpanded ? "\(title) 접기" : "\(title) 펼치기")
             .accessibilityIdentifier("companion-diagnostic-\(title)")
@@ -18478,24 +18529,24 @@ private struct RemoteDiagnosticPanel: View {
     @State private var isPanelExpanded = false
 
     private let columns = [
-        GridItem(.adaptive(minimum: 150), spacing: 8),
+        GridItem(.adaptive(minimum: 150), spacing: KLMSSpacing.standard),
     ]
     private let dryRunCommands: [RemoteCommandKind] = [.fullSync, .filesSync, .coreSync, .noticeSync]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             Button {
                 companionPerformWithoutAnimation {
                     isPanelExpanded.toggle()
                 }
             } label: {
-                HStack(alignment: .center, spacing: 10) {
+                HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                     Image(systemName: "wrench.and.screwdriver")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Color.klmsCommandAccent)
-                        .frame(width: 44, height: 44)
-                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                    VStack(alignment: .leading, spacing: 2) {
+                        .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                        .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
+                    VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                         Text("진단")
                             .font(.headline)
                         Text("상태 검사와 권한 점검은 필요할 때만 펼치세요.")
@@ -18506,22 +18557,22 @@ private struct RemoteDiagnosticPanel: View {
                     Spacer(minLength: 0)
                     CompanionExpansionBadge(isExpanded: isPanelExpanded)
                 }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
             }
-            .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+            .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card))
             .accessibilityLabel("진단 \(isPanelExpanded ? "펼쳐짐" : "접힘")")
             .accessibilityHint(isPanelExpanded ? "진단 도구 접기" : "진단 도구 펼치기")
 
             DeferredInteractionExpansion(isExpanded: isPanelExpanded) {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     RemoteVerifySummaryPanel(summary: verifySummary)
                     Text("권장 순서: 상태 검사 → 권한/환경 진단 → 리포트")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.82)
-                    LazyVGrid(columns: columns, spacing: 8) {
+                    LazyVGrid(columns: columns, spacing: KLMSSpacing.standard) {
                         diagnosticButton(.verify)
                         diagnosticButton(.doctor)
                         diagnosticButton(.report)
@@ -18534,13 +18585,13 @@ private struct RemoteDiagnosticPanel: View {
                         systemImage: "slider.horizontal.3",
                         collapsible: true
                     ) {
-                        VStack(alignment: .leading, spacing: 8) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                             Text("실제 반영 없이 바뀔 항목 수를 보거나 내부 상태 파일만 다시 만듭니다.")
                                 .font(.caption2)
                                 .foregroundStyle(Color.klmsSecondaryText)
                                 .fixedSize(horizontal: false, vertical: true)
                             diagnosticButton(.v2BuildState)
-                            LazyVGrid(columns: columns, spacing: 8) {
+                            LazyVGrid(columns: columns, spacing: KLMSSpacing.standard) {
                                 ForEach(dryRunCommands, id: \.self) { command in
                                     dryRunButton(command)
                                 }
@@ -18551,11 +18602,11 @@ private struct RemoteDiagnosticPanel: View {
                 }
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -18566,7 +18617,7 @@ private struct RemoteDiagnosticPanel: View {
                 await createCommand(kind, false)
             }
         } label: {
-            VStack(spacing: 4) {
+            VStack(spacing: KLMSSpacing.tight) {
                 Label(kind.displayName, systemImage: kind.engineCommand.systemImage)
                     .font(.subheadline.weight(.semibold))
                 Text(kind.engineCommand.shortDescription)
@@ -18591,7 +18642,7 @@ private struct RemoteDiagnosticPanel: View {
                 .font(.caption.weight(.semibold))
                 .lineLimit(1)
                 .minimumScaleFactor(0.78)
-                .frame(maxWidth: .infinity, minHeight: 44)
+                .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
         }
         .buttonStyle(KLMSActionButtonStyle())
         .disabled(commandsDisabled || !kind.engineCommand.supportsDryRun)
@@ -18604,7 +18655,7 @@ private struct RemoteDryRunPanel: View {
     var reports: [DryRunReport]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             HStack {
                 Label("변경량 계산 결과", systemImage: "doc.text.magnifyingglass")
                     .font(.headline)
@@ -18623,10 +18674,10 @@ private struct RemoteDryRunPanel: View {
                 }
             }
         }
-        .padding(12)
-        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        .padding(KLMSSpacing.section)
+        .background(Color.klmsSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
     }
@@ -18636,7 +18687,7 @@ private struct RemoteDryRunReportRow: View {
     var report: DryRunReport
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
             HStack {
                 Text(report.scope.klmsScopeDisplayName)
                     .font(.subheadline.weight(.semibold))
@@ -18655,10 +18706,10 @@ private struct RemoteDryRunReportRow: View {
                 .font(.caption)
                 .foregroundStyle(Color.klmsSecondaryText)
         }
-        .padding(10)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .padding(KLMSSpacing.comfortable)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.72), lineWidth: 1)
         }
     }
@@ -18697,14 +18748,14 @@ private struct RemoteSettingsPanelContent: View, Equatable {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
+            HStack(alignment: .center, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: "macbook.and.iphone")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.klmsCommandAccent)
-                    .frame(width: 44, height: 44)
-                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                    .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
+                VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("Mac 동기화 설정")
                         .font(.headline)
                     Text("Mac에서 실행할 동기화 방식을 정합니다.")
@@ -18716,20 +18767,20 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                 Text(settingGroups.isEmpty ? "대기" : "\(settingCount)개")
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(Color.klmsSecondaryText)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, KLMSSpacing.standard)
                     .padding(.vertical, 5)
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
 
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                 CompanionSettingHelpText("변경한 값은 서버에 저장되고 Mac 앱이 받아 적용합니다.")
                 if settingGroups.isEmpty {
                     Text("Mac 앱이 설정 목록을 올리면 여기에서 바꿀 수 있습니다.")
                         .font(.caption)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+                        .padding(KLMSSpacing.comfortable)
+                        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.control))
                 }
 
                 if settingGroups.isEmpty {
@@ -18738,7 +18789,7 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                     LazyVGrid(
                         columns: settingGridColumns,
                         alignment: .leading,
-                        spacing: 10
+                        spacing: KLMSSpacing.comfortable
                     ) {
                         ForEach(settingGroups) { group in
                             RemoteSettingGroupSection(
@@ -18759,19 +18810,19 @@ private struct RemoteSettingsPanelContent: View, Equatable {
                 }
             }
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
 
     private var settingGridColumns: [GridItem] {
         [
-            GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
-            GridItem(.flexible(minimum: 0), spacing: 10, alignment: .top),
+            GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.comfortable, alignment: .top),
+            GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.comfortable, alignment: .top),
         ]
     }
 }
@@ -18900,7 +18951,7 @@ private struct RemoteSettingGroupSection: View {
     @State private var isExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             if group.isCollapsible {
                 Button {
                     companionPerformWithoutAnimation {
@@ -18908,9 +18959,9 @@ private struct RemoteSettingGroupSection: View {
                     }
                 } label: {
                     groupHeader
-                        .contentShape(RoundedRectangle(cornerRadius: 10))
+                        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
                 }
-                .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+                .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.control))
                 .accessibilityLabel("\(group.title) \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "\(group.title) 접기" : "\(group.title) 펼치기")
                 .accessibilityIdentifier("remote-setting-group-\(group.title)")
@@ -18930,20 +18981,20 @@ private struct RemoteSettingGroupSection: View {
         .padding(11)
         .background(
             Color.klmsSubtleCardBackground.opacity(0.86),
-            in: RoundedRectangle(cornerRadius: 12)
+            in: RoundedRectangle(cornerRadius: KLMSRadius.card)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(Color.klmsBorder.opacity(0.86), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         .transaction { transaction in
             transaction.animation = nil
         }
     }
 
     private var groupSettingsRows: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             ForEach(group.settings) { setting in
                 RemoteSettingRow(
                     setting: setting,
@@ -18955,13 +19006,13 @@ private struct RemoteSettingGroupSection: View {
     }
 
     private var groupHeader: some View {
-        HStack(alignment: .center, spacing: 8) {
+        HStack(alignment: .center, spacing: KLMSSpacing.standard) {
             Image(systemName: group.systemImage)
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.klmsCommandAccent)
                 .frame(width: 28, height: 28)
-                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            VStack(alignment: .leading, spacing: 2) {
+                .background(Color.klmsCommandAccent.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(group.title)
                     .font(.subheadline.weight(.semibold))
                 Text(group.detail)
@@ -18974,14 +19025,14 @@ private struct RemoteSettingGroupSection: View {
                 .font(.caption2.weight(.semibold).monospacedDigit())
                 .foregroundStyle(Color.klmsSecondaryText)
                 .padding(.horizontal, 7)
-                .padding(.vertical, 4)
+                .padding(.vertical, KLMSSpacing.tight)
                 .background(Color.klmsCardBackground, in: Capsule())
             if group.isCollapsible {
                 CompanionExpansionBadge(isExpanded: isExpanded, compact: true)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
     }
 }
 
@@ -19089,7 +19140,7 @@ private struct RemoteLogSummaryPanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             HStack {
                 Label("로그 요약", systemImage: "list.bullet.rectangle")
                     .font(.headline)
@@ -19110,7 +19161,7 @@ private struct RemoteLogSummaryPanel: View {
                 )
             }
 
-            VStack(spacing: 8) {
+            VStack(spacing: KLMSSpacing.standard) {
                 RemoteLogSummaryRow(
                     title: "현재 상태",
                     value: snapshot.statusLine,
@@ -19153,10 +19204,10 @@ private struct RemoteLogSummaryPanel: View {
                 }
             }
         }
-        .padding(12)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .padding(KLMSSpacing.section)
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -19300,7 +19351,7 @@ private struct RemoteLogDetailPanel: View {
     var recentFileAccessRequests: [ServerRelayFileAccessRequest]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             switch kind {
             case .status:
                 statusDetails
@@ -19315,17 +19366,17 @@ private struct RemoteLogDetailPanel: View {
                 )
             }
         }
-        .padding(10)
+        .padding(KLMSSpacing.comfortable)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay {
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
 
     private var statusDetails: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
             if let digits = snapshot.authDigits {
                 DetailFieldRow(title: "인증번호", value: digits)
             }
@@ -19363,7 +19414,7 @@ private struct RemoteLogSummaryRow: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(alignment: .top, spacing: 10) {
+            HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                 Image(systemName: systemImage)
                     .foregroundStyle(tint)
                     .frame(width: 20)
@@ -19385,16 +19436,16 @@ private struct RemoteLogSummaryRow: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
-            .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: 12))
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .padding(KLMSSpacing.comfortable)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .topLeading)
+            .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsSubtleCardBackground.opacity(0.62), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.82) : Color.klmsBorder.opacity(0.88), lineWidth: isExpanded ? 1.2 : 1)
             )
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card))
         .accessibilityLabel(accessibilitySummary)
         .accessibilityHint(isExpanded ? "관련 기록 접기" : "관련 기록 펼치기")
     }
@@ -19428,7 +19479,7 @@ private struct SharedRunLogsView: View {
     @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             HStack {
                 Text("동기화 단계")
                     .font(.headline)
@@ -19458,12 +19509,12 @@ private struct SharedRunLogsView: View {
                 Text("아직 표시할 동기화 단계 기록이 없습니다.")
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .background(Color.klmsSubtleCardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             } else {
                 let visibleLogs = logs.prefix(visibleLimit)
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: KLMSSpacing.standard) {
                     ForEach(visibleLogs) { log in
                         SharedRunLogRow(
                             log: log,
@@ -19502,8 +19553,8 @@ private struct SharedRunLogRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(alignment: .top, spacing: KLMSSpacing.section) {
                     Image(systemName: systemImage)
                         .foregroundStyle(tint)
                         .frame(width: 24)
@@ -19534,16 +19585,16 @@ private struct SharedRunLogRow: View {
                     CompanionInlineLogBlock(text: log.outputTail)
                 }
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 12))
+            .background(isExpanded ? Color.klmsSelectedBackground.opacity(0.96) : Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: KLMSRadius.card)
                     .stroke(isExpanded ? Color.klmsSelectedBorder.opacity(0.82) : tint.opacity(0.20), lineWidth: isExpanded ? 1.2 : 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.card))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 12))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.card))
         .accessibilityLabel("\(log.commandTitle.nilIfEmpty ?? "동기화") 로그 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "단계별 소요 시간과 마지막 로그를 접습니다." : "단계별 소요 시간과 마지막 로그를 펼칩니다.")
     }
@@ -19572,9 +19623,9 @@ private struct CompactRemoteStageDurationRowsView: View {
 
     var body: some View {
         if !durations.isEmpty {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 ForEach(durations) { duration in
-                    HStack(spacing: 4) {
+                    HStack(spacing: KLMSSpacing.tight) {
                         Text(duration.displayName)
                             .font(.caption.weight(.semibold))
                         Text(duration.secondsText)
@@ -19596,7 +19647,7 @@ private struct RecentFileAccessRequestsView: View {
     @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             HStack {
                 Text("파일 요청 기록")
                     .font(.headline)
@@ -19622,12 +19673,12 @@ private struct RecentFileAccessRequestsView: View {
                 Text("아직 파일 요청 기록이 없습니다.")
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .background(Color.klmsSubtleCardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             } else {
                 let visibleRequests = requests.prefix(visibleLimit)
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: KLMSSpacing.standard) {
                     ForEach(visibleRequests) { request in
                         RemoteFileAccessRequestRow(request: request)
                     }
@@ -19659,7 +19710,7 @@ private struct RecentServerRequestLogView: View {
     @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             HStack {
                 Text("서버 요청 기록")
                     .font(.headline)
@@ -19685,12 +19736,12 @@ private struct RecentServerRequestLogView: View {
                 Text("아직 서버 요청 기록이 없습니다.")
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .background(Color.klmsSubtleCardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             } else {
                 let visibleEntries = entries.prefix(visibleLimit)
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: KLMSSpacing.standard) {
                     ForEach(visibleEntries) { entry in
                         ServerRequestLogRow(entry: entry)
                     }
@@ -19725,13 +19776,13 @@ private struct ServerRequestLogRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(alignment: .top, spacing: KLMSSpacing.section) {
                     Image(systemName: sourceIcon)
                         .foregroundStyle(tint)
                         .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
+                        HStack(spacing: KLMSSpacing.compact) {
                             Text(entry.action.nilIfEmpty ?? entry.path.nilIfEmpty ?? "서버 요청")
                                 .font(.subheadline.weight(.semibold))
                                 .fixedSize(horizontal: false, vertical: true)
@@ -19752,12 +19803,12 @@ private struct ServerRequestLogRow: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 6) {
+                    VStack(alignment: .trailing, spacing: KLMSSpacing.compact) {
                         Text(entry.statusDisplayName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(tint)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, KLMSSpacing.standard)
+                            .padding(.vertical, KLMSSpacing.tight)
                             .background(tint.opacity(0.10), in: Capsule())
                         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                             .font(.caption.weight(.semibold))
@@ -19768,16 +19819,16 @@ private struct ServerRequestLogRow: View {
                     CompanionInlineLogBlock(text: expandedLog)
                 }
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 10))
+            .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.control))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: KLMSRadius.control)
                     .stroke(Color.klmsBorder, lineWidth: 1)
             }
-            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.control))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 10))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.control))
         .accessibilityLabel("\(entry.action.nilIfEmpty ?? entry.path.nilIfEmpty ?? "서버 요청") 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "요청 출처와 상세 로그를 접습니다." : "요청 출처와 상세 로그를 펼칩니다.")
     }
@@ -19846,8 +19897,8 @@ private struct RemoteFileAccessRequestRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(alignment: .top, spacing: KLMSSpacing.section) {
                     Image(systemName: systemImage)
                         .foregroundStyle(tint)
                         .frame(width: 24)
@@ -19867,7 +19918,7 @@ private struct RemoteFileAccessRequestRow: View {
                         }
                     }
                     Spacer(minLength: 8)
-                    VStack(alignment: .trailing, spacing: 6) {
+                    VStack(alignment: .trailing, spacing: KLMSSpacing.compact) {
                         Text(request.status.displayName)
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(tint)
@@ -19880,17 +19931,17 @@ private struct RemoteFileAccessRequestRow: View {
                     CompanionInlineLogBlock(text: expandedLog)
                 }
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.klmsCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(tint.opacity(0.16), lineWidth: 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.smallSurface))
         .accessibilityLabel("\(request.itemTitle.nilIfEmpty ?? "파일") 요청 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "파일 요청 상태와 상세 로그를 접습니다." : "파일 요청 상태와 상세 로그를 펼칩니다.")
     }
@@ -19957,17 +20008,17 @@ private struct CompanionInlineLogBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
             CompanionReadableLogHighlightsView(highlights: highlights)
             Text(displayText)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Color.klmsSecondaryText)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+                .padding(KLMSSpacing.comfortable)
+                .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 8)
+                    RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                         .stroke(Color.klmsBorder, lineWidth: 1)
                 )
         }
@@ -20014,18 +20065,18 @@ private struct CompanionReadableLogHighlightsView: View {
 
     var body: some View {
         if !highlights.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                 Text("핵심 로그")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsSecondaryText)
-                LazyVStack(alignment: .leading, spacing: 6) {
+                LazyVStack(alignment: .leading, spacing: KLMSSpacing.compact) {
                     ForEach(highlights) { highlight in
-                        HStack(alignment: .top, spacing: 8) {
+                        HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                             Image(systemName: systemImage(for: highlight.level))
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(tint(for: highlight.level))
                                 .frame(width: 16)
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                                 Text(highlight.title)
                                     .font(.caption.weight(.semibold))
                                 Text(highlight.detail.klmsDisplayText)
@@ -20037,9 +20088,9 @@ private struct CompanionReadableLogHighlightsView: View {
                         }
                         .padding(9)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(tint(for: highlight.level).opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                        .background(tint(for: highlight.level).opacity(0.08), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                         .overlay(
-                            RoundedRectangle(cornerRadius: 8)
+                            RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                                 .stroke(tint(for: highlight.level).opacity(0.18), lineWidth: 1)
                         )
                     }
@@ -20085,8 +20136,8 @@ private struct RemoteSettingRow: View {
     @State private var choiceValue = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+            HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(setting.title)
                         .font(.subheadline.weight(.semibold))
@@ -20106,7 +20157,7 @@ private struct RemoteSettingRow: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
                     .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, KLMSSpacing.tight)
                     .background(Color.klmsSubtleCardBackground, in: Capsule())
             }
             .accessibilityElement(children: .combine)
@@ -20115,13 +20166,13 @@ private struct RemoteSettingRow: View {
             CompanionSettingsControlContainer {
                 control
             }
-            .padding(.top, 2)
+            .padding(.top, KLMSSpacing.hairline)
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground.opacity(0.92), in: RoundedRectangle(cornerRadius: 10))
+        .background(Color.klmsCardBackground.opacity(0.92), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: KLMSRadius.control)
                 .stroke(Color.klmsBorder.opacity(0.82), lineWidth: 1)
         }
         .onAppear {
@@ -20147,7 +20198,7 @@ private struct RemoteSettingRow: View {
                     await createSettingAction(setting, setting.boolValue ? "0" : "1")
                 }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: KLMSSpacing.standard) {
                     Image(systemName: setting.boolValue ? "checkmark.circle.fill" : "circle")
                         .font(.subheadline.weight(.bold))
                         .frame(width: 18, height: 18)
@@ -20155,7 +20206,7 @@ private struct RemoteSettingRow: View {
                         .font(.subheadline.weight(.semibold))
                     Spacer(minLength: 0)
                 }
-                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive)
             }
             .buttonStyle(KLMSActionButtonStyle(tone: setting.boolValue ? .success : .soft))
             .disabled(!setting.editable)
@@ -20171,7 +20222,7 @@ private struct RemoteSettingRow: View {
             )
             .disabled(!setting.editable)
         case .number, .text:
-            HStack(spacing: 6) {
+            HStack(spacing: KLMSSpacing.compact) {
                 TextField("값", text: $draftValue)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 120)
@@ -20180,7 +20231,7 @@ private struct RemoteSettingRow: View {
                         await createSettingAction(setting, draftValue)
                     }
                 }
-                .frame(minHeight: 44)
+                .frame(minHeight: KLMSControlSize.minimumInteractive)
                 .buttonStyle(KLMSActionButtonStyle())
                 .disabled(!setting.editable || draftValue == setting.value)
             }
@@ -20319,7 +20370,7 @@ private struct RecentRemoteCommandsView: View {
     @State private var visibleLimit = CompanionLargeList.logVisibleLimit
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
             HStack {
                 Text(compact ? "최근 요청" : "최근 요청 기록")
                     .font(.headline)
@@ -20345,12 +20396,12 @@ private struct RecentRemoteCommandsView: View {
                 Text("아직 요청 기록이 없습니다.")
                     .foregroundStyle(Color.klmsSecondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+                    .padding(KLMSSpacing.section)
                     .background(Color.klmsSubtleCardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             } else {
                 let visibleCommands = commands.prefix(visibleLimit)
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: KLMSSpacing.standard) {
                     ForEach(visibleCommands) { command in
                         RemoteCommandRow(command: command, compact: compact)
                     }
@@ -20386,8 +20437,8 @@ private struct RemoteCommandRow: View {
                 isExpanded.toggle()
             }
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
+                HStack(spacing: KLMSSpacing.section) {
                     Image(systemName: command.kind.engineCommand.systemImage)
                         .foregroundStyle(Color.klmsSecondaryText)
                         .frame(width: 24)
@@ -20436,17 +20487,17 @@ private struct RemoteCommandRow: View {
                     CompanionInlineLogBlock(text: expandedLog)
                 }
             }
-            .padding(12)
+            .padding(KLMSSpacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.klmsCardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsBorder, lineWidth: 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
+            .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         }
-        .buttonStyle(KLMSCardButtonStyle(cornerRadius: 8))
+        .buttonStyle(KLMSCardButtonStyle(cornerRadius: KLMSRadius.smallSurface))
         .accessibilityLabel("\(command.kind.displayName) 원격 실행 기록 \(isExpanded ? "펼쳐짐" : "접힘")")
         .accessibilityHint(isExpanded ? "실행 상태와 상세 로그를 접습니다." : "실행 상태와 상세 로그를 펼칩니다.")
     }
@@ -20513,12 +20564,12 @@ private struct RemoteCommandRow: View {
 
 private struct RemotePrivacyNote: View {
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: KLMSSpacing.comfortable) {
             Image(systemName: "lock")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.klmsCommandAccent)
-                .frame(width: 44, height: 44)
-                .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 12))
+                .frame(width: KLMSControlSize.minimumInteractive, height: KLMSControlSize.minimumInteractive)
+                .background(Color.klmsCommandAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: KLMSRadius.card))
             VStack(alignment: .leading, spacing: 3) {
                 Text("개인정보와 서버 보관")
                     .font(.subheadline.weight(.semibold))
@@ -20533,13 +20584,13 @@ private struct RemotePrivacyNote: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(KLMSSpacing.section)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("개인정보와 서버 보관. 서버에는 실행 요청, 요약 상태, 설정값, 요청 기록만 저장됩니다. 원본 로그, KLMS URL, 설정 파일, 로컬 파일 경로는 올리지 않습니다.")
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: KLMSRadius.panel)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         }
     }
@@ -20595,14 +20646,14 @@ private struct InfoBanner: View {
         Label(message, systemImage: "info.circle")
             .font(.subheadline)
             .foregroundStyle(Color.klmsSecondaryText)
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(KLMSSpacing.section)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
             .background(Color.klmsCommandBackground)
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsCommandBorder, lineWidth: 1)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
 }
 
@@ -20614,11 +20665,11 @@ private struct ErrorBanner: View {
             .font(.subheadline)
             .foregroundStyle(Color.klmsDangerForeground)
             .lineLimit(2)
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.section)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+            .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsDangerBorder.opacity(0.48), lineWidth: 1)
             }
             .accessibilityElement(children: .combine)
@@ -20635,11 +20686,11 @@ private struct AuthSuccessBanner: View {
         Label(message, systemImage: "checkmark.circle.fill")
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.klmsSuccessForeground)
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Color.klmsSuccessBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.section)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+            .background(Color.klmsSuccessBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsSuccessBorder, lineWidth: 1)
             }
             .accessibilityElement(children: .combine)
@@ -20652,8 +20703,8 @@ private struct AuthCodeHero: View {
     var digits: String
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .center, spacing: KLMSSpacing.roomy) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.tight) {
                 Text("KAIST 인증 번호")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(Color.klmsPrimaryText)
@@ -20666,20 +20717,20 @@ private struct AuthCodeHero: View {
                 .font(.system(.largeTitle, design: .rounded, weight: .black))
                 .monospacedDigit()
                 .foregroundStyle(Color.klmsWarningForeground)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, KLMSSpacing.spacious)
+                .padding(.vertical, KLMSSpacing.section)
+                .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 12)
+                    RoundedRectangle(cornerRadius: KLMSRadius.card)
                         .stroke(Color.klmsWarningBorder.opacity(0.44), lineWidth: 1)
                 }
                 .accessibilityHidden(true)
         }
-        .padding(14)
+        .padding(KLMSSpacing.roomy)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.card))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
+            RoundedRectangle(cornerRadius: KLMSRadius.card)
                 .stroke(Color.klmsBorder, lineWidth: 1)
         )
         .accessibilityElement(children: .ignore)
@@ -20695,11 +20746,11 @@ private struct LoginAttentionBanner: View {
         Label(message, systemImage: "key")
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(Color.klmsWarningForeground)
-            .padding(12)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: 8))
+            .padding(KLMSSpacing.section)
+            .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
+            .background(Color.klmsWarningBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                     .stroke(Color.klmsWarningBorder, lineWidth: 1)
             }
             .accessibilityElement(children: .combine)

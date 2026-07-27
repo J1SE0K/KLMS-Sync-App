@@ -523,7 +523,6 @@ final class KLMSMacModel: ObservableObject {
     private static let mailDashboardItemsKey = "KLMSMailDashboardItems"
     private static let resolvedCalendarChangeIDsKey = "KLMSResolvedCalendarChangeIDs"
     private static let cachedServerRelaySyncDataKey = "KLMSMacCachedServerRelaySyncData"
-    private static let cachedServerRelaySyncDataMaxAge: TimeInterval = 10 * 60
     private static let serverRelayIdleStatusPublishMinimumInterval: TimeInterval = 30
     private static let serverRelayActiveStatusPublishMinimumInterval: TimeInterval = 1.0
     private static let serverRelayIdleSyncDataPublishMinimumInterval: TimeInterval = 300
@@ -546,6 +545,7 @@ final class KLMSMacModel: ObservableObject {
     private static let concealedPasteboardType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
 
     private struct CachedServerRelaySyncData: Codable {
+        var schemaVersion: Int?
         var serverURL: String
         var workerTokenFingerprint: String
         var storedAt: Date
@@ -570,6 +570,21 @@ final class KLMSMacModel: ObservableObject {
         serverRelayTerminalOutbox = RemoteCommandTerminalOutboxStore(
             url: paths.serverRelayTerminalCommandOutboxURL
         )
+        if Self.usesSafeCaptureFixture {
+            serverRelayEnabled = false
+            serverRelayURL = ""
+            serverRelayClientToken = ""
+            serverRelayWorkerToken = ""
+            self.paths = paths
+            let fixture = Self.safeCaptureSnapshot()
+            snapshot = fixture
+            cachedIssues = fixture.issues
+            resolvedCalendarChangeIDs = []
+            mailDashboardItems = []
+            rebuildMailDashboardCaches()
+            refreshDashboardPresentationCaches()
+            return
+        }
         UserDefaults.standard.removeObject(forKey: Self.deprecatedRemoteProcessingEnabledKey)
         UserDefaults.standard.removeObject(forKey: Self.deprecatedLocalRemoteEnabledKey)
         serverRelayEnabled = UserDefaults.standard.bool(forKey: Self.serverRelayEnabledKey)
@@ -647,6 +662,185 @@ final class KLMSMacModel: ObservableObject {
                 serverRelayStatusMessage = "현재 연결은 안전하게 저장되어 있지만 이전 연결 정보 정리가 대기 중입니다. 다음 실행 또는 저장 때 다시 시도합니다."
             }
         }
+    }
+
+    var isUsingSafeCaptureFixture: Bool {
+        Self.usesSafeCaptureFixture
+    }
+
+    private static var usesSafeCaptureFixture: Bool {
+        ProcessInfo.processInfo.environment["KLMS_MAC_SAFE_CAPTURE_FIXTURE"] == "1"
+    }
+
+    private static func safeCaptureSnapshot() -> EngineSnapshot {
+        let generatedAt = "2030-03-12T09:00:00+09:00"
+        let state = LegacySyncState(
+            status: "ok",
+            generatedAt: generatedAt,
+            content: LegacySyncState.Content(
+                kind: "safe-capture-fixture",
+                assignments: [
+                    StateItem(
+                        url: "https://example.invalid/assignments/101",
+                        type: "assignment",
+                        course: "샘플 알고리즘",
+                        title: "동적 계획법 연습 문제 제출",
+                        due: "2030-03-18 23:59",
+                        submission: "미제출",
+                        syncDue: "2030-03-18T23:59:00+09:00"
+                    ),
+                    StateItem(
+                        url: "https://example.invalid/assignments/102",
+                        type: "assignment",
+                        course: "샘플 인터랙션 디자인",
+                        title: "긴 한글·Unicode 👩🏽‍💻 제목의 반응형 화면 검토 보고서",
+                        due: "2030-03-21 18:00",
+                        submission: "작성 중",
+                        syncDue: "2030-03-21T18:00:00+09:00"
+                    ),
+                ],
+                examItems: [
+                    StateItem(
+                        url: "https://example.invalid/exams/201",
+                        type: "exam",
+                        course: "샘플 알고리즘",
+                        title: "중간 점검",
+                        due: "2030-03-25 10:30",
+                        syncDue: "2030-03-25T10:30:00+09:00",
+                        location: "샘플 강의실"
+                    )
+                ],
+                helpDeskItems: [
+                    StateItem(
+                        url: "https://example.invalid/help/301",
+                        type: "helpDesk",
+                        course: "샘플 학습 지원",
+                        title: "수강 변경 안내 확인",
+                        due: "2030-03-16 17:00",
+                        syncDue: "2030-03-16T17:00:00+09:00"
+                    )
+                ]
+            )
+        )
+        return EngineSnapshot(
+            syncReport: SyncReport(
+                status: "ok",
+                state: SyncReport.StateCounts(assignments: 2, exams: 1, helpdesk: 1),
+                notices: SyncReport.NoticeCounts(total: 2, new: 1, updated: 1),
+                files: SyncReport.FileCounts(total: 2, newFiles: 1),
+                calendar: SyncReport.CalendarCounts(created: 1, updated: 1)
+            ),
+            calendarSyncResult: CalendarSyncResult(
+                backend: "safe-capture-fixture",
+                generatedAt: generatedAt,
+                summaries: [
+                    CalendarSyncSummary(calendar: "샘플 일정", bucket: "과제", created: 1, updated: 1, total: 2)
+                ],
+                changes: [
+                    CalendarChange(
+                        action: "created",
+                        calendar: "샘플 일정",
+                        bucket: "과제",
+                        identifier: "fixture-calendar-1",
+                        title: "동적 계획법 연습 문제 제출",
+                        course: "샘플 알고리즘",
+                        startAt: "2030-03-18T22:59:00+09:00",
+                        dueAt: "2030-03-18T23:59:00+09:00"
+                    ),
+                    CalendarChange(
+                        action: "updated",
+                        calendar: "샘플 일정",
+                        bucket: "시험",
+                        identifier: "fixture-calendar-2",
+                        title: "중간 점검",
+                        course: "샘플 알고리즘",
+                        startAt: "2030-03-25T10:30:00+09:00",
+                        location: "샘플 강의실",
+                        changes: ["시간", "장소"]
+                    ),
+                ]
+            ),
+            legacyState: state,
+            noticeDigest: safeCaptureNoticeDigest(),
+            courseFileManifest: [
+                CourseFileManifestEntry(
+                    filename: "01-강의-개요.pdf",
+                    relativePath: "샘플 알고리즘/1주차/01-강의-개요.pdf",
+                    url: "https://example.invalid/files/401",
+                    course: "샘플 알고리즘",
+                    absolutePath: "/private/tmp/klms-safe-fixture/01-강의-개요.pdf",
+                    localDownloadedAt: generatedAt,
+                    klmsTimestampText: "2030-03-12 09:00",
+                    bucket: "1주차"
+                ),
+                CourseFileManifestEntry(
+                    filename: "반응형-레이아웃-체크리스트.pdf",
+                    relativePath: "샘플 인터랙션 디자인/2주차/반응형-레이아웃-체크리스트.pdf",
+                    url: "https://example.invalid/files/402",
+                    course: "샘플 인터랙션 디자인",
+                    absolutePath: "/private/tmp/klms-safe-fixture/반응형-레이아웃-체크리스트.pdf",
+                    localDownloadedAt: generatedAt,
+                    klmsTimestampText: "2030-03-12 09:05",
+                    bucket: "2주차"
+                ),
+            ]
+        )
+    }
+
+    private static func safeCaptureNoticeDigest() -> NoticeDigest? {
+        let json = #"""
+        {
+          "generated_at": "2030-03-12T09:00:00+09:00",
+          "notice_count": 2,
+          "new_count": 1,
+          "updated_count": 1,
+          "ignored_notice_count": 0,
+          "important_candidate_count": 1,
+          "courses": [
+            {
+              "course": "샘플 알고리즘",
+              "notices": [
+                {
+                  "url": "https://example.invalid/notices/501",
+                  "article_id": "fixture-notice-501",
+                  "course": "샘플 알고리즘",
+                  "board_title": "공지사항",
+                  "title": "중간 점검 시간과 샘플 강의실 안내",
+                  "posted_at": "2030-03-12 08:30",
+                  "attachments": [],
+                  "attachment_items": [],
+                  "summary": "개인정보가 없는 화면 검증용 샘플 공지입니다.",
+                  "excerpt": "시간과 장소를 확인해 주세요.",
+                  "body_text": "화면 검증용 샘플 본문",
+                  "fingerprint": "fixture-notice-501",
+                  "change_state": "new"
+                }
+              ]
+            },
+            {
+              "course": "샘플 인터랙션 디자인",
+              "notices": [
+                {
+                  "url": "https://example.invalid/notices/502",
+                  "article_id": "fixture-notice-502",
+                  "course": "샘플 인터랙션 디자인",
+                  "board_title": "공지사항",
+                  "title": "긴 한글·Unicode 👩🏽‍💻 레이아웃 검토 안내",
+                  "posted_at": "2030-03-12 08:45",
+                  "attachments": [],
+                  "attachment_items": [],
+                  "summary": "폭이 좁아져도 내용이 화면 밖으로 나가지 않는지 확인합니다.",
+                  "excerpt": "반응형 화면 검토",
+                  "body_text": "화면 검증용 샘플 본문",
+                  "fingerprint": "fixture-notice-502",
+                  "change_state": "updated"
+                }
+              ]
+            }
+          ]
+        }
+        """#
+        return try? JSONDecoder().decode(NoticeDigest.self, from: Data(json.utf8))
     }
 
     private static var emptyServerRelayConnection: PersistedServerRelayConnection {
@@ -784,12 +978,14 @@ final class KLMSMacModel: ObservableObject {
         guard !normalizedURL.isEmpty,
               let data = UserDefaults.standard.data(forKey: cachedServerRelaySyncDataKey),
               let cached = try? JSONDecoder().decode(CachedServerRelaySyncData.self, from: data),
-              cached.serverURL == normalizedURL,
-              cached.workerTokenFingerprint == workerTokenFingerprint else {
-            return nil
-        }
-        guard Date().timeIntervalSince(cached.storedAt) <= cachedServerRelaySyncDataMaxAge else {
-            UserDefaults.standard.removeObject(forKey: cachedServerRelaySyncDataKey)
+              DashboardStartupCachePolicy.shouldApply(
+                  schemaVersion: cached.schemaVersion,
+                  endpoint: cached.serverURL,
+                  expectedEndpoint: normalizedURL,
+                  credentialFingerprint: cached.workerTokenFingerprint,
+                  expectedCredentialFingerprint: workerTokenFingerprint,
+                  storedAt: cached.storedAt
+              ) else {
             return nil
         }
         return cached.syncData
@@ -802,6 +998,7 @@ final class KLMSMacModel: ObservableObject {
             return
         }
         let cached = CachedServerRelaySyncData(
+            schemaVersion: DashboardStartupCachePolicy.schemaVersion,
             serverURL: normalizedURL,
             workerTokenFingerprint: Self.relayTokenFingerprint(serverRelayWorkerToken),
             storedAt: Date(),
@@ -1059,6 +1256,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func bootstrap() async {
+        guard !isUsingSafeCaptureFixture else { return }
         guard payload == nil else { return }
         guard !isBootstrapping else { return }
         isBootstrapping = true
@@ -1077,6 +1275,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     func refreshVisibleStateFromShortcut() async {
+        guard !isUsingSafeCaptureFixture else { return }
         if payload == nil {
             await bootstrap()
             return

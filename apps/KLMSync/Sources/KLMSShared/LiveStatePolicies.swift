@@ -10,14 +10,45 @@ public enum AdaptiveLayoutPolicy {
     public static let compactUpperBound: CGFloat = 720
     public static let mediumUpperBound: CGFloat = 1_040
 
-    public static func mode(for width: CGFloat) -> AdaptiveLayoutMode {
+    public static func mode(
+        for width: CGFloat,
+        forceCompact: Bool = false,
+        preferIconOnlyNavigation: Bool = false
+    ) -> AdaptiveLayoutMode {
+        if forceCompact {
+            return .compact
+        }
         if width < compactUpperBound {
             return .compact
         }
-        if width < mediumUpperBound {
+        if width < mediumUpperBound || preferIconOnlyNavigation {
             return .medium
         }
         return .wide
+    }
+}
+
+public enum DashboardStartupCachePolicy {
+    public static let schemaVersion = 1
+    public static let maximumFutureClockSkew: TimeInterval = 24 * 60 * 60
+
+    public static func shouldApply(
+        schemaVersion cachedSchemaVersion: Int?,
+        endpoint cachedEndpoint: String,
+        expectedEndpoint: String,
+        credentialFingerprint cachedCredentialFingerprint: String?,
+        expectedCredentialFingerprint: String?,
+        storedAt: Date,
+        now: Date = Date()
+    ) -> Bool {
+        let version = cachedSchemaVersion ?? schemaVersion
+        let endpoint = cachedEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let currentEndpoint = expectedEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        return version == schemaVersion
+            && !currentEndpoint.isEmpty
+            && endpoint == currentEndpoint
+            && cachedCredentialFingerprint == expectedCredentialFingerprint
+            && storedAt <= now.addingTimeInterval(maximumFutureClockSkew)
     }
 }
 
