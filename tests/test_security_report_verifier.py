@@ -11,6 +11,7 @@ from typing import Union
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 VERIFIER = PROJECT_DIR / "tools" / "security" / "verify_security_reports.mjs"
+SECURITY_RUNNER = PROJECT_DIR / "tools" / "security" / "run_security_evidence.sh"
 EMPTY_COORDINATE_DIGEST = hashlib.sha256(b"").hexdigest()
 JSONPayload = Union[
     dict[str, "JSONPayload"],
@@ -24,6 +25,14 @@ JSONPayload = Union[
 
 
 class SecurityReportVerifierTests(unittest.TestCase):
+    def test_runner_enumerates_expensive_semgrep_targets(self) -> None:
+        source = SECURITY_RUNNER.read_text(encoding="utf-8")
+
+        self.assertIn('expensive_semgrep_targets+=("${filename#"$scan_tree/"}")', source)
+        self.assertIn('"${expensive_semgrep_targets[@]}"', source)
+        self.assertNotIn('--exclude "src/js/download_klms_files.js"', source)
+        self.assertNotIn('--exclude "deploy/relay/test_relay.mjs"', source)
+
     def test_accepts_complete_semgrep_scan_without_timeouts(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
             evidence_dir, policy_path = self._write_valid_fixture(Path(raw_root))

@@ -126,9 +126,22 @@ set -e
 [[ "$semgrep_exit" -eq 0 || "$semgrep_exit" -eq 1 ]] || fail semgrep
 
 # Four broad taint rules hit Semgrep's internal fixpoint limit on two unusually
-# large scripts. Keep full coverage everywhere else, then scan the safe subsets
-# independently. The JXA downloader cannot use the Node sinks those rules model;
-# a non-taint boundary rule makes any future introduction fail closed.
+# large scripts. Semgrep still analyzes explicitly excluded files when directory
+# targets are supplied, so enumerate the safe JavaScript targets instead. Scan
+# each exceptional file with the applicable rules below. The JXA downloader
+# cannot use the Node sinks those rules model; a non-taint boundary rule makes
+# any future introduction fail closed.
+expensive_semgrep_targets=()
+while IFS= read -r -d '' filename; do
+  expensive_semgrep_targets+=("${filename#"$scan_tree/"}")
+done < <(
+  find "$scan_tree/src" "$scan_tree/tools" "$scan_tree/deploy" "$scan_tree/apps" \
+    -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' -o -name '*.jsx' \) \
+    ! -path "$scan_tree/src/js/download_klms_files.js" \
+    ! -path "$scan_tree/deploy/relay/test_relay.mjs" \
+    -print0 | sort -z
+)
+[[ "${#expensive_semgrep_targets[@]}" -gt 0 ]] || fail semgrep-expensive-targets
 run_clean_semgrep_report \
   semgrep-expensive-production \
   semgrep-expensive-production.json \
@@ -136,9 +149,7 @@ run_clean_semgrep_report \
   --config "$javascript_audit_rules_root/detect-non-literal-fs-filename.yaml" \
   --config "$javascript_audit_rules_root/path-traversal/path-join-resolve-traversal.yaml" \
   --config "$javascript_audit_rules_root/unsafe-formatstring.yaml" \
-  --exclude "src/js/download_klms_files.js" \
-  --exclude "deploy/relay/test_relay.mjs" \
-  src tools deploy apps
+  "${expensive_semgrep_targets[@]}"
 run_clean_semgrep_report \
   semgrep-download-jxa \
   semgrep-download-jxa.json \
