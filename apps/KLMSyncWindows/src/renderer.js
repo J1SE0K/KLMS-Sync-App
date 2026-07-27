@@ -79,6 +79,7 @@ const state = {
   connectionMessage: "",
   connectionGeneration: 0,
   configRevision: 0,
+  hasLoadedSyncData: false,
   busy: false
 };
 
@@ -133,6 +134,7 @@ let cancelSubmittingCommandID = "";
 let cancelRequestedCommandID = "";
 let sidebarReturnFocus = null;
 let viewportResizeTimer = null;
+let dashboardCachePersistTimer = null;
 const fullRenderScope = {
   header: true,
   primarySync: true,
@@ -151,7 +153,6 @@ const frameRenderScheduler = window.KLMSRelayState.createFrameRenderScheduler(
 document.addEventListener("DOMContentLoaded", async () => {
   bindEvents();
   bindRealtimeEvents();
-  renderAll();
   await loadConfig();
   if (state.configured) {
     await refreshAll({ quiet: true, auto: true, realtime: true });
@@ -230,6 +231,7 @@ async function loadConfig() {
     $("relayToken").placeholder = config.hasToken ? "저장됨" : "처음 연결하거나 바꿀 때만 입력";
     state.configured = Boolean(config.relayURL && config.hasToken);
     state.configRevision = normalizedConfigRevision(config.configRevision) ?? 0;
+    applyDashboardStartupCache(config.dashboardCache);
     setConnectionPhase(state.configured ? "connecting" : "unconfigured");
     if (state.configured) {
       startRealtimeRefresh();
@@ -259,6 +261,7 @@ async function saveConnection(options = {}) {
     state.configRevision = normalizedConfigRevision(config.configRevision) ?? state.configRevision;
     state.connectionGeneration += 1;
     resetRemoteRelayState();
+    applyDashboardStartupCache(config.dashboardCache);
     setConnectionPhase("connecting");
     renderAll();
     startRealtimeRefresh();
@@ -335,6 +338,11 @@ function resetRemoteRelayState() {
   pendingFileAccessOverlays.clear();
   cancelSubmittingCommandID = "";
   cancelRequestedCommandID = "";
+  state.hasLoadedSyncData = false;
+  if (dashboardCachePersistTimer) {
+    window.clearTimeout(dashboardCachePersistTimer);
+    dashboardCachePersistTimer = null;
+  }
   if (realtimeFlushTimer) {
     window.clearTimeout(realtimeFlushTimer);
     realtimeFlushTimer = null;
@@ -684,6 +692,7 @@ async function refreshAll(options = {}) {
     } else {
       renderAll();
     }
+    if (state.hasLoadedSyncData) await persistDashboardCacheNow();
     return true;
   } catch (error) {
     if (refreshIsCurrent()) {
@@ -1067,6 +1076,7 @@ function applyRelaySnapshotPayload(snapshot, options = {}) {
   relayObservedRevision = Math.max(relayObservedRevision, revision);
   realtimeRetryDelay = REALTIME_RETRY_MIN_MS;
   scheduleRender(window.KLMSRelayState.mergeBooleanFlags(appliedRenderScope, { header: true }));
+  if (snapshot.status || snapshot.syncData) scheduleDashboardCachePersist();
   return true;
 }
 
@@ -1310,9 +1320,70 @@ function applySyncDataResponse(syncData, options = {}) {
   state.calendarChanges = syncData.calendarChanges || [];
   state.verifySummary = syncData.verifySummary || null;
   state.runLogs = Array.isArray(syncData.runLogs) ? syncData.runLogs : [];
+  state.hasLoadedSyncData = true;
   if (options.applySharedSettings !== false) {
     applySharedSettings(syncData.sharedSettings || [], { authoritative: true });
   }
+}
+
+function applyDashboardStartupCache(cache) {
+  if (!state.configured
+      || !cache
+      || cache.version !== 1
+      || normalizedRelayRevision(cache.revision) == null
+      || !cache.status
+      || !cache.syncData) {
+    return false;
+  }
+  applyStatus(cache.status);
+  applySyncDataResponse(cache.syncData);
+  state.relayRevision = cache.revision;
+  relayObservedRevision = Math.max(relayObservedRevision, cache.revision);
+  state.connectionMessage = "저장된 대시보드를 먼저 보여주고 최신 상태를 다시 확인합니다.";
+  return true;
+}
+
+function dashboardCachePayload() {
+  return {
+    revision: state.relayRevision,
+    status: {
+      revision: state.relayRevision,
+      status: state.status,
+      latestCommand: state.latestCommand,
+      running: state.running,
+      message: state.message
+    },
+    syncData: {
+      revision: state.relayRevision,
+      items: state.items,
+      calendarChanges: state.calendarChanges,
+      verifySummary: state.verifySummary,
+      runLogs: state.runLogs,
+      sharedSettings: state.sharedSettings
+    }
+  };
+}
+
+async function persistDashboardCacheNow() {
+  if (!state.configured || !state.hasLoadedSyncData) return false;
+  try {
+    const result = await window.klmsWindows.saveDashboardCache({
+      configRevision: state.configRevision,
+      payload: dashboardCachePayload()
+    });
+    return result?.saved === true;
+  } catch {
+    return false;
+  }
+}
+
+function scheduleDashboardCachePersist() {
+  if (!state.configured || !state.hasLoadedSyncData) return;
+  window.clearTimeout(dashboardCachePersistTimer);
+  dashboardCachePersistTimer = window.setTimeout(() => {
+    dashboardCachePersistTimer = null;
+    void persistDashboardCacheNow();
+  }, 250);
 }
 
 function commandsOverlayingPending(incomingCommands, options = {}) {

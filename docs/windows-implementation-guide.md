@@ -2,6 +2,8 @@
 
 이 문서는 Mac 앱과 iPhone/iPad companion의 최신 동작을 Windows companion에 맞추기 위한 구현 지시서다. 실제 서버 URL, 토큰, 로컬 주소, 개인 파일 경로, KLMS 원본 URL은 절대 기본값이나 예시에 넣지 않는다.
 
+2026-07-27 기준으로 넘겨받을 브랜치, 구현된 캐시 동작, 알려진 실패와 Windows 11 완료 조건은 [Windows 개발 인수인계](./windows-handoff-2026-07-27.md)를 따른다. 해당 브랜치는 Windows 검증이 모두 통과하기 전까지 `main`에 병합하지 않는다.
+
 ## 목표
 
 Windows 앱은 KLMS를 직접 읽지 않는다. Cloudflare 서버 릴레이의 sanitized 상태와 항목 목록을 읽고, 실행 요청과 항목 처리 요청만 보낸다. 실제 KLMS scraping, Notes, Calendar, Reminders, 로컬 `course_files` 처리는 Mac worker가 담당한다.

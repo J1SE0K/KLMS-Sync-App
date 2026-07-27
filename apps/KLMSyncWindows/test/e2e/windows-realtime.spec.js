@@ -870,6 +870,69 @@ test("long server data stays contained through 640px, browser zoom, keyboard sel
   expect(pageErrors).toEqual([]);
 });
 
+test("an encrypted dashboard cache renders immediately after an offline cold restart", async () => {
+  const cacheRelay = await FakeRelay.start();
+  const cacheProfile = await fs.mkdtemp(path.join(os.tmpdir(), "klms-windows-cache-e2e-"));
+  let cacheApp;
+  let offlineApp;
+  try {
+    cacheApp = await electron.launch({
+      args: [electronEntry, "--disable-gpu"],
+      cwd: appRoot,
+      env: {
+        ...process.env,
+        KLMS_E2E_USER_DATA_DIR: cacheProfile,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: "true"
+      }
+    });
+    const cachePage = await cacheApp.firstWindow();
+    await cachePage.waitForLoadState("domcontentloaded");
+    await cachePage.locator("#relayURL").fill(cacheRelay.url);
+    await cachePage.locator("#relayToken").fill(TEST_TOKEN);
+    await cachePage.locator("#saveConnectionButton").click();
+    await expect(cachePage.locator("#itemList")).toContainText("선택 유지 과제");
+
+    const cachePath = path.join(cacheProfile, "dashboard-cache.bin");
+    await expect.poll(async () => {
+      try {
+        return (await fs.stat(cachePath)).size;
+      } catch {
+        return 0;
+      }
+    }).toBeGreaterThan(0);
+    const encryptedCache = await fs.readFile(cachePath);
+    expect(encryptedCache.byteLength).toBeLessThanOrEqual(16 * 1024 * 1024);
+    expect(encryptedCache.toString("utf8")).not.toContain(TEST_TOKEN);
+    expect(encryptedCache.toString("utf8")).not.toContain("선택 유지 과제");
+
+    await cacheApp.close();
+    cacheApp = null;
+    await cacheRelay.close();
+
+    const coldLaunchStartedAt = Date.now();
+    offlineApp = await electron.launch({
+      args: [electronEntry, "--disable-gpu"],
+      cwd: appRoot,
+      env: {
+        ...process.env,
+        KLMS_E2E_USER_DATA_DIR: cacheProfile,
+        ELECTRON_DISABLE_SECURITY_WARNINGS: "true"
+      }
+    });
+    const offlinePage = await offlineApp.firstWindow();
+    await offlinePage.waitForLoadState("domcontentloaded");
+    await expect(offlinePage.locator("#itemList")).toContainText("선택 유지 과제", { timeout: 2_000 });
+    await expect(offlinePage.locator("#dashboardCards .metric-card", { hasText: "과제" }).locator("strong"))
+      .toHaveText("1");
+    expect(Date.now() - coldLaunchStartedAt).toBeLessThan(2_000);
+  } finally {
+    await offlineApp?.close();
+    await cacheApp?.close();
+    await cacheRelay.close();
+    await fs.rm(cacheProfile, { recursive: true, force: true });
+  }
+});
+
 async function resizeElectronContent(width, height) {
   await electronApp.evaluate(({ BrowserWindow }, size) => {
     const window = BrowserWindow.getAllWindows()[0];

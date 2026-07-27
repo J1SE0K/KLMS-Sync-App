@@ -5,6 +5,13 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const WebSocket = require("ws");
 const {
+  DASHBOARD_CACHE_MAX_ENCRYPTED_BYTES,
+  DASHBOARD_CACHE_MAX_PLAINTEXT_BYTES,
+  createDashboardCacheEnvelope,
+  credentialBinding,
+  dashboardCachePayloadForCredentials
+} = require("./dashboard-cache.cjs");
+const {
   configWithoutLegacyPlaintextToken,
   normalizeEndpoint,
   normalizeRelayDownloadURL,
@@ -52,6 +59,7 @@ let relaySnapshotAssembler = new RelaySnapshotAssembler();
 const relaySnapshotRequests = new Map();
 let relayConfigRevision = 0;
 let configMutationTail = Promise.resolve();
+let dashboardCacheWriteTail = Promise.resolve();
 const activeMutationRequests = createConfigBoundMutationRegistry();
 
 function createWindow() {
@@ -110,7 +118,10 @@ function registerIPC() {
   registerTrustedIPCHandler("config:save", async (config) => serializeConfigMutation(async () => {
     const saved = await saveConfigFromRenderer(config || {});
     activateRelayConfigRevision(storedConfigRevision(saved));
-    return configForRenderer(saved);
+    return {
+      ...configForRenderer(saved),
+      dashboardCache: await loadDashboardCache(saved)
+    };
   }));
   registerTrustedIPCHandler("config:clear", async () => serializeConfigMutation(async () => {
     const nextRevision = relayConfigRevision + 1;
@@ -118,6 +129,9 @@ function registerIPC() {
     activateRelayConfigRevision(nextRevision);
     return configForRenderer({ configRevision: nextRevision });
   }));
+  registerTrustedIPCHandler("dashboardCache:save", async (input) => (
+    serializeDashboardCacheWrite(() => saveDashboardCacheFromRenderer(input || {}))
+  ));
   registerTrustedIPCHandler("clipboard:readText", async () => {
     const text = clipboard.readText("clipboard");
     if (text.length > MAX_CLIPBOARD_CREDENTIAL_TEXT_LENGTH) {
@@ -181,6 +195,10 @@ function configPath() {
   return path.join(app.getPath("userData"), "config.json");
 }
 
+function dashboardCachePath() {
+  return path.join(app.getPath("userData"), "dashboard-cache.bin");
+}
+
 async function readConfigFile() {
   try {
     const raw = await fs.readFile(configPath(), "utf8");
@@ -217,19 +235,19 @@ async function writeConfigFile(config) {
 }
 
 async function clearConfig() {
-  try {
-    await fs.rm(configPath(), { force: true });
-  } catch (error) {
-    if (error.code !== "ENOENT") {
-      throw error;
-    }
-  }
+  await Promise.all([
+    fs.rm(configPath(), { force: true }),
+    clearDashboardCache()
+  ]);
 }
 
 async function loadConfigForRenderer() {
   const config = await readConfigFile();
   observeRelayConfigRevision(storedConfigRevision(config));
-  return configForRenderer(config);
+  return {
+    ...configForRenderer(config),
+    dashboardCache: await loadDashboardCache(config)
+  };
 }
 
 function configForRenderer(config) {
@@ -266,6 +284,12 @@ function serializeConfigMutation(operation) {
   return result;
 }
 
+function serializeDashboardCacheWrite(operation) {
+  const result = dashboardCacheWriteTail.then(operation, operation);
+  dashboardCacheWriteTail = result.catch(() => {});
+  return result;
+}
+
 async function saveConfigFromRenderer(input) {
   const relayURL = normalizeRelayURL(String(input.relayURL || ""));
   validateRelayURL(relayURL);
@@ -277,6 +301,11 @@ async function saveConfigFromRenderer(input) {
   if (!token && !canReuseToken) {
     throw new Error("새 서버에 연결할 클라이언트 토큰을 입력해 주세요.");
   }
+  const previousToken = decodeToken(previous);
+  const effectiveToken = token || previousToken;
+  if (credentialBinding(previous.relayURL, previousToken) !== credentialBinding(relayURL, effectiveToken)) {
+    await clearDashboardCache();
+  }
   const saved = {
     ...previous,
     relayURL,
@@ -286,6 +315,81 @@ async function saveConfigFromRenderer(input) {
   };
   await writeConfigFile(saved);
   return saved;
+}
+
+async function loadDashboardCache(config) {
+  const relayURL = typeof config?.relayURL === "string" ? config.relayURL : "";
+  const token = decodeToken(config || {});
+  if (!relayURL || !token || !safeStorage.isEncryptionAvailable()) return null;
+  try {
+    const metadata = await fs.stat(dashboardCachePath());
+    if (!metadata.isFile() || metadata.size <= 0 || metadata.size > DASHBOARD_CACHE_MAX_ENCRYPTED_BYTES) {
+      await clearDashboardCache();
+      return null;
+    }
+    const encrypted = await fs.readFile(dashboardCachePath());
+    const plaintext = safeStorage.decryptString(encrypted);
+    if (Buffer.byteLength(plaintext, "utf8") > DASHBOARD_CACHE_MAX_PLAINTEXT_BYTES) {
+      await clearDashboardCache();
+      return null;
+    }
+    const payload = dashboardCachePayloadForCredentials(JSON.parse(plaintext), { relayURL, token });
+    if (!payload) await clearDashboardCache();
+    return payload;
+  } catch (error) {
+    if (error?.code !== "ENOENT") await clearDashboardCache();
+    return null;
+  }
+}
+
+async function saveDashboardCacheFromRenderer(input) {
+  const config = await readConfigFile();
+  const expectedRevision = normalizedConfigRevision(input.configRevision);
+  if (expectedRevision == null
+      || expectedRevision !== storedConfigRevision(config)
+      || expectedRevision !== relayConfigRevision
+      || !safeStorage.isEncryptionAvailable()) {
+    return { saved: false };
+  }
+  const relayURL = typeof config.relayURL === "string" ? config.relayURL : "";
+  const token = decodeToken(config);
+  const envelope = createDashboardCacheEnvelope({
+    relayURL,
+    token,
+    payload: input.payload
+  });
+  const plaintext = JSON.stringify(envelope);
+  if (Buffer.byteLength(plaintext, "utf8") > DASHBOARD_CACHE_MAX_PLAINTEXT_BYTES) {
+    throw new Error("대시보드 캐시가 허용 크기를 초과했습니다.");
+  }
+  const encrypted = safeStorage.encryptString(plaintext);
+  if (encrypted.byteLength > DASHBOARD_CACHE_MAX_ENCRYPTED_BYTES) {
+    throw new Error("암호화된 대시보드 캐시가 허용 크기를 초과했습니다.");
+  }
+  await writeDashboardCacheFile(encrypted);
+  return { saved: true };
+}
+
+async function writeDashboardCacheFile(encrypted) {
+  const targetPath = dashboardCachePath();
+  await fs.mkdir(path.dirname(targetPath), { recursive: true });
+  const temporaryPath = `${targetPath}.tmp-${process.pid}-${Date.now()}`;
+  const temporaryHandle = await fs.open(temporaryPath, "wx", 0o600);
+  try {
+    await temporaryHandle.writeFile(encrypted);
+    await temporaryHandle.sync();
+  } finally {
+    await temporaryHandle.close();
+  }
+  try {
+    await fs.rename(temporaryPath, targetPath);
+  } finally {
+    await fs.rm(temporaryPath, { force: true });
+  }
+}
+
+async function clearDashboardCache() {
+  await fs.rm(dashboardCachePath(), { force: true });
 }
 
 function encodeToken(token) {

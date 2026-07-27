@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("klmsWindows", {
   loadConfig: () => ipcRenderer.invoke("config:load"),
   saveConfig: (config) => ipcRenderer.invoke("config:save", config),
   clearConfig: () => ipcRenderer.invoke("config:clear"),
+  saveDashboardCache: (input) => ipcRenderer.invoke("dashboardCache:save", input),
   readClipboardText: () => ipcRenderer.invoke("clipboard:readText"),
   writeClipboardText: (text) => ipcRenderer.invoke("clipboard:writeText", text),
   clearClipboardTextIfUnchanged: (text) => ipcRenderer.invoke("clipboard:clearTextIfUnchanged", text),
