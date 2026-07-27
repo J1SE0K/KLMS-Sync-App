@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
-    "expectedFindings": 44,
-    "coordinatesSha256": "d37fb6f491c6b8431e69d19591c4a91b84dcc931df9e565afdf93a18ceb8897a",
+    "expectedFindings": 45,
+    "coordinatesSha256": "b736caf2d21952e161d1c949aca48c94d50ee9f472c40fd789f03d6b67e0fe65",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -82,6 +82,12 @@
         "path": "tools/run_release_gate.py",
         "expectedCount": 1,
         "reason": "The environment comes from a version-controlled exact-SHA inventory, inherits only an explicit allowlist, uses a fixed PATH, and cannot be replaced by caller-supplied commands or unknown placeholders."
+      },
+      {
+        "rule": "python.lang.security.audit.insecure-file-permissions",
+        "path": "tools/normalize_klms_ios_visual_evidence.py",
+        "expectedCount": 1,
+        "reason": "Mode 0700 intentionally restricts normalized iOS release screenshots and their hash manifest to the current user; each evidence file is separately written with mode 0600."
       },
       {
         "rule": "python.lang.security.audit.insecure-file-permissions",

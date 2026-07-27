@@ -65,7 +65,7 @@ final class KLMSiOSUITests: XCTestCase {
         XCTAssertTrue(resizedNavigation.waitForExistence(timeout: 8), "Expected resized navigation did not appear.")
         XCTAssertTrue(historySection.exists, "The selected log section was reset while crossing a layout breakpoint.")
         XCTAssertEqual(resizedNavigation.value as? String, "선택됨")
-        attachScreenshot(named: "klms-\(isPad ? "ipad-medium-navigation-rail" : "iphone-landscape-compact-navigation")")
+        attachScreenshot(named: "klms-\(isPad ? "ipad-portrait-medium-navigation-rail" : "iphone-landscape-compact-navigation")")
         let resizedPrimarySync = identifiedElement("dashboard-primary-full-sync", in: app)
         XCTAssertFalse(resizedPrimarySync.waitForExistence(timeout: 1), "The primary full-sync action must remain hidden outside the dashboard after resizing.")
 
@@ -143,8 +143,6 @@ final class KLMSiOSUITests: XCTestCase {
             let sectionElement = identifiedElement("companion-section-\(section)", in: app)
             XCTAssertTrue(sectionElement.waitForExistence(timeout: 8), "The \(section) screen did not open.")
             assertHorizontallyContained(sectionElement, in: layoutRoot)
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-            attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-section-\(section)")
             if section == "tasks" || section == "calendar" {
                 let itemIdentifier = section == "tasks"
                     ? "dashboard-item-ui-test-assignment-reading"
@@ -154,7 +152,10 @@ final class KLMSiOSUITests: XCTestCase {
                     revealByScrollingUp(item, in: app, attempts: 6),
                     "The capture fixture \(section) item expired or became unreachable."
                 )
+                assertHorizontallyContained(item, in: sectionElement)
             }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            attachScreenshot(named: "klms-\(isPad ? "ipad" : "iphone")-section-\(section)")
             if section != "status" {
                 XCTAssertFalse(
                     identifiedElement("dashboard-primary-full-sync", in: app).waitForExistence(timeout: 0.25),
@@ -585,29 +586,24 @@ final class KLMSiOSUITests: XCTestCase {
         sectionIdentifier: String,
         in app: XCUIApplication
     ) -> Bool {
-        for attempt in 0..<2 {
-            let navigation = identifiedElement(navigationIdentifier, in: app)
-            let hittableExpectation = XCTNSPredicateExpectation(
-                predicate: NSPredicate(format: "exists == true AND hittable == true"),
-                object: navigation
-            )
-            guard XCTWaiter.wait(
-                for: [hittableExpectation],
-                timeout: attempt == 0 ? 2 : 1
-            ) == .completed else {
-                continue
-            }
-
-            if navigation.value as? String != "선택됨" {
-                navigation.tap()
-            }
-            let section = identifiedElement(sectionIdentifier, in: app)
-            if waitForValue("선택됨", of: navigation, timeout: 1.5),
-               section.waitForExistence(timeout: 1.5) {
-                return true
-            }
+        let navigation = identifiedElement(navigationIdentifier, in: app)
+        let hittableExpectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "exists == true AND hittable == true"),
+            object: navigation
+        )
+        guard XCTWaiter.wait(
+            for: [hittableExpectation],
+            timeout: 4
+        ) == .completed else {
+            return false
         }
-        return false
+
+        if navigation.value as? String != "선택됨" {
+            navigation.tap()
+        }
+        let section = identifiedElement(sectionIdentifier, in: app)
+        return waitForValue("선택됨", of: navigation, timeout: 3) &&
+            section.waitForExistence(timeout: 3)
     }
 
     @MainActor

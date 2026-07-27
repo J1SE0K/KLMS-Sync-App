@@ -71,6 +71,8 @@ run_ui_test() {
   local result_bundle="$DERIVED_ROOT/$family/KLMSiOSUITests.xcresult"
   local result_json="$DERIVED_ROOT/$family/test-results.json"
   local summary_json="$DERIVED_ROOT/$family/test-summary.json"
+  local raw_attachments="$DERIVED_ROOT/$family/attachments-raw"
+  local visual_evidence="$DERIVED_ROOT/$family/visual-evidence"
   local identifier
   for identifier in "${TEST_IDENTIFIERS[@]}"; do
     test_arguments+=("-only-testing:${identifier}")
@@ -158,6 +160,20 @@ summary_path.write_text(
 )
 summary_path.chmod(0o600)
 PY
+
+  for directory in "$raw_attachments" "$visual_evidence"; do
+    if [[ -e "$directory" ]]; then
+      find "$directory" -depth -delete
+    fi
+  done
+  xcrun xcresulttool export attachments \
+    --path "$result_bundle" \
+    --output-path "$raw_attachments" >/dev/null
+  python3 "$ROOT_DIR/tools/normalize_klms_ios_visual_evidence.py" \
+    --family "$family" \
+    --source-dir "$raw_attachments" \
+    --output-dir "$visual_evidence" \
+    --candidate "$(git -C "$ROOT_DIR" rev-parse --verify HEAD^{commit})"
 }
 
 "$ROOT_DIR/tools/generate_klms_ios_xcode_project.py" >/dev/null
