@@ -306,22 +306,24 @@ final class KLMSiOSUITests: XCTestCase {
         XCTAssertTrue(identifiedElement("companion-section-history", in: app).waitForExistence(timeout: 8))
 
         let scrollViewport = identifiedElement("companion-scroll-viewport", in: app)
+        let compactNavigation = identifiedElement("companion-compact-navigation", in: app)
         XCTAssertTrue(scrollViewport.waitForExistence(timeout: 8))
+        XCTAssertTrue(compactNavigation.waitForExistence(timeout: 8))
         XCTAssertLessThanOrEqual(
             scrollViewport.frame.maxY,
-            historyNavigation.frame.minY - 1,
+            compactNavigation.frame.minY - 1,
             "The scroll viewport itself must end above compact navigation."
         )
 
         let fileAccessEmptyState = identifiedElement("history-file-access-empty-state", in: app)
         XCTAssertTrue(fileAccessEmptyState.waitForExistence(timeout: 8))
-        for _ in 0..<8 where fileAccessEmptyState.frame.maxY > historyNavigation.frame.minY - 1 {
-            app.swipeUp()
+        for _ in 0..<8 where fileAccessEmptyState.frame.maxY > compactNavigation.frame.minY - 1 {
+            scrollViewport.swipeUp()
         }
 
         XCTAssertLessThanOrEqual(
             fileAccessEmptyState.frame.maxY,
-            historyNavigation.frame.minY - 1,
+            compactNavigation.frame.minY - 1,
             "Compact navigation must reserve viewport height instead of covering scrollable log content."
         )
         attachScreenshot(named: "klms-ipad-compact-navigation-reserved-viewport")

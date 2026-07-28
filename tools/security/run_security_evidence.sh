@@ -229,7 +229,6 @@ syft_args=(scan "dir:$scan_tree")
 if [[ "$security_scope" == "apple-common" ]]; then
   trivy_args+=(--skip-dirs "$scan_tree/apps/KLMSyncWindows")
   osv_args+=(--experimental-exclude "$scan_tree/apps/KLMSyncWindows")
-  syft_args+=(--exclude "./apps/KLMSyncWindows/**")
 fi
 
 trivy_args+=(
@@ -243,6 +242,9 @@ osv_args+=("$scan_tree" --format json --output "$evidence_dir/osv.json")
 osv-scanner "${osv_args[@]}" \
   > "$evidence_dir/osv.stdout" 2>&1 || fail osv-scanner
 
+if [[ "$security_scope" == "apple-common" ]]; then
+  rm -rf -- "$scan_tree/apps/KLMSyncWindows"
+fi
 syft_args+=(-o "cyclonedx-json=$evidence_dir/sbom.cdx.json")
 syft "${syft_args[@]}" \
   > "$evidence_dir/syft.stdout" 2>&1 || fail syft

@@ -68,6 +68,33 @@ class SecurityReportVerifierTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unsupported security scope", result.stderr)
 
+    def test_apple_common_scope_rejects_windows_components_in_sbom(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            evidence_dir, policy_path = self._write_valid_fixture(Path(raw_root))
+            sbom_path = evidence_dir / "sbom.cdx.json"
+            sbom = json.loads(sbom_path.read_text(encoding="utf-8"))
+            sbom["components"].append(
+                {
+                    "name": "windows-fixture",
+                    "properties": [
+                        {
+                            "name": "syft:location:0:path",
+                            "value": "/apps/KLMSyncWindows/package-lock.json",
+                        }
+                    ],
+                }
+            )
+            sbom_path.write_text(json.dumps(sbom), encoding="utf-8")
+
+            result = self._run_verifier(
+                evidence_dir,
+                policy_path,
+                scope="apple-common",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Apple/common SBOM Windows components", result.stderr)
+
     def test_rejects_semgrep_top_level_errors(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
             evidence_dir, policy_path = self._write_valid_fixture(Path(raw_root))

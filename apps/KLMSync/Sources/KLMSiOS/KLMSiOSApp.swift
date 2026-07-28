@@ -7043,12 +7043,20 @@ private struct CompanionAdaptiveRootView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
             if layoutMode == .compact {
+                Color.klmsScreenBackground
+                    .frame(height: KLMSSpacing.compact)
+
                 CompanionCompactTabBar(selectedSection: sectionBinding)
                     .id("compact-tab-\(layoutMode.rawValue)")
                     .padding(.horizontal, KLMSSpacing.spacious)
                     .padding(.top, 7)
                     .padding(.bottom, KLMSSpacing.standard)
                     .background(Color.klmsScreenBackground)
+                    .companionUITestFrameMarker(
+                        "companion-compact-navigation",
+                        label: "KLMS compact navigation",
+                        enabled: model.usesUITestFrameMarkers
+                    )
             }
         }
         .background(Color.klmsScreenBackground.ignoresSafeArea())

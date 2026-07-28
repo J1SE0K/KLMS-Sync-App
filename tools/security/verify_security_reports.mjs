@@ -92,6 +92,15 @@ const sbom = readJSON(path.join(evidenceDirectory, "sbom.cdx.json"));
 if (sbom.bomFormat !== "CycloneDX" || !Array.isArray(sbom.components) || sbom.components.length === 0) {
   throw new Error("Syft did not produce a populated CycloneDX SBOM");
 }
+if (securityScope === "apple-common") {
+  const windowsComponents = sbom.components.filter((component) => (
+    (component.properties || []).some((property) => (
+      typeof property.value === "string"
+      && /(^|\/)apps\/KLMSyncWindows(\/|$)/.test(property.value.replaceAll("\\", "/"))
+    ))
+  ));
+  assertEqual(windowsComponents.length, 0, "Apple/common SBOM Windows components");
+}
 
 console.log(`security-report-verification ok scope=${securityScope}`);
 
