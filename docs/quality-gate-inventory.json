@@ -72,6 +72,21 @@
       }
     },
     {
+      "id": "mac-isolated-realtime",
+      "command": "KLMS_ISOLATED_QA_REQUIRE_CLEAN=1 node tools/run_klms_isolated_state_qa.mjs <isolated-path>",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {
+          "KLMS_ISOLATED_QA_REQUIRE_CLEAN": "1"
+        },
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 67108864,
+        "steps": [
+          {"argv": ["node", "tools/run_klms_isolated_state_qa.mjs", "<isolated-path>"]}
+        ]
+      }
+    },
+    {
       "id": "mac-payload",
       "command": "OUTPUT_APP=<candidate-app> KLMS_PAYLOAD_REQUIRE_CLEAN=1 tools/build_klms_mac_app.sh",
       "execution": {

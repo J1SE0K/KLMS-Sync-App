@@ -1799,6 +1799,19 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             mac_runtime_gate["execution"]["environment"]["KLMS_MAC_AX_SCREENSHOT_DIR"],
             "<isolated-path>",
         )
+        mac_realtime_gate = next(
+            gate
+            for gate in inventory["automatedGates"]
+            if gate["id"] == "mac-isolated-realtime"
+        )
+        self.assertEqual(
+            mac_realtime_gate["execution"]["environment"]["KLMS_ISOLATED_QA_REQUIRE_CLEAN"],
+            "1",
+        )
+        self.assertEqual(
+            mac_realtime_gate["execution"]["steps"][0]["argv"],
+            ["node", "tools/run_klms_isolated_state_qa.mjs", "<isolated-path>"],
+        )
         self.assertEqual(
             inventory["releaseEvidenceReceipt"]["gateRunner"],
             "tools/run_release_gate.sh <gate-id>",

@@ -46,8 +46,9 @@ The committed inventory in `docs/quality-gate-inventory.json` defines the exact 
 and is hashed into every gate log. A release candidate must have all of the following:
 
 - Clean, full 40-character commit SHA and a matching clean app payload/provenance manifest
-- Python/core, Swift, macOS runtime and payload, iOS Simulator, Windows, both relay, and
-  security gates executed through `tools/run_release_gate.sh`
+- Python/core, Swift, macOS runtime, isolated WebSocket UI latency/recovery, payload,
+  iOS Simulator, Windows, both relay, and security gates executed through
+  `tools/run_release_gate.sh`
 - Five exact-SHA independent reviews: goal/constraints, code quality, security/privacy,
   hands-on runtime, and visual/accessibility
 - Private mode-0600 logs and reports outside the repository, with byte counts and SHA-256

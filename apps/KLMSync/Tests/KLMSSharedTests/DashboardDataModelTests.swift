@@ -1343,7 +1343,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardRangeField.contains(".stroke(Color.klmsMacBorder"))
         XCTAssertTrue(dashboardRangeField.contains("HStack(alignment: .center"))
         XCTAssertTrue(dashboardRangeField.contains(".frame(minWidth: minWidth, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)"))
-        XCTAssertFalse(dashboardRangeField.contains("VStack(alignment: .leading, spacing: 5)"))
+        XCTAssertFalse(dashboardRangeField.contains("VStack(alignment: .leading, spacing: KLMSSpacing.snug)"))
         XCTAssertTrue(detail.contains("private func noticeMatchesDashboardBaseFilters("))
         XCTAssertTrue(noticeListView.contains("@State private var presentation: NoticeDashboardPresentation"))
         XCTAssertTrue(noticeListView.contains("@State private var presentationSignature: NoticeDashboardInputSignature?"))
@@ -1463,7 +1463,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(app.contains("func scheduleBootstrapIfNeeded()"))
         XCTAssertTrue(app.contains("scheduleBootstrapIfNeeded()"))
         XCTAssertFalse(app.contains("Task.sleep(nanoseconds:"))
-        XCTAssertTrue(macModel.contains("init(paths: KLMSPaths = KLMSPaths())"))
+        XCTAssertTrue(macModel.contains("""
+        init(
+                paths: KLMSPaths = KLMSPaths(),
+                isolatedQAProfile: KLMSMacIsolatedQAProfile? = nil
+            )
+        """))
         XCTAssertTrue(macModel.contains("let startupSnapshot = EngineSnapshotStore(paths: paths).load()"))
         let bootstrap = try sourceBody(
             after: "func bootstrap() async",
@@ -1810,10 +1815,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains("\"로그 탭에서 마지막 오류를 확인하세요.\""))
         XCTAssertTrue(commandPanel.contains("Text(model.currentPhaseText ?? \"진행 중\")"))
         XCTAssertTrue(primarySyncAction.contains(".padding(.horizontal, KLMSSpacing.roomy)"))
-        XCTAssertTrue(primarySyncAction.contains(".padding(.vertical, 15)"))
+        XCTAssertTrue(primarySyncAction.contains(".padding(.vertical, KLMSSpacing.roomyControl)"))
         XCTAssertTrue(primarySyncAction.contains(".frame(maxWidth: .infinity, minHeight: 58, alignment: .leading)"))
         XCTAssertFalse(primarySyncAction.contains("layoutMode"))
-        XCTAssertTrue(commandPanel.contains(".font(.system(size: 11, weight: .heavy, design: .rounded))"))
+        XCTAssertTrue(commandPanel.contains(".font(.system(size: KLMSTypeSize.footnoteBadge, weight: .heavy, design: .rounded))"))
         XCTAssertTrue(commandPanel.contains(".padding(.horizontal, KLMSSpacing.standard)"))
         XCTAssertTrue(commandPanel.contains(".frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .center)"))
         XCTAssertFalse(commandPanel.contains(".frame(maxWidth: .infinity, minHeight: 42, alignment: .center)"))
@@ -1847,8 +1852,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(commandPanel.contains("private func runOrCancel(_ command: KLMSEngineCommand)"))
         XCTAssertFalse(commandPanel.contains(".fullSync"))
         XCTAssertFalse(dashboardTopBar.contains("MacPrimarySyncActionView"))
-        XCTAssertTrue(view.contains(".font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())"))
-        XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: 13))"))
+        XCTAssertTrue(view.contains(".font(.system(size: KLMSTypeSize.prominentMetric, weight: .bold, design: .rounded).monospacedDigit())"))
+        XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.prominentCard))"))
         XCTAssertTrue(view.contains(".buttonStyle(MacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.panel))"))
         XCTAssertFalse(detail.contains(".buttonStyle(.plain)"))
         XCTAssertFalse(detail.contains(".buttonStyle(.borderless)"))
@@ -2180,7 +2185,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosStableSelectionButtonStyle.contains("klmsCommandButtonPressedOverlay"))
         XCTAssertTrue(iosStableSelectionButtonStyle.contains(".clipShape(RoundedRectangle(cornerRadius: cornerRadius))"))
         XCTAssertTrue(iosStableSelectionButtonStyle.contains("transaction.animation = nil"))
-        XCTAssertTrue(iosItemListControls.contains(".companionStableTap(cornerRadius: 9, action: action)"))
+        XCTAssertTrue(iosItemListControls.contains(".companionStableTap(cornerRadius: KLMSRadius.standardSurface, action: action)"))
         XCTAssertTrue(iosInlineItemRows.contains("let isSelected = activeSelectedItemID == item.id"))
         XCTAssertTrue(iosInlineItemRows.contains(".companionStableTap(action: { select(item) })"))
         XCTAssertTrue(iosSelectableItemRows.contains(".companionStableTap(action: { select(item) })"))
@@ -2534,7 +2539,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(detail.contains("private func dashboardPerformWithoutAnimation"))
         XCTAssertEqual(detail.components(separatedBy: "Button {\n                    isExpanded.toggle()\n                } label:").count - 1, 0)
         XCTAssertGreaterThanOrEqual(detail.components(separatedBy: "dashboardPerformWithoutAnimation {\n                        isExpanded.toggle()\n                    }").count - 1, 3)
-        XCTAssertEqual(detail.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 3)
+        XCTAssertEqual(detail.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 4)
         XCTAssertTrue(detail.contains("private struct CalendarDetailView: View"))
         XCTAssertTrue(detail.contains("private struct CalendarChangeListView: View"))
         XCTAssertTrue(detail.contains("private struct CalendarChangeRowView: View"))
@@ -2544,6 +2549,40 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(fileRow.contains("if isExpanded, !item.path.isEmpty"))
         XCTAssertTrue(fileRow.contains("DeferredDashboardExpansion(isExpanded: isExpanded)"))
         XCTAssertTrue(fileRow.contains("actionBar(hidden: hidden, pathExists: pathExists)"))
+    }
+
+    func testAppleViewsUseSemanticSpacingRadiusAndFixedTypeTokens() throws {
+        let packageRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let viewPaths = [
+            "Sources/KLMSMac/DashboardDetailView.swift",
+            "Sources/KLMSMac/KLMSMacApp.swift",
+            "Sources/KLMSMac/MenuBarRootView.swift",
+            "Sources/KLMSMac/SettingsView.swift",
+            "Sources/KLMSiOS/KLMSiOSApp.swift",
+        ]
+        let forbiddenPatterns = [
+            #"spacing:\s*(?:[1-9][0-9]*(?:\.[0-9]+)?\b|[^,{\n]*\?\s*[1-9][0-9]*(?:\.[0-9]+)?\b|[^,{\n]*:\s*[1-9][0-9]*(?:\.[0-9]+)?\b)"#,
+            #"\b(?:var|let)\s+spacing\s*:\s*CGFloat\s*=\s*[1-9]"#,
+            #"\.padding\(\s*(?:[1-9][0-9]*(?:\.[0-9]+)?|\.[A-Za-z]+\s*,\s*[1-9][0-9]*(?:\.[0-9]+)?)\b"#,
+            #"cornerRadius:\s*[1-9][0-9]*(?:\.[0-9]+)?\b"#,
+            #"\.system\(size:\s*[1-9][0-9]*(?:\.[0-9]+)?\b"#,
+        ]
+
+        for relativePath in viewPaths {
+            let source = try String(
+                contentsOf: packageRoot.appendingPathComponent(relativePath),
+                encoding: .utf8
+            )
+            for pattern in forbiddenPatterns {
+                XCTAssertNil(
+                    source.range(of: pattern, options: .regularExpression),
+                    "\(relativePath) must use semantic Apple design tokens instead of raw styling values"
+                )
+            }
+        }
     }
 
     func testIOSDashboardAndSettingsFollowDesignNavigation() throws {
@@ -3457,9 +3496,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSyncCard.contains("Label(syncStateTitle"))
         XCTAssertFalse(dashboardSyncCard.contains("Mac 앱에 실행 요청을 보냅니다."))
         XCTAssertTrue(dashboardSyncCard.contains(".font(.system(.caption, design: .rounded, weight: .bold))"))
-        XCTAssertTrue(dashboardSyncCard.contains(".padding(11)"))
-        XCTAssertTrue(dashboardSyncCard.contains("GridItem(.flexible(minimum: 0), spacing: 7)"))
-        XCTAssertTrue(dashboardSyncCard.contains("LazyVGrid(columns: secondaryColumns, spacing: 7)"))
+        XCTAssertTrue(dashboardSyncCard.contains(".padding(KLMSSpacing.comfortableControl)"))
+        XCTAssertTrue(dashboardSyncCard.contains("GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.compactControl)"))
+        XCTAssertTrue(dashboardSyncCard.contains("LazyVGrid(columns: secondaryColumns, spacing: KLMSSpacing.compactControl)"))
         XCTAssertTrue(dashboardSyncCard.contains("ForEach(secondaryCommands, id: \\.self)"))
         XCTAssertTrue(dashboardSyncCard.contains("let isDisabled = commandDisabled(for: kind)"))
         XCTAssertTrue(dashboardSyncCard.contains("secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled)"))
@@ -3471,7 +3510,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSyncCard.contains("if compact {\n                LazyVGrid(columns: secondaryColumns"))
         XCTAssertTrue(designSpec.contains("바로 아래에 `파일`, `과제/시험`, `공지` 개별 실행 버튼을 3열로 둔다."))
         XCTAssertTrue(designSpec.contains("설정: 앱 안의 왼쪽 작업 공간에서 처리한다. 별도 macOS Settings 창을 띄우지 않는다."))
-        XCTAssertTrue(dashboardSyncCard.contains(".padding(.horizontal, 5)"))
+        XCTAssertTrue(dashboardSyncCard.contains(".padding(.horizontal, KLMSSpacing.snug)"))
         XCTAssertTrue(metricOverview.contains("if layoutMode == .wide"))
         XCTAssertTrue(metricOverview.contains("Text(title)"))
         let iosSortFieldIndex = try XCTUnwrap(companionItemListControls.range(of: "title: \"정렬 기준\"")?.lowerBound)
@@ -3515,9 +3554,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(companionItemListControls.contains("@State private var expandedPickerID: String?"))
         XCTAssertFalse(companionItemListControls.contains("expandedPickerID"))
         XCTAssertFalse(companionItemListControls.contains("companionInlinePickerField"))
-        XCTAssertTrue(companionItemListControls.contains(".background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: 9))"))
-        XCTAssertTrue(companionItemListControls.contains(".companionStableTap(cornerRadius: 9, action: action)"))
-        XCTAssertTrue(companionItemListControls.contains("RoundedRectangle(cornerRadius: 9)"))
+        XCTAssertTrue(companionItemListControls.contains(".background(Color.klmsSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.standardSurface))"))
+        XCTAssertTrue(companionItemListControls.contains(".companionStableTap(cornerRadius: KLMSRadius.standardSurface, action: action)"))
+        XCTAssertTrue(companionItemListControls.contains("RoundedRectangle(cornerRadius: KLMSRadius.standardSurface)"))
         XCTAssertFalse(companionItemListControls.contains(".background(Color.klmsSubtleCardBackground, in: Capsule())"))
         XCTAssertFalse(companionItemListControls.contains("private var chipColumns"))
         XCTAssertFalse(companionItemListControls.contains("LazyVGrid(columns: chipColumns"))
@@ -3527,7 +3566,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(metricTile.contains("Color.klmsCardBackground"))
         XCTAssertTrue(metricTile.contains(".font(.system(.title2, design: .rounded, weight: .bold).monospacedDigit())"))
         XCTAssertTrue(metricTile.contains(".font(.system(.caption, design: .rounded, weight: .bold))"))
-        XCTAssertTrue(metricTile.contains(".padding(11)"))
+        XCTAssertTrue(metricTile.contains(".padding(KLMSSpacing.comfortableControl)"))
         XCTAssertFalse(metricTile.contains(".padding(.horizontal, KLMSSpacing.section)"))
         XCTAssertFalse(metricTile.contains(".padding(.vertical, KLMSSpacing.standard)"))
         XCTAssertTrue(metricTile.contains("RoundedRectangle(cornerRadius: KLMSRadius.panel)"))
@@ -3558,10 +3597,10 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(actionButtonStyle.contains("return AnyShapeStyle(color.opacity(isEnabled ? 0.12 : 0.04))"))
         XCTAssertFalse(actionButtonStyle.contains("Color.klmsPrimaryCommandButtonBorder.opacity(isPressed ? 0.72 : 1.0)"))
         XCTAssertFalse(actionButtonStyle.contains("Color.klmsDangerBorder.opacity(isPressed ? 0.92 : 0.84)"))
-        XCTAssertTrue(toolbarButtonStyle.contains("RoundedRectangle(cornerRadius: 9)"))
+        XCTAssertTrue(toolbarButtonStyle.contains("RoundedRectangle(cornerRadius: KLMSRadius.standardSurface)"))
         XCTAssertFalse(toolbarButtonStyle.contains("background(isPressed: configuration.isPressed)"))
         XCTAssertFalse(toolbarButtonStyle.contains("background(isPressed:"))
-        XCTAssertTrue(toolbarButtonStyle.contains(".padding(.horizontal, 9)"))
+        XCTAssertTrue(toolbarButtonStyle.contains(".padding(.horizontal, KLMSSpacing.standardControl)"))
         XCTAssertTrue(toolbarButtonStyle.contains(".stroke(border, lineWidth: isEnabled ? 1.15 : 1)"))
         XCTAssertFalse(toolbarButtonStyle.contains(".shadow("))
         XCTAssertFalse(toolbarButtonStyle.contains("Color.klmsCommandButtonPressedBackground"))
@@ -3685,7 +3724,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardSyncCard.contains("Mac 앱에 실행 요청을 보냅니다."))
         XCTAssertFalse(dashboardSyncCard.contains(".font(.system(size:"))
         XCTAssertFalse(dashboardPrimarySyncAction.contains(".font(.system(size:"))
-        XCTAssertTrue(dashboardSyncCard.contains(".padding(.horizontal, 5)"))
+        XCTAssertTrue(dashboardSyncCard.contains(".padding(.horizontal, KLMSSpacing.snug)"))
         XCTAssertTrue(dashboardSyncCard.contains("let isDisabled = commandDisabled(for: kind)"))
         XCTAssertTrue(dashboardSyncCard.contains("secondaryCommandSystemImage(isRunning: isRunning, isDisabled: isDisabled)"))
         XCTAssertTrue(dashboardSyncCard.contains(".buttonStyle(KLMSCardButtonStyle(disabledOpacity: 1.0))"))
@@ -3721,7 +3760,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(flowChipLayout.contains("entry.kind.chipBackground"))
         XCTAssertTrue(flowChipLayout.contains(".fill(isSelected ? Color.klmsSelectedForeground : entry.kind.tint.opacity(0.26))"))
         XCTAssertTrue(flowChipLayout.contains(".stroke(entry.kind.chipBorder, lineWidth: 1)"))
-        XCTAssertTrue(flowChipLayout.contains("GridItem(.flexible(minimum: 0), spacing: 7)"))
+        XCTAssertTrue(flowChipLayout.contains("GridItem(.flexible(minimum: 0), spacing: KLMSSpacing.compactControl)"))
         XCTAssertTrue(flowChipLayout.contains(".frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)"))
         XCTAssertTrue(flowChipLayout.contains(".accessibilityLabel(\"\\(entry.kind.title) \\(entry.value)개 \\(selectedKind == entry.kind ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertFalse(flowChipLayout.contains("entry.kind.tint.opacity(0.10)"))
@@ -3892,8 +3931,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macSettings.contains("settingsHeaderBadge(selectedTab.scopeLabel, primary: false)"))
         XCTAssertTrue(macSettings.contains("private func settingsHeaderBadge(_ text: String, primary: Bool) -> some View"))
         XCTAssertTrue(macSettings.contains("private let settingsTabColumns"))
-        XCTAssertTrue(macSettings.contains("GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7)"))
-        XCTAssertTrue(macSettings.contains("LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: 7)"))
+        XCTAssertTrue(macSettings.contains("GridItem(.adaptive(minimum: 104, maximum: 160), spacing: KLMSSpacing.compactControl)"))
+        XCTAssertTrue(macSettings.contains("LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: KLMSSpacing.compactControl)"))
         XCTAssertTrue(macSettings.contains("settingsTabButton"))
         XCTAssertTrue(macSettings.contains("KLMSMacSettingsTabButtonStyle"))
         XCTAssertTrue(macSettings.contains("@State private var hoveredTab: SettingsTab?"))
@@ -4617,7 +4656,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardTopBarView.contains("@ObservedObject var model: KLMSMacModel"))
         XCTAssertTrue(macAlertBannerView.contains("let model: KLMSMacModel"))
         XCTAssertTrue(commandPanelView.contains("@ObservedObject var model: KLMSMacModel"))
-        XCTAssertTrue(taskAndExamWorkspaceView.contains("let model: KLMSMacModel"))
+        XCTAssertTrue(taskAndExamWorkspaceView.contains("@ObservedObject var model: KLMSMacModel"))
         XCTAssertTrue(quickStatusStripView.contains("let model: KLMSMacModel"))
         XCTAssertTrue(externalIntegrationStatusView.contains("let model: KLMSMacModel"))
         XCTAssertTrue(importantLogPanelView.contains("@ObservedObject var model: KLMSMacModel"))
@@ -4628,13 +4667,13 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(dashboardTopBarView.contains("let model: KLMSMacModel"))
         XCTAssertFalse(macAlertBannerView.contains("@ObservedObject var model"))
         XCTAssertTrue(commandPanelView.contains("@ObservedObject var model"))
-        XCTAssertFalse(taskAndExamWorkspaceView.contains("@ObservedObject var model"))
+        XCTAssertFalse(taskAndExamWorkspaceView.contains("let model: KLMSMacModel"))
         XCTAssertFalse(quickStatusStripView.contains("@ObservedObject var model"))
         XCTAssertFalse(externalIntegrationStatusView.contains("@ObservedObject var model"))
         XCTAssertTrue(importantLogPanelView.contains("@ObservedObject var model"))
         XCTAssertTrue(logSummaryPanelView.contains("@ObservedObject var model"))
         XCTAssertFalse(logSummaryDetailView.contains("@ObservedObject var model"))
-        XCTAssertEqual(mac.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 12)
+        XCTAssertEqual(mac.components(separatedBy: "@ObservedObject var model: KLMSMacModel").count - 1, 13)
         let alertRange = try XCTUnwrap(macRootBody.range(of: "MacAlertBannerView("))
         let topBarRange = try XCTUnwrap(macRootBody.range(of: "DashboardTopBarView("))
         let workstationRange = try XCTUnwrap(macRootBody.range(of: "MacWorkstationLayoutView("))
@@ -4704,14 +4743,14 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macNavigationView.contains("resetCurrentSectionScroll()"))
         XCTAssertTrue(macMetricTile.contains("Image(systemName: isSelected ? \"checkmark.circle.fill\" : \"chevron.right\")"))
         XCTAssertTrue(macMetricTile.contains("var isHovered: Bool"))
-        XCTAssertTrue(macMetricTile.contains(".background(metricBackground, in: RoundedRectangle(cornerRadius: 13))"))
+        XCTAssertTrue(macMetricTile.contains(".background(metricBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.prominentCard))"))
         XCTAssertTrue(macMetricTile.contains("return isHovered ? Color.klmsMacSubtleCardBackground.opacity(0.64) : Color.klmsMacCardBackground"))
         XCTAssertTrue(macMetricTile.contains("isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText"))
         XCTAssertTrue(macMetricTile.contains(".stroke(metricBorder, lineWidth: isSelected ? 1.4 : 1)"))
         XCTAssertTrue(macMetricTile.contains("return isHovered ? Color.klmsMacCommandBorder.opacity(0.78) : Color.klmsMacBorder"))
         XCTAssertTrue(macMetricTile.contains("isHovered ? Color.klmsMacPrimaryText : Color.klmsMacSecondaryText.opacity(0.70)"))
         XCTAssertFalse(macMetricTile.contains(".shadow(color: isSelected ? tint.opacity(0.12) : Color.clear"))
-        XCTAssertTrue(macMetricTile.contains(".font(.system(size: 28, weight: .bold, design: .rounded).monospacedDigit())"))
+        XCTAssertTrue(macMetricTile.contains(".font(.system(size: KLMSTypeSize.prominentMetric, weight: .bold, design: .rounded).monospacedDigit())"))
         XCTAssertTrue(macMetricTile.contains(".frame(maxWidth: .infinity, minHeight: 72, alignment: .topLeading)"))
         XCTAssertFalse(macMetricTile.contains("minHeight: 82"))
         XCTAssertTrue(dashboardTopBarView.contains("DashboardTopBarStatusContent(snapshot: snapshot)"))
@@ -4719,7 +4758,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(dashboardTopBarView.contains("로그 탭에서 실패 흐름을 확인하세요."))
         XCTAssertTrue(dashboardTopBarStatusContent.contains("Text(snapshot.title)"))
         XCTAssertFalse(dashboardTopBarView.contains("Text(\"대시보드\")"))
-        XCTAssertTrue(dashboardTopBarStatusContent.contains(".font(.system(size: 26, weight: .bold, design: .rounded))"))
+        XCTAssertTrue(dashboardTopBarStatusContent.contains(".font(.system(size: KLMSTypeSize.metric, weight: .bold, design: .rounded))"))
         XCTAssertTrue(dashboardTopBarStatusContent.contains("HStack(alignment: snapshot.runningProgress == nil ? .center : .top, spacing: KLMSSpacing.section)"))
         XCTAssertTrue(dashboardTopBarStatusContent.contains("private var shouldShowStatusBadge: Bool"))
         XCTAssertTrue(dashboardTopBarStatusContent.contains("snapshot.tone != .ready || snapshot.statusBadgeText != \"준비됨\""))
@@ -4954,7 +4993,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(logSummaryDetailView.contains("Text(\"파일 요청 기록\")"))
         XCTAssertFalse(logSummaryDetailView.contains("await model.clearServerRelayLogs(scope: .fileAccess)"))
         XCTAssertFalse(logSummaryDetailView.contains(".accessibilityLabel(\"파일 요청 기록 지우기\")"))
-        XCTAssertTrue(sectionBox.contains("VStack(alignment: .leading, spacing: 9)"))
+        XCTAssertTrue(sectionBox.contains("VStack(alignment: .leading, spacing: KLMSSpacing.standardControl)"))
         XCTAssertTrue(sectionBox.contains(".stroke(borderColor.opacity(0.78), lineWidth: 1)"))
         XCTAssertNotNil(macSharedRunLogActivityRow.range(of: #"macPerformWithoutAnimation\s*\{\s*isExpanded\.toggle\(\)"#, options: .regularExpression))
         XCTAssertTrue(macSharedRunLogActivityRow.contains("실행 로그 \\(isExpanded ? \"펼쳐짐\" : \"접힘\")"))
@@ -5050,7 +5089,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityValue(isExpanded ? \"펼쳐짐\" : \"접힘\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".accessibilityHint(isExpanded ? \"\\(title) 접기\" : \"\\(title) 펼치기\")"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains(".frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)"))
-        XCTAssertTrue(diagnosticChecksDisclosure.contains(".contentShape(RoundedRectangle(cornerRadius: 7))"))
+        XCTAssertTrue(diagnosticChecksDisclosure.contains(".contentShape(RoundedRectangle(cornerRadius: KLMSRadius.compactControl))"))
         XCTAssertTrue(diagnosticChecksDisclosure.contains("Color.klmsMacSubtleCardBackground.opacity(0.34)"))
         XCTAssertFalse(diagnosticChecksDisclosure.contains(".stroke(Color.klmsMacBorder.opacity(0.54)"))
         let collapsibleSectionBox = try sourceBody(
@@ -5284,7 +5323,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(iosSidebar.contains("isCompact: true"))
         XCTAssertTrue(iosSidebarButton.contains("var isCompact = false"))
         XCTAssertFalse(iosSidebarButton.contains("var badgeText: String?"))
-        XCTAssertTrue(iosSidebarButton.contains("HStack(spacing: isCompact ? 7 : 10)"))
+        XCTAssertTrue(iosSidebarButton.contains("HStack(spacing: isCompact ? KLMSSpacing.compactControl : KLMSSpacing.comfortable)"))
         XCTAssertFalse(iosSidebarButton.contains("if let badgeText"))
         XCTAssertFalse(iosSidebarButton.contains(".accessibilityHidden(true)"))
         XCTAssertTrue(iosSidebarButton.contains(".accessibilityValue(accessibilityValue)"))
@@ -5299,9 +5338,9 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosSidebarButton.contains(".frame(width: isCompact ? 28 : 30, height: isCompact ? 28 : 30)"))
         XCTAssertTrue(iosSidebarButton.contains("Image(systemName: \"chevron.right\")"))
         XCTAssertTrue(iosSidebarButton.contains(".font(.system(isCompact ? .caption : .subheadline, design: .rounded, weight: .semibold))"))
-        XCTAssertTrue(iosSidebarButton.contains(".padding(.leading, isCompact ? 7 : 8)"))
-        XCTAssertTrue(iosSidebarButton.contains(".padding(.trailing, isCompact ? 8 : 9)"))
-        XCTAssertTrue(iosSidebarButton.contains(".padding(.vertical, isCompact ? 8 : 9)"))
+        XCTAssertTrue(iosSidebarButton.contains(".padding(.leading, isCompact ? KLMSSpacing.compactControl : KLMSSpacing.standard)"))
+        XCTAssertTrue(iosSidebarButton.contains(".padding(.trailing, isCompact ? KLMSSpacing.standard : KLMSSpacing.standardControl)"))
+        XCTAssertTrue(iosSidebarButton.contains(".padding(.vertical, isCompact ? KLMSSpacing.standard : KLMSSpacing.standardControl)"))
         XCTAssertFalse(iosSidebarButton.contains("minHeight: isCompact ? 40 : 36"))
         XCTAssertFalse(iosSidebarButton.contains("Color.klmsSelectedBackground"))
         XCTAssertTrue(iosSidebarButton.contains(".background(Color.klmsSubtleCardBackground.opacity(0.30), in: RoundedRectangle(cornerRadius: KLMSRadius.card))"))
@@ -5476,7 +5515,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosMetricTile.contains(".companionStableTap(cornerRadius: KLMSRadius.panel, action: action)"))
         XCTAssertTrue(iosMetricTile.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"선택 안 됨\")"))
         XCTAssertTrue(iosMetricTile.contains(".accessibilityHint(\"\\(label) 상세를 아래에 엽니다.\")"))
-        XCTAssertTrue(iosWorkstationMetricCard.contains(".padding(11)"))
+        XCTAssertTrue(iosWorkstationMetricCard.contains(".padding(KLMSSpacing.comfortableControl)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains("Image(systemName: category.systemImage)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".frame(width: 26, height: 26)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains("Text(\"\\(category.title) \\(value)개\")"))
@@ -5484,12 +5523,12 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(iosWorkstationMetricCard.contains(".font(.system(.caption, design: .rounded, weight: .regular))"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".foregroundStyle(Color.klmsSecondaryText)"))
         XCTAssertFalse(iosWorkstationMetricCard.contains(".font(.headline.weight(.semibold))"))
-        XCTAssertTrue(iosWorkstationMetricCard.contains("RoundedRectangle(cornerRadius: 13)"))
+        XCTAssertTrue(iosWorkstationMetricCard.contains("RoundedRectangle(cornerRadius: KLMSRadius.prominentCard)"))
         XCTAssertFalse(iosWorkstationMetricCard.contains("Color.klmsSelectedBackground.opacity(0.96)"))
-        XCTAssertTrue(iosWorkstationMetricCard.contains(".background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: 13))"))
+        XCTAssertTrue(iosWorkstationMetricCard.contains(".background(Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.prominentCard))"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".fill(isSelected ? Color.klmsSelectedForeground : Color.klmsCommandAccent.opacity(0.28))"))
         XCTAssertFalse(iosWorkstationMetricCard.contains("Color.klmsSelectedBorder.opacity(0.92)"))
-        XCTAssertTrue(iosWorkstationMetricCard.contains(".companionStableTap(cornerRadius: 13, action: action)"))
+        XCTAssertTrue(iosWorkstationMetricCard.contains(".companionStableTap(cornerRadius: KLMSRadius.prominentCard, action: action)"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".accessibilityValue(isSelected ? \"선택됨\" : \"선택 안 됨\")"))
         XCTAssertTrue(iosWorkstationMetricCard.contains(".accessibilityHint(\"\\(category.title) 상세와 처리 버튼을 오른쪽 패널에 표시합니다.\")"))
         XCTAssertTrue(ios.contains("private struct WorkstationDashboardOverviewPanel"))
@@ -6551,6 +6590,12 @@ final class DashboardDataModelTests: XCTestCase {
         let calendarGuide = try sourceStructBody(named: "CalendarActionGuideView", in: detail)
         let calendarActionButton = try sourceStructBody(named: "CalendarActionButton", in: detail)
         let dashboardSummary = try sourceStructBody(named: "DashboardSummaryContentView", in: mac)
+        let taskWorkspace = try sourceStructBody(named: "TaskAndExamWorkspaceView", in: mac)
+        let dashboardDetail = try sourceBody(
+            after: "struct DashboardDetailPanelView: View",
+            in: detail,
+            description: "Mac dashboard detail panel"
+        )
         let commandPanel = try sourceStructBody(named: "CommandPanelView", in: mac)
         let primarySyncAction = try sourceStructBody(named: "MacPrimarySyncActionView", in: mac)
         let macMailPanel = try sourceBody(
@@ -6578,6 +6623,8 @@ final class DashboardDataModelTests: XCTestCase {
 
         XCTAssertFalse(calendarDetail.contains("MacMailPasteAnalyzerPanel"))
         XCTAssertTrue(calendarDetail.contains("@ObservedObject var model: KLMSMacModel"))
+        XCTAssertTrue(taskWorkspace.contains("@ObservedObject var model: KLMSMacModel"))
+        XCTAssertTrue(dashboardDetail.contains("@ObservedObject var model: KLMSMacModel"))
         XCTAssertTrue(calendarRow.contains("@ObservedObject var model: KLMSMacModel"))
         XCTAssertTrue(markCalendarResolved.contains("var nextResolvedIDs = resolvedCalendarChangeIDs"))
         XCTAssertTrue(markCalendarResolved.contains("resolvedCalendarChangeIDs = nextResolvedIDs"))
@@ -6663,7 +6710,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macMailAnalysisProcess.contains("@State private var isExpanded = true"))
         XCTAssertFalse(macMailAnalysisProcess.contains("DisclosureGroup("))
         XCTAssertTrue(macMailAnalysisProcess.contains("Button {"))
-        XCTAssertTrue(macMailAnalysisProcess.contains(".contentShape(RoundedRectangle(cornerRadius: 7))"))
+        XCTAssertTrue(macMailAnalysisProcess.contains(".contentShape(RoundedRectangle(cornerRadius: KLMSRadius.compactControl))"))
         XCTAssertTrue(macMailAnalysisProcess.contains(".accessibilityLabel(\"분석 과정 \\(steps.count)단계 \\(isExpanded ? \"펼쳐짐\" : \"접힘\")\")"))
         XCTAssertTrue(macMailAnalysisProcess.contains(".accessibilityHint(isExpanded ? \"분석 과정 접기\" : \"분석 과정 펼치기\")"))
         XCTAssertTrue(detail.contains("analysisSteps"))
@@ -7898,7 +7945,7 @@ final class DashboardDataModelTests: XCTestCase {
             encoding: .utf8
         )
         let initializer = try sourceBody(
-            after: "init(paths: KLMSPaths = KLMSPaths())",
+            after: "init(\n        paths: KLMSPaths = KLMSPaths(),\n        isolatedQAProfile: KLMSMacIsolatedQAProfile? = nil\n    )",
             in: mac,
             description: "Mac relay credential migration"
         )

@@ -101,6 +101,9 @@ const TEST_FILE_DELETE_DELAY_MS = process.env.NODE_ENV === "test"
 const TEST_FILE_READ_DELAY_MS = process.env.NODE_ENV === "test"
   ? Math.max(0, Math.min(2_000, Number.parseInt(process.env.KLMS_RELAY_TEST_FILE_READ_DELAY_MS || "0", 10) || 0))
   : 0;
+const TEST_SYNC_DATA_RESPONSE_DELAY_MS = process.env.NODE_ENV === "test"
+  ? Math.max(0, Math.min(2_000, Number.parseInt(process.env.KLMS_RELAY_TEST_SYNC_DATA_RESPONSE_DELAY_MS || "0", 10) || 0))
+  : 0;
 const TEST_TRACK_FILE_OBJECT_READS = process.env.NODE_ENV === "test"
   && process.env.KLMS_RELAY_TEST_TRACK_FILE_OBJECT_READS === "1";
 const TEST_TRACK_PUBLIC_DOWNLOAD_LOOKUPS = process.env.NODE_ENV === "test"
@@ -470,7 +473,15 @@ async function route(request, response) {
       MAX_SYNC_ITEMS,
       Number.parseInt(url.searchParams.get("limit") || "250", 10) || 250
     ));
-    sendJSON(response, 200, syncDataResponse({ kind, limit }));
+    const payload = syncDataResponse({ kind, limit });
+    if (TEST_SYNC_DATA_RESPONSE_DELAY_MS > 0) {
+      console.log(JSON.stringify({
+        testEvent: "sync-data-response-captured",
+        revision: payload.revision,
+      }));
+    }
+    await delaySyncDataResponseForTest();
+    sendJSON(response, 200, payload);
     return;
   }
 
@@ -3980,6 +3991,11 @@ function delayFileDeletionForTest() {
 function delayFileReadForTest() {
   if (TEST_FILE_READ_DELAY_MS <= 0) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, TEST_FILE_READ_DELAY_MS));
+}
+
+function delaySyncDataResponseForTest() {
+  if (TEST_SYNC_DATA_RESPONSE_DELAY_MS <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, TEST_SYNC_DATA_RESPONSE_DELAY_MS));
 }
 
 async function uploadFileAccess(response, request, id) {

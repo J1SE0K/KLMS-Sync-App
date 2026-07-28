@@ -36,13 +36,19 @@ Rules:
 - Apple platforms use the system type family and Dynamic Type.
 - Windows uses `Segoe UI`, `Apple SD Gothic Neo`, `Malgun Gothic`, then the system sans-serif.
 - Body text is never smaller than 12px for secondary metadata and 14px for primary prose.
+- Apple views use semantic system text styles for prose. Fixed display glyphs, badges, and
+  counters use named values from `KLMSTypeSize`; view files do not introduce raw point sizes.
 - Data counters use tabular figures where alignment matters.
 - Korean prose uses phrase-aware wrapping. Normal prose must not split syllables or particles merely to fill a line; unbroken paths, URLs, tokens, and identifiers may use emergency wrapping in dedicated value containers.
 
 ## 4. Spacing & Layout
 
-- Base spacing unit: 4px/pt. Existing steps are 4, 8, 10, 12, 14, 16, 20, 24, and 32.
-- Card and control radius: 8px; larger shell surfaces may use the existing platform-native radius.
+- The core spacing rhythm is 4px/pt. Every Apple spacing value comes from `KLMSSpacing`;
+  named 1–3pt optical offsets and 5–15pt control insets preserve existing pixel geometry
+  without allowing per-view literals.
+- Every Apple corner radius comes from `KLMSRadius`. The 8pt small-surface radius is the
+  baseline; named compact, control, card, panel, and feature-surface variants are the only
+  approved exceptions.
 - Mac navigation has three stable presentations: full sidebar, icon rail, hidden.
 - Windows navigation has three stable presentations: full sidebar, icon rail, command drawer/hidden entry.
 - iPhone and iPad content scrolls vertically beneath a safe-area-aware tab surface; Windows main content is the primary scroll owner and drawer content owns its own bounded scroll.

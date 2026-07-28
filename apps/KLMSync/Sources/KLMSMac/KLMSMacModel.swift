@@ -205,6 +205,201 @@ struct KLMSMacPermissionRequestPolicy {
     }
 }
 
+struct KLMSMacIsolatedQAProfile: Sendable {
+    static let environmentFlag = "KLMS_MAC_ISOLATED_QA"
+    static let bundleIdentifierEnvironmentKey = "KLMS_MAC_ISOLATED_QA_BUNDLE_ID"
+    static let rootEnvironmentKey = "KLMS_MAC_ISOLATED_QA_ROOT"
+    static let relayURLEnvironmentKey = "KLMS_MAC_ISOLATED_QA_RELAY_URL"
+    static let clientTokenEnvironmentKey = "KLMS_MAC_ISOLATED_QA_CLIENT_TOKEN"
+    static let workerTokenEnvironmentKey = "KLMS_MAC_ISOLATED_QA_WORKER_TOKEN"
+
+    var rootURL: URL
+    var relayURL: String
+    var clientToken: String
+    var workerToken: String
+
+    var eventLogURL: URL {
+        rootURL.appendingPathComponent("isolated-qa-events.jsonl")
+    }
+
+    static func current(
+        bundleIdentifier: String? = Bundle.main.bundleIdentifier,
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        executablePath: String = ProcessInfo.processInfo.arguments.first ?? ""
+    ) -> KLMSMacIsolatedQAProfile? {
+        validatedProfile(
+            bundleIdentifier: bundleIdentifier,
+            environment: environment,
+            executablePath: executablePath
+        ).profile
+    }
+
+    static func validationIssue(
+        bundleIdentifier: String?,
+        environment: [String: String],
+        executablePath: String
+    ) -> String? {
+        validatedProfile(
+            bundleIdentifier: bundleIdentifier,
+            environment: environment,
+            executablePath: executablePath
+        ).issue
+    }
+
+    private static func validatedProfile(
+        bundleIdentifier: String?,
+        environment: [String: String],
+        executablePath: String
+    ) -> (profile: KLMSMacIsolatedQAProfile?, issue: String?) {
+        func rejected(_ issue: String) -> (profile: KLMSMacIsolatedQAProfile?, issue: String?) {
+            (nil, issue)
+        }
+        let expectedBundleIdentifier = environment[bundleIdentifierEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let isolatedBundleIdentifier: String?
+        if let expectedBundleIdentifier, !expectedBundleIdentifier.isEmpty {
+            guard appBundleIdentifier(executablePath: executablePath) == expectedBundleIdentifier else {
+                return rejected("bundle-path-mismatch")
+            }
+            isolatedBundleIdentifier = expectedBundleIdentifier
+        } else {
+            isolatedBundleIdentifier = bundleIdentifier
+        }
+        guard environment[environmentFlag] == "1" else { return rejected("flag-disabled") }
+        guard let isolatedBundleIdentifier,
+              isolatedBundleIdentifier.contains(".KLMSync.QA.") else {
+            return rejected("bundle-not-isolated")
+        }
+        guard let rootText = environment[rootEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !rootText.isEmpty else {
+            return rejected("root-missing")
+        }
+        guard let relayText = environment[relayURLEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              let relayURL = URL(string: relayText),
+              relayURL.scheme?.lowercased() == "http",
+              ["127.0.0.1", "localhost", "::1"].contains(relayURL.host?.lowercased() ?? ""),
+              relayURL.user == nil,
+              relayURL.password == nil,
+              relayURL.query == nil,
+              relayURL.fragment == nil,
+              relayURL.path.isEmpty || relayURL.path == "/" else {
+            return rejected("relay-not-isolated")
+        }
+        guard let clientToken = environment[clientTokenEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              let workerToken = environment[workerTokenEnvironmentKey]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              clientToken != workerToken,
+              isValidRelayToken(clientToken),
+              isValidRelayToken(workerToken) else {
+            return rejected("token-invalid")
+        }
+        let pathComponents = rootText.split(separator: "/", omittingEmptySubsequences: true)
+        let rootName = pathComponents.last.map(String.init) ?? ""
+        guard pathComponents.count == 3,
+              pathComponents[0] == "private",
+              pathComponents[1] == "tmp",
+              rootText == "/private/tmp/\(rootName)",
+              rootName.hasPrefix("klms-isolated-qa-"),
+              rootName.count > "klms-isolated-qa-".count else {
+            return rejected("root-not-isolated")
+        }
+        let rootURL = URL(fileURLWithPath: rootText, isDirectory: true)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        guard ["/private/tmp", "/tmp"].contains(rootURL.deletingLastPathComponent().path),
+              rootURL.lastPathComponent == rootName else {
+            return rejected("root-not-isolated")
+        }
+        return (
+            KLMSMacIsolatedQAProfile(
+                rootURL: rootURL,
+                relayURL: relayText,
+                clientToken: clientToken,
+                workerToken: workerToken
+            ),
+            nil
+        )
+    }
+
+    static func appBundleIdentifier(executablePath: String) -> String? {
+        guard !executablePath.isEmpty else { return nil }
+        let executableURL = URL(fileURLWithPath: executablePath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+        let appURL = executableURL
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        guard appURL.pathExtension == "app" else { return nil }
+        let infoURL = appURL.appendingPathComponent("Contents/Info.plist")
+        guard let data = try? Data(contentsOf: infoURL),
+              let payload = try? PropertyListSerialization.propertyList(
+                  from: data,
+                  options: [],
+                  format: nil
+              ),
+              let info = payload as? [String: Any],
+              let identifier = info["CFBundleIdentifier"] as? String else {
+            return nil
+        }
+        return identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func isValidRelayToken(_ value: String) -> Bool {
+        value.range(
+            of: #"^(?:[A-Za-z0-9_-]{32}|[0-9a-fA-F]{64})$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    func record(event: String, revision: Int64? = nil, itemCount: Int? = nil) {
+        var payload: [String: Any] = [
+            "event": event,
+            "recordedAt": ISO8601DateFormatter().string(from: Date()),
+        ]
+        if let revision {
+            payload["revision"] = revision
+        }
+        if let itemCount {
+            payload["itemCount"] = itemCount
+        }
+        guard JSONSerialization.isValidJSONObject(payload),
+              let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
+              let newline = "\n".data(using: .utf8) else {
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(
+                at: rootURL,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            if !FileManager.default.fileExists(atPath: eventLogURL.path) {
+                guard FileManager.default.createFile(
+                    atPath: eventLogURL.path,
+                    contents: nil,
+                    attributes: [.posixPermissions: 0o600]
+                ) else {
+                    return
+                }
+            }
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o600],
+                ofItemAtPath: eventLogURL.path
+            )
+            let handle = try FileHandle(forWritingTo: eventLogURL)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data + newline)
+        } catch {
+            return
+        }
+    }
+}
+
 struct KLMSMacRunningCommandIdentity: Sendable, Equatable {
     var command: KLMSEngineCommand
     var operationID: UInt64
@@ -413,7 +608,10 @@ final class KLMSMacModel: ObservableObject {
     private let installer = EngineInstaller()
     private let locator = EnginePayloadLocator()
     private let serverRelayTerminalOutbox: RemoteCommandTerminalOutboxStore
+    private let isolatedQAProfile: KLMSMacIsolatedQAProfile?
     private var isBootstrapping = false
+    private var isolatedQADidBootstrap = false
+    private var isolatedQALastAppliedRelayRevision: Int64?
     private var isRequestingAppPermissions = false
     private var serverRelayEventStreamTask: Task<Void, Never>?
     private var serverRelayImmediateFollowUpTask: Task<Void, Never>?
@@ -566,10 +764,30 @@ final class KLMSMacModel: ObservableObject {
         case persisted(legacyCleanupPending: Bool)
     }
 
-    init(paths: KLMSPaths = KLMSPaths()) {
+    init(
+        paths: KLMSPaths = KLMSPaths(),
+        isolatedQAProfile: KLMSMacIsolatedQAProfile? = nil
+    ) {
         serverRelayTerminalOutbox = RemoteCommandTerminalOutboxStore(
             url: paths.serverRelayTerminalCommandOutboxURL
         )
+        self.isolatedQAProfile = isolatedQAProfile
+        if let isolatedQAProfile {
+            serverRelayEnabled = true
+            serverRelayURL = isolatedQAProfile.relayURL
+            serverRelayClientToken = isolatedQAProfile.clientToken
+            serverRelayWorkerToken = isolatedQAProfile.workerToken
+            self.paths = paths
+            let fixture = Self.safeCaptureSnapshot()
+            snapshot = fixture
+            cachedIssues = fixture.issues
+            resolvedCalendarChangeIDs = []
+            mailDashboardItems = []
+            rebuildMailDashboardCaches()
+            refreshDashboardPresentationCaches()
+            isolatedQAProfile.record(event: "profile-initialized")
+            return
+        }
         if Self.usesSafeCaptureFixture {
             serverRelayEnabled = false
             serverRelayURL = ""
@@ -1259,9 +1477,30 @@ final class KLMSMacModel: ObservableObject {
         guard !isUsingSafeCaptureFixture else { return }
         guard payload == nil else { return }
         guard !isBootstrapping else { return }
+        guard isolatedQAProfile == nil || !isolatedQADidBootstrap else { return }
         isBootstrapping = true
         defer {
             isBootstrapping = false
+        }
+        if let isolatedQAProfile {
+            isolatedQADidBootstrap = true
+            configureServerRelayRealtime()
+            _ = await refreshServerRelayDashboardNow(silent: true)
+            if KLMSMacPermissionRequestPolicy.shouldAutomaticallyRequest(
+                hasAttempted: UserDefaults.standard.bool(
+                    forKey: Self.automaticPermissionRequestAttemptedKey
+                ),
+                legacyVersion: UserDefaults.standard.string(
+                    forKey: Self.automaticPermissionRequestVersionKey
+                )
+            ) {
+                UserDefaults.standard.set(
+                    true,
+                    forKey: Self.automaticPermissionRequestAttemptedKey
+                )
+                isolatedQAProfile.record(event: "permission-request-recorded")
+            }
+            return
         }
         await reloadEngineState()
         await installEngine(force: false, runDoctorAfterInstall: false)
@@ -2223,6 +2462,10 @@ final class KLMSMacModel: ObservableObject {
                 scheduleServerRelayEventBatch(generation: generation)
                 handleServerRelayEvent(helloMessage, generation: generation)
                 serverRelayStatusMessage = "서버 실시간 연결됨"
+                isolatedQAProfile?.record(
+                    event: "websocket-connected",
+                    revision: hello?.revision
+                )
                 reconnectAttempt = 0
                 let heartbeat = Task {
                     while !Task.isCancelled {
@@ -2262,6 +2505,7 @@ final class KLMSMacModel: ObservableObject {
             } catch {
                 if !Task.isCancelled, serverRelayEventStreamKey == key {
                     serverRelayStatusMessage = "서버 실시간 연결 끊김 · 자동 재연결 중: \(error.localizedDescription)"
+                    isolatedQAProfile?.record(event: "websocket-offline")
                     let delay = RelayReconnectBackoff.nanoseconds(forAttempt: reconnectAttempt)
                     reconnectAttempt += 1
                     try? await Task.sleep(nanoseconds: delay)
@@ -2372,6 +2616,7 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     private func applyServerRelaySnapshot(_ snapshot: RelayRealtimeSnapshotPayload) -> Bool {
+        let previousRevision = isolatedQALastAppliedRelayRevision
         guard snapshot.version == RelaySnapshotProtocol.version,
               snapshot.revision >= 0,
               serverRelayEventCursor.lastAppliedRevision.map({ snapshot.revision >= $0 }) ?? true,
@@ -2409,7 +2654,21 @@ final class KLMSMacModel: ObservableObject {
         }
         if didApply { serverRelaySnapshotMutationEpoch &+= 1 }
         serverRelayEventCursor.markApplied(revision: snapshot.revision)
+        isolatedQALastAppliedRelayRevision = max(
+            isolatedQALastAppliedRelayRevision ?? snapshot.revision,
+            snapshot.revision
+        )
         serverRelayStatusMessage = "서버 실시간 연결됨"
+        if let previousRevision, snapshot.revision > previousRevision + 1 {
+            isolatedQAProfile?.record(
+                event: "revision-gap-recovered",
+                revision: snapshot.revision
+            )
+        }
+        isolatedQAProfile?.record(
+            event: "snapshot-applied",
+            revision: snapshot.revision
+        )
         return true
     }
 
@@ -3033,7 +3292,11 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func makeServerRelayStore() throws -> ServerRelayCommandStore {
-        try ServerRelayCommandStore(urlText: serverRelayURL, token: serverRelayWorkerToken)
+        try ServerRelayCommandStore(
+            urlText: serverRelayURL,
+            token: serverRelayWorkerToken,
+            allowsInsecureHTTP: isolatedQAProfile != nil
+        )
     }
 
     private func serverRelayTerminalOutboxIdentity() -> ServerRelayTerminalOutboxIdentity {
@@ -3358,6 +3621,10 @@ final class KLMSMacModel: ObservableObject {
         }
         if didChangeVisibleDashboardState {
             publishDashboardPresentationRefresh()
+            isolatedQAProfile?.record(
+                event: "dashboard-visible-model-updated",
+                itemCount: cachedDashboardStateItemsByKind[.assignments]?.count
+            )
         }
     }
 
@@ -3417,9 +3684,10 @@ final class KLMSMacModel: ObservableObject {
 
     @discardableResult
     private func applyServerRelaySyncDataDashboardState(_ syncData: ServerRelaySyncData) -> Bool {
-        let serverDashboardItems = syncData.items
+        let normalizedItems = syncData.items
             .map(\.normalizedDashboardItem)
             .map { $0.resolvingFileAcademicTerm(catalog: snapshot.academicTermCatalog) }
+        let serverDashboardItems = normalizedItems
             .filter(\.isVisibleDashboardSyncItem)
             .filter { shouldApplyServerRelayDashboardOverlay($0) }
             .dedupedForServerRelay()

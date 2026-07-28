@@ -84,14 +84,14 @@ private struct KLMSMacDeferredWorkspaceRootContainerView: View {
             } else {
                 VStack(alignment: .leading, spacing: KLMSSpacing.comfortable) {
                     Text("KLMS Sync")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: KLMSTypeSize.onboardingTitle, weight: .bold, design: .rounded))
                     Text("화면을 준비하고 있습니다.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                     ProgressView()
                         .controlSize(.small)
                 }
-                .padding(24)
+                .padding(KLMSSpacing.screenInset)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .background(Color.klmsMacScreenBackground)
                 .klmsPreferredAppearance()
@@ -325,7 +325,7 @@ private struct KLMSAuthDigitsOverlayView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacSecondaryText)
                 Text(digits)
-                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .font(.system(size: KLMSTypeSize.statusIcon, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(Color.klmsMacPrimaryText)
             }
@@ -369,7 +369,11 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
     private var terminationCleanupStarted = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let model = KLMSMacModel()
+        let isolatedQAProfile = KLMSMacIsolatedQAProfile.current()
+        let model = KLMSMacModel(
+            paths: isolatedQAProfile.map { KLMSPaths(engineRoot: $0.rootURL) } ?? KLMSPaths(),
+            isolatedQAProfile: isolatedQAProfile
+        )
         self.model = model
         KLMSDashboardWindowCoordinator.shared.setModel(model)
         NSApp.setActivationPolicy(.regular)

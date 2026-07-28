@@ -3,7 +3,7 @@
   "semgrep": {
     "rulesCommit": "e5b5a42ec061854378c11e0d01f19250b52bc2e9",
     "expectedFindings": 45,
-    "coordinatesSha256": "b736caf2d21952e161d1c949aca48c94d50ee9f472c40fd789f03d6b67e0fe65",
+    "coordinatesSha256": "7760c77e9de7faf6e21a70f0b26ada8b8e8c20f0313c838b6ea6c1558a991f7d",
     "adjudications": [
       {
         "rule": "javascript.lang.security.audit.detect-non-literal-regexp",
@@ -132,8 +132,8 @@
         "reason": "This policy intentionally contains only scanner-coordinate SHA-256 digests and false-positive rationale."
       }
     ],
-    "expectedFindings": 25,
-    "coordinatesSha256": "2052140b1a211306952fd47ff995c927adac540b26acd1040b40c4eb7dc623d1",
+    "expectedFindings": 26,
+    "coordinatesSha256": "bf6363f350b7ec89ddea269b9ff593218d9bc2cb329d10e135f703e24022067b",
     "adjudications": [
       {
         "type": "Base64 High Entropy String",
@@ -152,6 +152,12 @@
         "path": "apps/KLMSyncWindows/test/relay-security.test.cjs",
         "expectedCount": 1,
         "reason": "The match is an intentionally invalid URL credential fixture used to prove rejection."
+      },
+      {
+        "type": "Basic Auth Credentials",
+        "path": "apps/KLMSync/Tests/KLMSMacTests/PermissionRequestPolicyTests.swift",
+        "expectedCount": 1,
+        "reason": "The match is an intentionally invalid loopback URL credential fixture used to prove the isolated QA profile rejects userinfo."
       },
       {
         "type": "Basic Auth Credentials",

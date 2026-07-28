@@ -263,7 +263,7 @@ struct DashboardFileRenderSignature: Equatable, Sendable {
 
 struct DashboardDetailPanelView: View, @preconcurrency Equatable {
     var kind: DashboardDetailKind
-    var model: KLMSMacModel
+    @ObservedObject var model: KLMSMacModel
     var snapshot: EngineSnapshot
     private var renderSignature: DashboardRenderSignature
     private var fileDataRenderSignature: DashboardFileRenderSignature?
@@ -532,7 +532,7 @@ struct DashboardDetailPanelView: View, @preconcurrency Equatable {
         HStack(spacing: KLMSSpacing.comfortable) {
             ProgressView()
                 .controlSize(.small)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                 Text("파일 목록을 준비하고 있습니다.")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.klmsMacPrimaryText)
@@ -1258,7 +1258,7 @@ private struct DashboardRowDisclosureButton: View {
         Label(isExpanded ? expandedTitle : collapsedTitle, systemImage: isExpanded ? "chevron.up" : "chevron.down")
             .font(.caption.weight(.semibold))
             .foregroundStyle(Color.klmsMacSecondaryText)
-            .padding(.horizontal, 9)
+            .padding(.horizontal, KLMSSpacing.standardControl)
             .padding(.vertical, KLMSSpacing.compact)
             .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: Capsule())
             .overlay {
@@ -1690,12 +1690,12 @@ private struct DashboardFilterBarView: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, 9)
+        .padding(.horizontal, KLMSSpacing.standardControl)
         .padding(.vertical, KLMSSpacing.standard)
         .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)
-        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: 9))
+        .background(Color.klmsMacSubtleCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.standardSurface))
         .overlay {
-            RoundedRectangle(cornerRadius: 9)
+            RoundedRectangle(cornerRadius: KLMSRadius.standardSurface)
                 .stroke(Color.klmsMacBorder.opacity(0.78), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
@@ -1708,7 +1708,7 @@ private struct DashboardFilterBarView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(Color.klmsMacSelectedForeground)
                 .frame(width: 26, height: 26)
-                .background(Color.klmsMacSelectedBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: 7))
+                .background(Color.klmsMacSelectedBackground.opacity(0.78), in: RoundedRectangle(cornerRadius: KLMSRadius.compactControl))
             VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text("필터와 검색")
                     .font(.caption.weight(.semibold))
@@ -1953,7 +1953,7 @@ private struct DashboardControlBox<Content: View>: View {
             content
         }
         .padding(.horizontal, KLMSSpacing.comfortable)
-        .padding(.vertical, 9)
+        .padding(.vertical, KLMSSpacing.standardControl)
         .background(Color.klmsMacSubtleCardBackground.opacity(0.50), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
             RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
@@ -1977,7 +1977,7 @@ private struct DashboardRangeField<Content: View>: View {
             content
         }
         .padding(.horizontal, KLMSSpacing.standard)
-        .padding(.vertical, 5)
+        .padding(.vertical, KLMSSpacing.snug)
         .frame(minWidth: minWidth, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground.opacity(0.54), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
@@ -2267,7 +2267,7 @@ private struct StateItemRowView: View {
                     }
                 } label: {
                     HStack(alignment: .top, spacing: KLMSSpacing.standard) {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                             HStack(spacing: KLMSSpacing.compact) {
                                 Text(item.title.isEmpty ? "(제목 없음)" : item.title)
                                     .font(.caption.weight(.semibold))
@@ -2387,7 +2387,7 @@ private struct StateItemRowView: View {
                 }
             }
         }
-        .padding(9)
+        .padding(KLMSSpacing.standardControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(hidden ? Color.klmsMacWarningBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
@@ -2995,7 +2995,7 @@ private struct NoticeRowView: View {
                     }
                 } label: {
                     HStack(alignment: .top, spacing: KLMSSpacing.standard) {
-                        VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                             HStack(spacing: KLMSSpacing.compact) {
                                 Text((notice.title.isEmpty ? "(제목 없음)" : notice.title).klmsDisplayText)
                                     .font(.caption.weight(.semibold))
@@ -3046,7 +3046,7 @@ private struct NoticeRowView: View {
 
                 let attachments = attachmentDisplays
                 if !attachments.isEmpty {
-                    VStack(alignment: .leading, spacing: 5) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.snug) {
                         Text("첨부 파일")
                             .font(.caption2.weight(.semibold))
                             .foregroundStyle(Color.klmsMacSecondaryText)
@@ -3123,7 +3123,7 @@ private struct NoticeRowView: View {
                 }
             }
         }
-        .padding(9)
+        .padding(KLMSSpacing.standardControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowBackground(hidden: hidden, fresh: fresh), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
     }
@@ -3599,7 +3599,7 @@ private struct DashboardControlChip: View {
                 .foregroundStyle(isSelected ? Color.klmsMacSelectedForeground : Color.klmsMacPrimaryText)
                 .frame(minWidth: 42)
                 .padding(.horizontal, KLMSSpacing.standard)
-                .padding(.vertical, 5)
+                .padding(.vertical, KLMSSpacing.snug)
                 .background(isSelected ? Color.klmsMacSelectedBackground.opacity(0.96) : Color.klmsMacSubtleCardBackground, in: Capsule())
                 .overlay {
                     Capsule()
@@ -4203,7 +4203,7 @@ private struct FileRowView: View {
                         isExpanded.toggle()
                     }
                 } label: {
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                         HStack(spacing: KLMSSpacing.compact) {
                             Text(item.title.isEmpty ? "(파일명 없음)" : item.title)
                                 .font(.caption.weight(.semibold))
@@ -4296,7 +4296,7 @@ private struct FileRowView: View {
                 actionBar(hidden: hidden, pathExists: pathExists)
             }
         }
-        .padding(9)
+        .padding(KLMSSpacing.standardControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(hidden ? Color.klmsMacWarningBackground : Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
@@ -4639,14 +4639,14 @@ private struct CalendarActionGuideView: View {
     var model: KLMSMacModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standardControl) {
             HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                 Image(systemName: "calendar.badge.exclamationmark")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(Color.klmsMacWarningForeground)
                     .frame(width: 28, height: 28)
-                    .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 7))
-                VStack(alignment: .leading, spacing: 3) {
+                    .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.compactControl))
+                VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                     Text("캘린더 일정")
                         .font(.caption.weight(.semibold))
                     Text(helpText)
@@ -4719,7 +4719,7 @@ private struct CalendarActionButton: View {
                 .font(.caption.weight(.semibold))
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: KLMSControlSize.minimumInteractive)
-                .padding(.horizontal, 9)
+                .padding(.horizontal, KLMSSpacing.standardControl)
                 .background(
                     (disabled ? Color.klmsMacSubtleCardBackground.opacity(0.58) : Color.klmsMacCommandButtonBackground.opacity(0.92)),
                     in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
@@ -4900,10 +4900,10 @@ private struct CalendarChangeRowView: View {
                 Text(change.actionDisplayName)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(actionColor)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, KLMSSpacing.compactControl)
+                    .padding(.vertical, KLMSSpacing.micro)
                     .background(actionColor.opacity(0.12), in: Capsule())
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                     Text(change.title.isEmpty ? "(제목 없음)" : change.title)
                         .font(.caption.weight(.semibold))
                         .lineLimit(2)
@@ -5009,7 +5009,7 @@ private struct CalendarChangeRowView: View {
                 .font(.caption)
             }
         }
-        .padding(9)
+        .padding(KLMSSpacing.standardControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
@@ -5217,7 +5217,7 @@ private struct MacMailPasteHeaderButtonContent: View {
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Color.klmsMacCommandAccent)
                 .frame(width: 30, height: 30)
-                .background(Color.klmsMacCommandAccent.opacity(colorScheme == .dark ? 0.18 : 0.11), in: RoundedRectangle(cornerRadius: 9))
+                .background(Color.klmsMacCommandAccent.opacity(colorScheme == .dark ? 0.18 : 0.11), in: RoundedRectangle(cornerRadius: KLMSRadius.standardSurface))
             VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text("메일·캘린더 분석")
                     .font(.subheadline.weight(.semibold))
@@ -5232,8 +5232,8 @@ private struct MacMailPasteHeaderButtonContent: View {
                 Text(analysis.kind.title)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(analysis.kind.tint)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, KLMSSpacing.compactControl)
+                    .padding(.vertical, KLMSSpacing.micro)
                     .background(analysis.kind.tint.opacity(0.12), in: Capsule())
             }
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
@@ -5241,7 +5241,7 @@ private struct MacMailPasteHeaderButtonContent: View {
                 .foregroundStyle(Color.klmsMacSecondaryText)
         }
         .padding(.horizontal, KLMSSpacing.comfortable)
-        .padding(.vertical, 9)
+        .padding(.vertical, KLMSSpacing.standardControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacCommandButtonBackground.opacity(colorScheme == .dark ? 0.82 : 0.92), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay {
@@ -5270,13 +5270,13 @@ private struct MacMailPasteInputBox: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.standardControl) {
             HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                 Image(systemName: "text.badge.checkmark")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(accent)
                     .frame(width: 24, height: 24)
-                    .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.13), in: RoundedRectangle(cornerRadius: 7))
+                    .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.13), in: RoundedRectangle(cornerRadius: KLMSRadius.compactControl))
                 VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                     Text("메일 원문 붙여넣기")
                         .font(.caption.weight(.semibold))
@@ -5289,8 +5289,8 @@ private struct MacMailPasteInputBox: View {
                 Text("1단계")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(accent)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, KLMSSpacing.compactControl)
+                    .padding(.vertical, KLMSSpacing.micro)
                     .background(accent.opacity(colorScheme == .dark ? 0.18 : 0.11), in: Capsule())
             }
 
@@ -5299,7 +5299,7 @@ private struct MacMailPasteInputBox: View {
                     .font(.caption)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 122)
-                    .padding(7)
+                    .padding(KLMSSpacing.compactControl)
                     .background(accent.opacity(colorScheme == .dark ? 0.10 : 0.045), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
                     .overlay {
                         RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
@@ -5309,7 +5309,7 @@ private struct MacMailPasteInputBox: View {
                     Text("예: 시험 일정, 과제 마감, 첨부파일 안내가 들어 있는 메일 본문")
                         .font(.caption)
                         .foregroundStyle(Color.klmsMacSecondaryText.opacity(0.68))
-                        .padding(.horizontal, 13)
+                        .padding(.horizontal, KLMSSpacing.cardInset)
                         .padding(.vertical, KLMSSpacing.roomy)
                         .allowsHitTesting(false)
                 }
@@ -5345,7 +5345,7 @@ private struct MacMailPasteAnalysisResultView: View {
 
     var body: some View {
         if analysis.isEmpty {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.compactControl) {
                 Label("판독 결과", systemImage: "sparkles")
                     .font(.caption.weight(.semibold))
                 Text("메일 원문을 붙여넣고 `판독하기`를 누르면 분류, 과목, 일정, 대시보드 반영 후보를 여기에서 확인합니다.")
@@ -5361,7 +5361,7 @@ private struct MacMailPasteAnalysisResultView: View {
                     .stroke(Color.klmsMacBorder, lineWidth: 1)
             }
         } else {
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: KLMSSpacing.standardControl) {
                 HStack(spacing: KLMSSpacing.standard) {
                     Label("판독 결과", systemImage: "sparkles")
                         .font(.caption.weight(.semibold))
@@ -5369,8 +5369,8 @@ private struct MacMailPasteAnalysisResultView: View {
                     Text("2단계")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(analysis.kind.tint)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, KLMSSpacing.compactControl)
+                        .padding(.vertical, KLMSSpacing.micro)
                         .background(analysis.kind.tint.opacity(0.12), in: Capsule())
                 }
 
@@ -5380,7 +5380,7 @@ private struct MacMailPasteAnalysisResultView: View {
                         .foregroundStyle(analysis.kind.tint)
                         .frame(width: 28, height: 28)
                         .background(analysis.kind.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.micro) {
                         Text(analysis.title.nilIfBlank ?? "제목을 찾지 못했습니다.")
                             .font(.caption.weight(.semibold))
                         Text(analysis.summary)
@@ -5391,7 +5391,7 @@ private struct MacMailPasteAnalysisResultView: View {
                     Spacer(minLength: 0)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: KLMSSpacing.compactControl)], alignment: .leading, spacing: KLMSSpacing.compactControl) {
                     MacMailAnalysisPill(title: "분류", value: analysis.kind.title, tint: analysis.kind.tint)
                     MacMailAnalysisPill(title: "과목", value: analysis.course.nilIfBlank ?? "미확인", tint: Color.klmsMacCommandAccent)
                     MacMailAnalysisPill(title: "일시", value: analysis.dueText.nilIfBlank ?? "미확인", tint: Color.klmsMacWarningForeground)
@@ -5405,7 +5405,7 @@ private struct MacMailPasteAnalysisResultView: View {
                         Text("처리 대상")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.klmsMacSecondaryText)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 7)], alignment: .leading, spacing: 7) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: KLMSSpacing.compactControl)], alignment: .leading, spacing: KLMSSpacing.compactControl) {
                             ForEach(analysis.detectedTargets, id: \.self) { target in
                                 MacMailAnalysisPill(title: "판독", value: target, tint: analysis.kind.tint)
                             }
@@ -5431,8 +5431,8 @@ private struct MacMailPasteAnalysisResultView: View {
                                 Text(item.kindLabel)
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(item.tint)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, KLMSSpacing.compactControl)
+                                    .padding(.vertical, KLMSSpacing.micro)
                                     .background(item.tint.opacity(0.12), in: Capsule())
                                 VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                                     Text(item.title)
@@ -5464,7 +5464,7 @@ private struct MacMailPasteAnalysisResultView: View {
                     let editableItem = registeredItem ?? dashboardItem
                     VStack(alignment: .leading, spacing: KLMSSpacing.standard) {
                         if registeredItem != nil {
-                            HStack(spacing: 7) {
+                            HStack(spacing: KLMSSpacing.compactControl) {
                                 Label("대시보드 등록됨", systemImage: "checkmark.circle.fill")
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(Color.klmsMacSuccessForeground)
@@ -5678,7 +5678,7 @@ private struct MacMailAnalysisProcessView: View {
                         isExpanded.toggle()
                     }
                 } label: {
-                    HStack(spacing: 7) {
+                    HStack(spacing: KLMSSpacing.compactControl) {
                         Label("분석 과정", systemImage: "list.bullet.clipboard")
                             .font(.caption.weight(.semibold))
                         Spacer(minLength: 0)
@@ -5690,21 +5690,21 @@ private struct MacMailAnalysisProcessView: View {
                             .foregroundStyle(Color.klmsMacSecondaryText)
                     }
                     .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
-                    .contentShape(RoundedRectangle(cornerRadius: 7))
+                    .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.compactControl))
                 }
-                .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: 7))
+                .buttonStyle(KLMSMacPressFeedbackButtonStyle(cornerRadius: KLMSRadius.compactControl))
                 .accessibilityLabel("분석 과정 \(steps.count)단계 \(isExpanded ? "펼쳐짐" : "접힘")")
                 .accessibilityHint(isExpanded ? "분석 과정 접기" : "분석 과정 펼치기")
 
                 if isExpanded {
-                    VStack(alignment: .leading, spacing: 7) {
+                    VStack(alignment: .leading, spacing: KLMSSpacing.compactControl) {
                         ForEach(steps) { step in
                             HStack(alignment: .top, spacing: KLMSSpacing.standard) {
                                 Image(systemName: step.systemImage)
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(step.tint)
                                     .frame(width: 20, height: 20)
-                                    .background(step.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+                                    .background(step.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: KLMSRadius.compactSurface))
                                 VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                                     Text(step.title)
                                         .font(.caption.weight(.semibold))
@@ -5715,10 +5715,10 @@ private struct MacMailAnalysisProcessView: View {
                                 }
                                 Spacer(minLength: 0)
                             }
-                            .padding(7)
-                            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: 7))
+                            .padding(KLMSSpacing.compactControl)
+                            .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.compactControl))
                             .overlay {
-                                RoundedRectangle(cornerRadius: 7)
+                                RoundedRectangle(cornerRadius: KLMSRadius.compactControl)
                                     .stroke(Color.klmsMacBorder, lineWidth: 1)
                             }
                         }
@@ -5726,7 +5726,7 @@ private struct MacMailAnalysisProcessView: View {
                     .padding(.top, KLMSSpacing.standard)
                 }
             }
-            .padding(9)
+            .padding(KLMSSpacing.standardControl)
             .background(Color.klmsMacCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
                 RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
@@ -5751,7 +5751,7 @@ private struct MacMailActionPlanView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(9)
+        .padding(KLMSSpacing.standardControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacSubtleCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
@@ -6801,9 +6801,9 @@ private struct CalendarChangeExplanationView: View {
         }
         .padding(KLMSSpacing.standard)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: 7))
+        .background(Color.klmsMacWarningBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.compactControl))
         .overlay {
-            RoundedRectangle(cornerRadius: 7)
+            RoundedRectangle(cornerRadius: KLMSRadius.compactControl)
                 .stroke(Color.klmsMacWarningBorder.opacity(0.24), lineWidth: 1)
         }
     }

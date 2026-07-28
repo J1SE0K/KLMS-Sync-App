@@ -102,7 +102,7 @@ struct SettingsView: View {
     @State private var showsServerRelayClearConfirmation = false
     @AppStorage("KLMSAppearanceMode") private var appearanceMode = KLMSAppearanceMode.system.rawValue
     private let settingsTabColumns = [
-        GridItem(.adaptive(minimum: 104, maximum: 160), spacing: 7),
+        GridItem(.adaptive(minimum: 104, maximum: 160), spacing: KLMSSpacing.compactControl),
     ]
     private let settingsActionColumns = [
         GridItem(.adaptive(minimum: 118), spacing: KLMSSpacing.standard),
@@ -137,7 +137,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: 7) {
+            LazyVGrid(columns: settingsTabColumns, alignment: .leading, spacing: KLMSSpacing.compactControl) {
                 ForEach(SettingsTab.allCases) { tab in
                     settingsTabButton(tab)
                 }
@@ -231,7 +231,7 @@ struct SettingsView: View {
         return Button {
             selectSettingsTab(tab)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: KLMSSpacing.compactControl) {
                 ZStack {
                     RoundedRectangle(cornerRadius: KLMSRadius.smallSurface)
                         .fill(
@@ -251,7 +251,7 @@ struct SettingsView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 9)
+            .padding(.horizontal, KLMSSpacing.standardControl)
             .padding(.vertical, KLMSSpacing.standard)
             .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .center)
             .background(
@@ -297,7 +297,7 @@ struct SettingsView: View {
             .lineLimit(2)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, KLMSSpacing.standard)
-            .padding(.vertical, 5)
+            .padding(.vertical, KLMSSpacing.snug)
             .background(Color.klmsMacSubtleCardBackground, in: Capsule())
     }
 
@@ -1081,7 +1081,7 @@ private struct SettingsDisclosureLabel: View {
     var badge: String? = nil
 
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: KLMSSpacing.standardControl) {
             Image(systemName: systemImage)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(Color.klmsMacCommandAccent)
@@ -1122,8 +1122,8 @@ private struct SettingsDisclosureLabel: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .lineLimit(1)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+                .padding(.horizontal, KLMSSpacing.compactControl)
+                .padding(.vertical, KLMSSpacing.micro)
                 .background(Color.klmsMacCardBackground.opacity(0.72), in: Capsule())
                 .overlay {
                     Capsule()
@@ -1248,7 +1248,7 @@ private struct SettingsFieldRow<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: KLMSSpacing.compactControl) {
             header
 
             if !collapsible || isExpanded {
@@ -1260,23 +1260,23 @@ private struct SettingsFieldRow<Content: View>: View {
                     content()
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(9)
+                .padding(KLMSSpacing.standardControl)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: 9))
+                .background(Color.klmsMacSubtleCardBackground.opacity(0.52), in: RoundedRectangle(cornerRadius: KLMSRadius.standardSurface))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 9)
+                    RoundedRectangle(cornerRadius: KLMSRadius.standardSurface)
                         .stroke(Color.klmsMacBorder.opacity(0.50), lineWidth: 1)
                 }
             }
         }
-        .padding(11)
+        .padding(KLMSSpacing.comfortableControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background((!collapsible || isExpanded) ? Color.klmsMacCardBackground.opacity(0.96) : Color.klmsMacCardBackground.opacity(0.82), in: RoundedRectangle(cornerRadius: KLMSRadius.control))
         .overlay(alignment: .leading) {
             RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.72) : Color.clear)
                 .frame(width: 3)
-                .padding(.vertical, 9)
+                .padding(.vertical, KLMSSpacing.standardControl)
         }
         .overlay {
             RoundedRectangle(cornerRadius: KLMSRadius.control)
@@ -1314,7 +1314,7 @@ private struct SettingsFieldRow<Content: View>: View {
             }
         }
         .frame(maxWidth: .infinity, minHeight: KLMSControlSize.minimumInteractive, alignment: .leading)
-        .contentShape(RoundedRectangle(cornerRadius: 9))
+        .contentShape(RoundedRectangle(cornerRadius: KLMSRadius.standardSurface))
     }
 
     private var fieldTitle: some View {
@@ -1372,7 +1372,7 @@ private struct SettingsFieldDescriptionText: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 7) {
+        HStack(alignment: .top, spacing: KLMSSpacing.compactControl) {
             Image(systemName: "info.circle")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(Color.klmsMacSecondaryText)
@@ -1382,8 +1382,8 @@ private struct SettingsFieldDescriptionText: View {
                 .foregroundStyle(Color.klmsMacSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 7)
+        .padding(.horizontal, KLMSSpacing.standardControl)
+        .padding(.vertical, KLMSSpacing.compactControl)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.klmsMacCardBackground.opacity(0.72), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
         .overlay {
@@ -1476,11 +1476,11 @@ private struct SettingsActionGroupBox<Content: View>: View {
 
             if !collapsible || isExpanded {
                 content()
-                    .padding(9)
+                    .padding(KLMSSpacing.standardControl)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.klmsMacSubtleCardBackground.opacity(0.50), in: RoundedRectangle(cornerRadius: 9))
+                    .background(Color.klmsMacSubtleCardBackground.opacity(0.50), in: RoundedRectangle(cornerRadius: KLMSRadius.standardSurface))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 9)
+                        RoundedRectangle(cornerRadius: KLMSRadius.standardSurface)
                             .stroke(Color.klmsMacBorder.opacity(0.46), lineWidth: 1)
                     }
             }
@@ -1492,7 +1492,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
             RoundedRectangle(cornerRadius: KLMSRadius.indicator)
                 .fill((!collapsible || isExpanded) ? Color.klmsMacSelectedBorder.opacity(0.66) : Color.clear)
                 .frame(width: 3)
-                .padding(.vertical, 9)
+                .padding(.vertical, KLMSSpacing.standardControl)
         }
         .overlay {
             RoundedRectangle(cornerRadius: KLMSRadius.control)
@@ -1517,7 +1517,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
     }
 
     private var headerContent: some View {
-        HStack(alignment: .center, spacing: 9) {
+        HStack(alignment: .center, spacing: KLMSSpacing.standardControl) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.bold))
                 .foregroundStyle((!collapsible || isExpanded) ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
@@ -1526,7 +1526,7 @@ private struct SettingsActionGroupBox<Content: View>: View {
                     (!collapsible || isExpanded)
                         ? Color.klmsMacSelectedBackground.opacity(0.74)
                         : Color.klmsMacSubtleCardBackground.opacity(0.82),
-                    in: RoundedRectangle(cornerRadius: 7)
+                    in: RoundedRectangle(cornerRadius: KLMSRadius.compactControl)
                 )
             VStack(alignment: .leading, spacing: KLMSSpacing.hairline) {
                 Text(title)
@@ -1562,15 +1562,15 @@ private struct SettingsExpansionBadge: View {
     var isExpanded: Bool
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: KLMSSpacing.snug) {
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 10, weight: .bold))
+                .font(.system(size: KLMSTypeSize.badge, weight: .bold))
             Text(isExpanded ? "접기" : "펼치기")
                 .font(.caption2.weight(.semibold))
         }
         .foregroundStyle(isExpanded ? Color.klmsMacSelectedForeground : Color.klmsMacSecondaryText)
         .padding(.horizontal, KLMSSpacing.standard)
-        .padding(.vertical, 5)
+        .padding(.vertical, KLMSSpacing.snug)
         .background(
             isExpanded ? Color.klmsMacSelectedBackground.opacity(0.78) : Color.klmsMacSubtleCardBackground,
             in: Capsule()
@@ -1625,7 +1625,7 @@ private struct KLMSMacSettingsButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, KLMSSpacing.comfortable)
-            .padding(.vertical, 7)
+            .padding(.vertical, KLMSSpacing.compactControl)
             .frame(minHeight: KLMSControlSize.minimumInteractive)
             .background(background(isPressed: configuration.isPressed), in: RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
             .overlay {
