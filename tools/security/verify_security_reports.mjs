@@ -4,9 +4,15 @@ import path from "node:path";
 
 const evidenceDirectory = path.resolve(process.argv[2] || "");
 const policyPath = path.resolve(process.argv[3] || "");
+const securityScope = process.argv[4] || "repository";
 
 if (!process.argv[2] || !process.argv[3]) {
-  throw new Error("usage: verify_security_reports.mjs <evidence-directory> <policy-json>");
+  throw new Error(
+    "usage: verify_security_reports.mjs <evidence-directory> <policy-json> [repository|apple-common]",
+  );
+}
+if (!["repository", "apple-common"].includes(securityScope)) {
+  throw new Error(`unsupported security scope: ${securityScope}`);
 }
 
 const policy = readJSON(policyPath);
@@ -73,7 +79,11 @@ for (const [reportName, label] of [
   assertEqual(pipVulnerabilities, 0, label);
 }
 
-for (const reportName of ["npm-audit-cloudflare.json", "npm-audit-windows.json"]) {
+const npmAuditReports = ["npm-audit-cloudflare.json"];
+if (securityScope === "repository") {
+  npmAuditReports.push("npm-audit-windows.json");
+}
+for (const reportName of npmAuditReports) {
   const report = readJSON(path.join(evidenceDirectory, reportName));
   assertEqual(Number(report.metadata?.vulnerabilities?.total || 0), 0, `${reportName} findings`);
 }
@@ -83,7 +93,7 @@ if (sbom.bomFormat !== "CycloneDX" || !Array.isArray(sbom.components) || sbom.co
   throw new Error("Syft did not produce a populated CycloneDX SBOM");
 }
 
-console.log("security-report-verification ok");
+console.log(`security-report-verification ok scope=${securityScope}`);
 
 function verifySemgrepCompleteness(report, label) {
   assertEqual((report.errors || []).length, 0, `${label} scan errors`);

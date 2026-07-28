@@ -287,6 +287,47 @@ final class KLMSiOSUITests: XCTestCase {
     }
 
     @MainActor
+    func testCompactNavigationReservesScrollableViewport() throws {
+        guard UIDevice.current.userInterfaceIdiom == .pad else {
+            throw XCTSkip("The 719pt compact iPad breakpoint needs an iPad landscape canvas.")
+        }
+        XCUIDevice.shared.orientation = .landscapeRight
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "KLMS_UI_TEST_CAPTURE",
+            "KLMS_UI_TEST_LAYOUT_WIDTH=719",
+        ]
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 12))
+
+        let historyNavigation = identifiedElement("companion-compact-tab-history", in: app)
+        XCTAssertTrue(historyNavigation.waitForExistence(timeout: 8))
+        historyNavigation.tap()
+        XCTAssertTrue(identifiedElement("companion-section-history", in: app).waitForExistence(timeout: 8))
+
+        let scrollViewport = identifiedElement("companion-scroll-viewport", in: app)
+        XCTAssertTrue(scrollViewport.waitForExistence(timeout: 8))
+        XCTAssertLessThanOrEqual(
+            scrollViewport.frame.maxY,
+            historyNavigation.frame.minY - 1,
+            "The scroll viewport itself must end above compact navigation."
+        )
+
+        let fileAccessEmptyState = identifiedElement("history-file-access-empty-state", in: app)
+        XCTAssertTrue(fileAccessEmptyState.waitForExistence(timeout: 8))
+        for _ in 0..<8 where fileAccessEmptyState.frame.maxY > historyNavigation.frame.minY - 1 {
+            app.swipeUp()
+        }
+
+        XCTAssertLessThanOrEqual(
+            fileAccessEmptyState.frame.maxY,
+            historyNavigation.frame.minY - 1,
+            "Compact navigation must reserve viewport height instead of covering scrollable log content."
+        )
+        attachScreenshot(named: "klms-ipad-compact-navigation-reserved-viewport")
+    }
+
+    @MainActor
     func testKoreanGuidanceKeepsCompleteClausesContained() throws {
         guard UIDevice.current.userInterfaceIdiom == .phone else {
             throw XCTSkip("The reported Korean wrapping regressions are specific to the narrow iPhone layout.")

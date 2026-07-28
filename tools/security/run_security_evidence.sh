@@ -9,6 +9,7 @@ source "$script_dir/security-tool-versions.env"
 
 evidence_dir="${1:-${TMPDIR:-/tmp}/klms-security-evidence}"
 scanner_root="${2:-${KLMS_SECURITY_SCANNER_ROOT:-${TMPDIR:-/tmp}/klms-security-scanners}}"
+security_scope="${KLMS_SECURITY_SCOPE:-repository}"
 rules_root="$scanner_root/semgrep-rules-$SEMGREP_RULES_COMMIT"
 javascript_security_rules_root="$rules_root/javascript/lang/security"
 javascript_audit_rules_root="$javascript_security_rules_root/audit"
@@ -34,6 +35,11 @@ fail() {
   printf 'security-evidence-summary status=fail gate=%s\n' "$1" >&2
   exit 1
 }
+
+case "$security_scope" in
+  repository|apple-common) ;;
+  *) fail invalid-scope ;;
+esac
 
 require_version() {
   local name="$1"
@@ -217,26 +223,42 @@ shellcheck -S warning "${shell_files[@]}" > "$evidence_dir/shellcheck.txt" 2>&1 
 pip-audit --disable-pip --no-deps -r "$scan_tree/tools/security/python-runtime-requirements.txt" \
   --format=json --output="$evidence_dir/pip-audit.json" > "$evidence_dir/pip-audit.stdout" 2>&1 || fail pip-audit
 
-trivy fs --cache-dir "$scanner_root/cache/trivy" --scanners vuln,misconfig,secret \
-  --severity HIGH,CRITICAL --exit-code 1 --format json --output "$evidence_dir/trivy.json" "$scan_tree" \
+trivy_args=(fs --cache-dir "$scanner_root/cache/trivy" --scanners "vuln,misconfig,secret")
+osv_args=(scan source -r)
+syft_args=(scan "dir:$scan_tree")
+if [[ "$security_scope" == "apple-common" ]]; then
+  trivy_args+=(--skip-dirs "$scan_tree/apps/KLMSyncWindows")
+  osv_args+=(--experimental-exclude "$scan_tree/apps/KLMSyncWindows")
+  syft_args+=(--exclude "./apps/KLMSyncWindows/**")
+fi
+
+trivy_args+=(
+  --severity "HIGH,CRITICAL" --exit-code 1 --format json
+  --output "$evidence_dir/trivy.json" "$scan_tree"
+)
+trivy "${trivy_args[@]}" \
   > "$evidence_dir/trivy.stdout" 2>&1 || fail trivy
 
-osv-scanner scan source -r "$scan_tree" --format json --output "$evidence_dir/osv.json" \
+osv_args+=("$scan_tree" --format json --output "$evidence_dir/osv.json")
+osv-scanner "${osv_args[@]}" \
   > "$evidence_dir/osv.stdout" 2>&1 || fail osv-scanner
 
-syft scan "dir:$scan_tree" -o "cyclonedx-json=$evidence_dir/sbom.cdx.json" \
+syft_args+=(-o "cyclonedx-json=$evidence_dir/sbom.cdx.json")
+syft "${syft_args[@]}" \
   > "$evidence_dir/syft.stdout" 2>&1 || fail syft
 grype "sbom:$evidence_dir/sbom.cdx.json" --fail-on high --only-fixed --output json \
   --file "$evidence_dir/grype.json" > "$evidence_dir/grype.stdout" 2>&1 || fail grype
 
 (cd "$scan_tree/deploy/cloudflare-worker" && npm audit --audit-level=high --json) \
   > "$evidence_dir/npm-audit-cloudflare.json" 2> "$evidence_dir/npm-audit-cloudflare.stderr" || fail npm-cloudflare
-(cd "$scan_tree/apps/KLMSyncWindows" && npm audit --audit-level=high --json) \
-  > "$evidence_dir/npm-audit-windows.json" 2> "$evidence_dir/npm-audit-windows.stderr" || fail npm-windows
+if [[ "$security_scope" == "repository" ]]; then
+  (cd "$scan_tree/apps/KLMSyncWindows" && npm audit --audit-level=high --json) \
+    > "$evidence_dir/npm-audit-windows.json" 2> "$evidence_dir/npm-audit-windows.stderr" || fail npm-windows
+fi
 
-node "$script_dir/verify_security_reports.mjs" "$evidence_dir" "$policy_path" \
+node "$script_dir/verify_security_reports.mjs" "$evidence_dir" "$policy_path" "$security_scope" \
   > "$evidence_dir/verification.txt" 2>&1 || fail adjudication
 
 candidate="$(git rev-parse HEAD)"
-printf 'security-evidence-summary status=pass candidate=%s scanners=10 reports=%s\n' \
-  "$candidate" "$evidence_dir"
+printf 'security-evidence-summary status=pass scope=%s candidate=%s scanners=10 reports=%s\n' \
+  "$security_scope" "$candidate" "$evidence_dir"

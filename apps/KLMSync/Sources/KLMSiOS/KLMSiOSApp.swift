@@ -7032,14 +7032,16 @@ private struct CompanionAdaptiveRootView: View {
     var layoutMode: AdaptiveLayoutMode
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            CompanionStableSectionPane(section: currentSection, model: model, openSection: select)
-                .padding(.leading, navigationWidth)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        VStack(spacing: 0) {
+            ZStack(alignment: .topLeading) {
+                CompanionStableSectionPane(section: currentSection, model: model, openSection: select)
+                    .padding(.leading, navigationWidth)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-            navigationSurface
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+                navigationSurface
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
             if layoutMode == .compact {
                 CompanionCompactTabBar(selectedSection: sectionBinding)
                     .id("compact-tab-\(layoutMode.rawValue)")
@@ -9326,6 +9328,7 @@ private struct WholeScreenVerticalScrollView<Content: View>: View {
                     .contentShape(Rectangle())
                     .padding(.bottom, bottomScrollInset)
             }
+            .accessibilityIdentifier("companion-scroll-viewport")
             .scrollIndicators(.visible)
             .scrollDismissesKeyboard(.immediately)
             .background(Color.klmsScreenBackground)
@@ -19746,6 +19749,7 @@ private struct RecentFileAccessRequestsView: View {
                     .padding(KLMSSpacing.section)
                     .background(Color.klmsSubtleCardBackground)
                     .clipShape(RoundedRectangle(cornerRadius: KLMSRadius.smallSurface))
+                    .accessibilityIdentifier("history-file-access-empty-state")
             } else {
                 let visibleRequests = requests.prefix(visibleLimit)
                 LazyVStack(spacing: KLMSSpacing.standard) {

@@ -45,6 +45,29 @@ class SecurityReportVerifierTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("security-report-verification ok", result.stdout)
 
+    def test_apple_common_scope_does_not_require_windows_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            evidence_dir, policy_path = self._write_valid_fixture(Path(raw_root))
+            (evidence_dir / "npm-audit-windows.json").unlink()
+
+            result = self._run_verifier(
+                evidence_dir,
+                policy_path,
+                scope="apple-common",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("scope=apple-common", result.stdout)
+
+    def test_rejects_unknown_security_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as raw_root:
+            evidence_dir, policy_path = self._write_valid_fixture(Path(raw_root))
+
+            result = self._run_verifier(evidence_dir, policy_path, scope="partial")
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unsupported security scope", result.stderr)
+
     def test_rejects_semgrep_top_level_errors(self) -> None:
         with tempfile.TemporaryDirectory() as raw_root:
             evidence_dir, policy_path = self._write_valid_fixture(Path(raw_root))
@@ -170,9 +193,14 @@ class SecurityReportVerifierTests(unittest.TestCase):
         self,
         evidence_dir: Path,
         policy_path: Path,
+        *,
+        scope: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
+        command = ["node", str(VERIFIER), str(evidence_dir), str(policy_path)]
+        if scope is not None:
+            command.append(scope)
         return subprocess.run(
-            ["node", str(VERIFIER), str(evidence_dir), str(policy_path)],
+            command,
             cwd=PROJECT_DIR,
             text=True,
             capture_output=True,

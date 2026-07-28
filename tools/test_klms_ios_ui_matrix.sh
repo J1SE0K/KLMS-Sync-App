@@ -11,6 +11,7 @@ TEST_IDENTIFIERS=(
   "KLMSiOSUITests/KLMSiOSUITests/testAllMajorSectionsRemainReachableAndHorizontallyContained"
   "KLMSiOSUITests/KLMSiOSUITests/testWorkstationUsesVerticalFallbackAtNarrowWideBoundary"
   "KLMSiOSUITests/KLMSiOSUITests/testNavigationStagesAtExactAdaptiveBoundaries"
+  "KLMSiOSUITests/KLMSiOSUITests/testCompactNavigationReservesScrollableViewport"
   "KLMSiOSUITests/KLMSiOSUITests/testKoreanGuidanceKeepsCompleteClausesContained"
   "KLMSiOSUITests/KLMSiOSUITests/testAX5KeepsSyncActionsAndCompactNavigationReachable"
   "KLMSiOSUITests/KLMSiOSUITests/testHistoryClearActionsStayCompactAndRequireConfirmation"
@@ -112,7 +113,10 @@ result_path = Path(sys.argv[2])
 summary_path = Path(sys.argv[3])
 expected = [value.rsplit("/", 1)[-1] for value in sys.argv[4:]]
 allowed_skips = {
-    "iphone": {"testWorkstationUsesVerticalFallbackAtNarrowWideBoundary"},
+    "iphone": {
+        "testWorkstationUsesVerticalFallbackAtNarrowWideBoundary",
+        "testCompactNavigationReservesScrollableViewport",
+    },
     "ipad": {
         "testKoreanGuidanceKeepsCompleteClausesContained",
         "testHistoryClearActionsStayCompactAndRequireConfirmation",

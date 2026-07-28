@@ -163,6 +163,22 @@
       }
     },
     {
+      "id": "security-evidence-apple-common",
+      "command": "KLMS_SECURITY_REQUIRE_CLEAN=1 KLMS_SECURITY_SCOPE=apple-common tools/security/run_security_evidence.sh <isolated-path> <scanner-root>",
+      "execution": {
+        "workingDirectory": ".",
+        "environment": {
+          "KLMS_SECURITY_REQUIRE_CLEAN": "1",
+          "KLMS_SECURITY_SCOPE": "apple-common"
+        },
+        "timeoutSeconds": 1800,
+        "maxOutputBytes": 100663296,
+        "steps": [
+          {"argv": ["tools/security/run_security_evidence.sh", "<isolated-path>", "<scanner-root>"]}
+        ]
+      }
+    },
+    {
       "id": "security-evidence",
       "command": "KLMS_SECURITY_REQUIRE_CLEAN=1 tools/security/run_security_evidence.sh <private-evidence-dir> <scanner-root>",
       "execution": {

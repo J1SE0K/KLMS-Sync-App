@@ -510,13 +510,13 @@ final class DashboardDataModelTests: XCTestCase {
             url: "",
             title: "Weekly Report",
             course: "Algorithms",
-            syncDue: "2026-07-20T23:59:00+09:00"
+            syncDue: "2099-07-20T23:59:00+09:00"
         )
         let second = try decodeStateItem(
             url: "",
             title: "Weekly Report",
             course: "Algorithms",
-            syncDue: "2026-07-27T23:59:00+09:00"
+            syncDue: "2099-07-27T23:59:00+09:00"
         )
         let legacyKey = try XCTUnwrap(
             ManualOverridesSnapshot.legacyBroadAssignmentOverrideKey(for: first)
@@ -2714,7 +2714,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(companionWorkstationMetrics.contains("static let listColumnIdealWidth: CGFloat = 560"))
         XCTAssertTrue(companionWorkstationMetrics.contains("static let listColumnMaxWidth: CGFloat = 700"))
         XCTAssertTrue(compactRoot.contains("CompanionCompactTabBar"))
-        XCTAssertTrue(compactRoot.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
+        XCTAssertTrue(compactRoot.contains("VStack(spacing: 0)") && !compactRoot.contains(".safeAreaInset(edge: .bottom, spacing: 0)"))
         XCTAssertTrue(compactRoot.contains(".id(\"compact-tab-\\(layoutMode.rawValue)\")"))
         XCTAssertFalse(compactRoot.contains("CompanionCompactTabBar(selectedSection: $selectedSection)\n                .padding(.horizontal, KLMSSpacing.spacious)\n                .padding(.top, 7)\n                .padding(.bottom, KLMSSpacing.comfortable)"))
         XCTAssertTrue(compactRoot.contains("CompanionStableSectionPane(section: currentSection, model: model, openSection: select)"))
