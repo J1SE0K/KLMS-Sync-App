@@ -2496,7 +2496,8 @@ public extension ServerRelaySyncItem {
             coverageSummary: sourceText,
             autoCompleted: false,
             recordStatus: "",
-            completionReason: ""
+            completionReason: "",
+            sourceIdentifier: normalized.id
         )
     }
 

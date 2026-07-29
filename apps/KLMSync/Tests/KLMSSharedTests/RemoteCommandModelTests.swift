@@ -1042,6 +1042,33 @@ final class RemoteCommandModelTests: XCTestCase {
         ])
     }
 
+    func testMailStateItemKeepsServerIdentityWhenRealtimeTitleChanges() throws {
+        let first = ServerRelaySyncItem(
+            id: "mail-stable-assignment",
+            kind: "assignment",
+            course: "실시간 시스템",
+            title: "과제 제목 V1",
+            timestamp: "2099-06-17 13:00",
+            status: "메일 분석"
+        )
+        let updated = ServerRelaySyncItem(
+            id: first.id,
+            kind: first.kind,
+            course: first.course,
+            title: "과제 제목 V2",
+            timestamp: first.timestamp,
+            status: first.status
+        )
+
+        let firstStateItem = try XCTUnwrap(first.mailStateItem)
+        let updatedStateItem = try XCTUnwrap(updated.mailStateItem)
+
+        XCTAssertEqual(firstStateItem.id, first.id)
+        XCTAssertEqual(updatedStateItem.id, first.id)
+        XCTAssertEqual(firstStateItem.id, updatedStateItem.id)
+        XCTAssertNotEqual(firstStateItem.title, updatedStateItem.title)
+    }
+
     func testIncompleteMailDashboardScheduleItemsDoNotCountAsActiveItems() throws {
         let incompleteExam = ServerRelaySyncItem(
             id: "mail-empty-exam",

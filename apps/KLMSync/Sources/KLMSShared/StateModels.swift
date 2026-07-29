@@ -104,8 +104,15 @@ public struct StateItem: Decodable, Sendable, Equatable, Identifiable {
     public var autoCompleted: Bool
     public var recordStatus: String
     public var completionReason: String
+    public var sourceIdentifier: String
 
-    public var id: String { url.isEmpty ? "\(course)-\(title)-\(syncDue)" : url }
+    public var id: String {
+        let normalizedSourceIdentifier = sourceIdentifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedSourceIdentifier.isEmpty {
+            return normalizedSourceIdentifier
+        }
+        return url.isEmpty ? "\(course)-\(title)-\(syncDue)" : url
+    }
 
     public init(
         url: String = "",
@@ -121,7 +128,8 @@ public struct StateItem: Decodable, Sendable, Equatable, Identifiable {
         coverageSummary: String = "",
         autoCompleted: Bool = false,
         recordStatus: String = "",
-        completionReason: String = ""
+        completionReason: String = "",
+        sourceIdentifier: String = ""
     ) {
         self.url = url
         self.type = type
@@ -137,6 +145,7 @@ public struct StateItem: Decodable, Sendable, Equatable, Identifiable {
         self.autoCompleted = autoCompleted
         self.recordStatus = recordStatus
         self.completionReason = completionReason
+        self.sourceIdentifier = sourceIdentifier
     }
 
     enum CodingKeys: String, CodingKey {
@@ -154,6 +163,7 @@ public struct StateItem: Decodable, Sendable, Equatable, Identifiable {
         case autoCompleted = "auto_completed"
         case recordStatus = "record_status"
         case completionReason = "completion_reason"
+        case sourceIdentifier = "source_identifier"
     }
 
     public init(from decoder: Decoder) throws {
@@ -172,6 +182,7 @@ public struct StateItem: Decodable, Sendable, Equatable, Identifiable {
         autoCompleted = container.decodeIfPresentDefault(Bool.self, forKey: .autoCompleted, default: false)
         recordStatus = container.decodeIfPresentDefault(String.self, forKey: .recordStatus, default: "")
         completionReason = container.decodeIfPresentDefault(String.self, forKey: .completionReason, default: "")
+        sourceIdentifier = container.decodeIfPresentDefault(String.self, forKey: .sourceIdentifier, default: "")
     }
 }
 
