@@ -50,7 +50,14 @@ final class KLMSiOSUITests: XCTestCase {
             in: app
         )
         XCTAssertTrue(initialNavigation.waitForExistence(timeout: 8), "Expected navigation for the initial width is missing.")
-        initialNavigation.tap()
+        XCTAssertTrue(
+            openSection(
+                navigationIdentifier: isPad ? "companion-sidebar-history" : "companion-compact-tab-history",
+                sectionIdentifier: "companion-section-history",
+                in: app
+            ),
+            "The log navigation did not activate."
+        )
 
         let historySection = identifiedElement("companion-section-history", in: app)
         XCTAssertTrue(historySection.waitForExistence(timeout: 8), "The log section did not open.")
@@ -88,7 +95,14 @@ final class KLMSiOSUITests: XCTestCase {
 
         let dashboardNavigation = identifiedElement("\(resizedPrefix)-status", in: app)
         XCTAssertTrue(dashboardNavigation.waitForExistence(timeout: 8), "Resized dashboard navigation is missing.")
-        dashboardNavigation.tap()
+        XCTAssertTrue(
+            openSection(
+                navigationIdentifier: "\(resizedPrefix)-status",
+                sectionIdentifier: "companion-section-status",
+                in: app
+            ),
+            "The dashboard navigation did not activate after the layout transition."
+        )
         let dashboardSection = identifiedElement("companion-section-status", in: app)
         XCTAssertTrue(dashboardSection.waitForExistence(timeout: 8), "The dashboard section did not reopen.")
         let stackedPrimarySync = identifiedElement("dashboard-primary-full-sync", in: app)
@@ -629,24 +643,30 @@ final class KLMSiOSUITests: XCTestCase {
         sectionIdentifier: String,
         in app: XCUIApplication
     ) -> Bool {
-        let navigation = identifiedElement(navigationIdentifier, in: app)
-        let hittableExpectation = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "exists == true AND hittable == true"),
-            object: navigation
-        )
-        guard XCTWaiter.wait(
-            for: [hittableExpectation],
-            timeout: 4
-        ) == .completed else {
-            return false
-        }
-
-        if navigation.value as? String != "선택됨" {
-            navigation.tap()
-        }
         let section = identifiedElement(sectionIdentifier, in: app)
-        return waitForValue("선택됨", of: navigation, timeout: 3) &&
-            section.waitForExistence(timeout: 3)
+        for _ in 0..<2 {
+            let navigation = identifiedElement(navigationIdentifier, in: app)
+            let hittableExpectation = XCTNSPredicateExpectation(
+                predicate: NSPredicate(format: "exists == true AND hittable == true"),
+                object: navigation
+            )
+            guard XCTWaiter.wait(
+                for: [hittableExpectation],
+                timeout: 4
+            ) == .completed else {
+                return false
+            }
+
+            if navigation.value as? String != "선택됨" {
+                navigation.tap()
+            }
+            let refreshedNavigation = identifiedElement(navigationIdentifier, in: app)
+            if waitForValue("선택됨", of: refreshedNavigation, timeout: 3),
+               section.waitForExistence(timeout: 3) {
+                return true
+            }
+        }
+        return false
     }
 
     @MainActor
