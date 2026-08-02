@@ -100,6 +100,7 @@ install_tool_files() {
     klms_relay_server.mjs \
     klms_bounded_rate_window.mjs \
     klms_public_log_redactor.mjs \
+    klms_realtime_admission.mjs \
     run_klms_relay_agent.sh; do
     if [[ ! -f "$SCRIPT_DIR/$tool_file" ]]; then
       print -u2 -- "Missing relay runtime file: $SCRIPT_DIR/$tool_file"

@@ -1686,6 +1686,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("tools/klms_relay_server.mjs", payload_allowlist)
         self.assertIn("tools/klms_bounded_rate_window.mjs", payload_allowlist)
         self.assertIn("tools/klms_public_log_redactor.mjs", payload_allowlist)
+        self.assertIn("tools/klms_realtime_admission.mjs", payload_allowlist)
         self.assertIn("tools/install_klms_relay_agent.sh", payload_allowlist)
         self.assertNotIn("docs", {path.split("/", 1)[0] for path in payload_allowlist})
         self.assertNotIn("src/swift/capture_notice_native_state.swift", payload_allowlist)
@@ -1701,6 +1702,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "klms_relay_server.mjs",
             "klms_bounded_rate_window.mjs",
             "klms_public_log_redactor.mjs",
+            "klms_realtime_admission.mjs",
             "run_klms_relay_agent.sh",
         ):
             self.assertIn(relay_runtime_file, relay_installer)
@@ -1708,6 +1710,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "klms_relay_server.mjs",
             "klms_bounded_rate_window.mjs",
             "klms_public_log_redactor.mjs",
+            "klms_realtime_admission.mjs",
         ):
             self.assertIn(relay_module, relay_dockerfile)
 

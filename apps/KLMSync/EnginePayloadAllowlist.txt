@@ -59,6 +59,7 @@ examples/config.env.example
 tools/install_klms_relay_agent.sh
 tools/klms_bounded_rate_window.mjs
 tools/klms_public_log_redactor.mjs
+tools/klms_realtime_admission.mjs
 tools/klms_relay_server.mjs
 tools/run_klms_relay_agent.sh
 klms_login_assist.sh

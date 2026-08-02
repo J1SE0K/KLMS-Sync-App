@@ -10,6 +10,7 @@ WORKDIR /app
 COPY tools/klms_relay_server.mjs \
      tools/klms_bounded_rate_window.mjs \
      tools/klms_public_log_redactor.mjs \
+     tools/klms_realtime_admission.mjs \
      /app/tools/
 
 RUN useradd --system --uid 10001 --create-home --home-dir /home/klms klms \
