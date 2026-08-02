@@ -36,6 +36,21 @@ jobs:
           tools/security/run_security_evidence.sh \
             "$RUNNER_TEMP/klms-security-evidence" \
             "$RUNNER_TEMP/klms-security-scanners"
+      - name: Build and smoke-test the minimal relay image
+        env:
+          KLMS_CONTAINER_IMAGE_TAG: klms-relay:security
+          KLMS_CONTAINER_KEEP_IMAGE: "1"
+          KLMS_CONTAINER_REQUIRE_CLEAN: "1"
+        run: deploy/relay/test_container.sh
+      - name: Reject high and critical relay image vulnerabilities
+        run: >-
+          "$RUNNER_TEMP/klms-security-scanners/bin/trivy" image
+          --cache-dir "$RUNNER_TEMP/klms-security-scanners/cache/trivy-image"
+          --scanners vuln
+          --severity HIGH,CRITICAL
+          --exit-code 1
+          --no-progress
+          klms-relay:security
 
   core-tests:
     name: Core safety tests

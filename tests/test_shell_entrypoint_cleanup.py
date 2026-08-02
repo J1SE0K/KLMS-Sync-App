@@ -1713,6 +1713,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             "klms_realtime_admission.mjs",
         ):
             self.assertIn(relay_module, relay_dockerfile)
+        self.assertIn("AS data-layout", relay_dockerfile)
+        self.assertIn("FROM debian:bookworm-slim@sha256:", relay_dockerfile)
+        self.assertIn("FROM gcr.io/distroless/nodejs22-debian13@sha256:", relay_dockerfile)
+        self.assertIn("USER 65532", relay_dockerfile)
+        self.assertIn('CMD ["/app/tools/klms_relay_server.mjs"]', relay_dockerfile)
+        self.assertNotIn("node_modules/npm", relay_dockerfile)
 
     def test_private_readiness_builds_an_isolated_app_copy(self) -> None:
         readiness = (PROJECT_DIR / "tools" / "verify_klms_app_readiness.sh").read_text(
@@ -1815,6 +1821,19 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             mac_realtime_gate["execution"]["steps"][0]["argv"],
             ["node", "tools/run_klms_isolated_state_qa.mjs", "<isolated-path>"],
         )
+        relay_container_gate = next(
+            gate
+            for gate in inventory["automatedGates"]
+            if gate["id"] == "relay-container"
+        )
+        self.assertEqual(
+            relay_container_gate["execution"]["environment"]["KLMS_CONTAINER_REQUIRE_CLEAN"],
+            "1",
+        )
+        self.assertEqual(
+            relay_container_gate["execution"]["steps"][0]["argv"],
+            ["deploy/relay/test_container.sh"],
+        )
         self.assertEqual(
             inventory["releaseEvidenceReceipt"]["gateRunner"],
             "tools/run_release_gate.sh <gate-id>",
@@ -1857,6 +1876,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
             workflows.count("persist-credentials: false"),
         )
         self.assertIn("node --test deploy/relay/test_restore_db.mjs", workflows)
+        self.assertIn("deploy/relay/test_container.sh", workflows)
+        self.assertIn("--severity HIGH,CRITICAL", workflows)
 
     def test_mac_app_notifies_auth_completion(self) -> None:
         model = (
