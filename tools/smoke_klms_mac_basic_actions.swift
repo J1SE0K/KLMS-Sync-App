@@ -50,6 +50,7 @@ private let requiredLogControls = [
     "실행 로그 지우기",
     "서버 로그 지우기",
 ]
+private var targetProcessIdentifier: pid_t?
 
 do {
     try runSmoke()
@@ -65,6 +66,7 @@ private func runSmoke() throws {
     }
 
     var app = try ensureAppRunning()
+    targetProcessIdentifier = app.processIdentifier
     var appElement = AXUIElementCreateApplication(app.processIdentifier)
     try openDashboardWindow(appElement: appElement)
     try verifyDashboardActions(appElement: appElement)
@@ -73,6 +75,7 @@ private func runSmoke() throws {
     if verifyCommandQ {
         try verifyCommandQTerminatesAndReopens(app: app)
         app = try ensureAppRunning()
+        targetProcessIdentifier = app.processIdentifier
         appElement = AXUIElementCreateApplication(app.processIdentifier)
         try openDashboardWindow(appElement: appElement)
     }
@@ -191,9 +194,14 @@ private func pressWorkspaceButton(_ identifier: String, appElement: AXUIElement)
     guard let button = waitForElement(withIdentifier: identifier, in: appElement, timeout: timeout) else {
         throw SmokeFailure.expectedControlMissing(identifier)
     }
-    _ = AXUIElementPerformAction(button, kAXPressAction as CFString)
+    let pressError = AXUIElementPerformAction(button, kAXPressAction as CFString)
+    guard pressError == .success else {
+        throw SmokeFailure.expectedControlNotActionable(identifier)
+    }
     if let contentIdentifier = workspaceContentIdentifier(for: identifier) {
-        _ = waitForElement(withIdentifier: contentIdentifier, in: appElement, timeout: timeout)
+        guard waitForElement(withIdentifier: contentIdentifier, in: appElement, timeout: timeout) != nil else {
+            throw SmokeFailure.expectedControlMissing(contentIdentifier)
+        }
     } else {
         Thread.sleep(forTimeInterval: 0.1)
     }
@@ -224,7 +232,7 @@ private func workspaceContentIdentifier(for buttonIdentifier: String) -> String?
     guard buttonIdentifier.hasPrefix(prefix) else {
         return nil
     }
-    return "workspace-container-\(buttonIdentifier.dropFirst(prefix.count))"
+    return "workspace-content-root-\(buttonIdentifier.dropFirst(prefix.count))"
 }
 
 private func verifyCommandQTerminatesAndReopens(app: NSRunningApplication) throws {
@@ -335,13 +343,12 @@ private func findElement(
     maxNodes: Int,
     where predicate: (AXUIElement) -> Bool
 ) -> AXUIElement? {
-    var stack: [(AXUIElement, Int)] = [(root, 0)]
-    var visited = Set<CFHashCode>()
+    var stack: [(AXUIElement, Int)] = [(refreshedApplicationRoot(ifNeeded: root), 0)]
+    var visited = Set<AXUIElement>()
     var visitedCount = 0
 
     while let (element, depth) = stack.popLast() {
-        let elementHash = CFHash(element)
-        guard visited.insert(elementHash).inserted else {
+        guard visited.insert(element).inserted else {
             continue
         }
 
@@ -364,6 +371,21 @@ private func findElement(
     }
 
     return nil
+}
+
+private func refreshedApplicationRoot(ifNeeded root: AXUIElement) -> AXUIElement {
+    guard let targetProcessIdentifier else {
+        return root
+    }
+    if let app = NSRunningApplication(processIdentifier: targetProcessIdentifier),
+       !app.isTerminated,
+       !app.isActive {
+        app.unhide()
+        app.activate(options: [.activateAllWindows])
+    }
+    let currentRoot = AXUIElementCreateApplication(targetProcessIdentifier)
+    AXUIElementSetAttributeValue(currentRoot, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    return CFEqual(root, currentRoot) ? currentRoot : root
 }
 
 private func childElements(of element: AXUIElement) -> [AXUIElement] {
