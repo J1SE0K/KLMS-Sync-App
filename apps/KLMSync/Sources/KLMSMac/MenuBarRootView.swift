@@ -25,6 +25,7 @@ struct MenuBarRootView: View {
                     mainWorkspace(metrics: metrics)
                         .frame(width: metrics.workspaceWidth, alignment: .topLeading)
                         .frame(maxHeight: .infinity, alignment: .top)
+                        .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("workspace-layout-mode-\(metrics.contentMode.rawValue)")
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
@@ -90,6 +91,7 @@ struct MenuBarRootView: View {
             }
             .frame(width: metrics.navigationColumnWidth, alignment: .topLeading)
             .frame(maxHeight: .infinity, alignment: .top)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("workspace-navigation-mode-\(metrics.navigationMode.rawValue)")
         }
     }
@@ -1681,6 +1683,7 @@ private struct WholeScreenVerticalScrollView<ResetID: Equatable, Content: View>:
             .frame(width: viewportWidth, alignment: .topLeading)
             .scrollIndicators(.visible)
             .clipped()
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier(accessibilityIdentifier)
             .onChange(of: resetID) { _, _ in
                 scheduleScrollReset(proxy: proxy)

@@ -67,6 +67,7 @@ private let targets = [
     ProbeTarget(rawValue: "diagnostics", renderedTexts: ["상태 검사", "권한/환경 진단"]),
     ProbeTarget(rawValue: "settings", renderedTexts: ["이 기기에 바로 적용"]),
 ]
+private var targetProcessIdentifier: pid_t?
 
 do {
     try runProbe()
@@ -85,6 +86,7 @@ private func runProbe() throws {
     guard let app = launchKLMSApplicationIfNeeded() else {
         throw ProbeFailure.appNotRunning(bundleID: bundleID, appName: appName)
     }
+    targetProcessIdentifier = app.processIdentifier
 
     let appElement = AXUIElementCreateApplication(app.processIdentifier)
     bringKLMSAppForward(app: app, appElement: appElement)
@@ -95,7 +97,7 @@ private func runProbe() throws {
         if runCount > 1 {
             print("== probe \(runIndex)/\(runCount) ==")
         }
-        results.append(try runSingleProbe(appElement: appElement))
+        results.append(try runSingleProbe(app: app, appElement: appElement))
     }
 
     if runCount > 1 {
@@ -170,19 +172,30 @@ private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElem
     app.unhide()
     app.activate(options: [.activateAllWindows])
     AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
-    activateApplicationWithAppleScript()
+    if appPath == nil {
+        activateApplicationWithAppleScript()
+    }
     requestDashboardWindowReopen()
 
-    let deadline = Date().addingTimeInterval(min(1.5, timeout))
+    let deadline = Date().addingTimeInterval(timeout)
+    var stableSamples = 0
     repeat {
         app.unhide()
         app.activate(options: [.activateAllWindows])
         AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-        if isFrontmost, hasUsableAccessibilityWindow(in: appElement) {
-            return
+        if isFrontmost,
+           hasVisibleDashboardWindow(),
+           hasUsableAccessibilityWindow(in: appElement),
+           waitForElement(withIdentifier: "workspace-dashboard", in: appElement, timeout: 0.1) != nil {
+            stableSamples += 1
+            if stableSamples >= 2 {
+                return
+            }
+        } else {
+            stableSamples = 0
         }
-        Thread.sleep(forTimeInterval: 0.05)
+        Thread.sleep(forTimeInterval: 0.10)
     } while Date() < deadline
 }
 
@@ -224,10 +237,17 @@ private struct ProbeRunResult {
 }
 
 @discardableResult
-private func runSingleProbe(appElement: AXUIElement) throws -> ProbeRunResult {
+private func runSingleProbe(
+    app: NSRunningApplication,
+    appElement: AXUIElement
+) throws -> ProbeRunResult {
     var samples: [(String, Double)] = []
     for target in targets {
-        let elapsed = try measure(target: target, appElement: appElement)
+        let elapsed = try measureRecoveringWindowLoss(
+            target: target,
+            app: app,
+            appElement: appElement
+        )
         samples.append((target.rawValue, elapsed))
         print("\(target.rawValue)=\(Int(elapsed.rounded()))ms")
     }
@@ -237,6 +257,40 @@ private func runSingleProbe(appElement: AXUIElement) throws -> ProbeRunResult {
     let slowest = result.slowest
     print("average=\(Int(average.rounded()))ms slowest=\(slowest?.0 ?? "-"):\(Int((slowest?.1 ?? 0).rounded()))ms")
     return result
+}
+
+private func measureRecoveringWindowLoss(
+    target: ProbeTarget,
+    app: NSRunningApplication,
+    appElement: AXUIElement
+) throws -> Double {
+    var lastError: Error?
+    for attempt in 0..<3 {
+        do {
+            return try measure(target: target, appElement: appElement)
+        } catch {
+            lastError = error
+        }
+
+        guard let recoveryError = lastError else {
+            throw ProbeFailure.accessibilityTreeUnavailable(frontmostApp: nil)
+        }
+        let needsRecovery = NSWorkspace.shared.frontmostApplication?.processIdentifier != app.processIdentifier
+            || !hasVisibleDashboardWindow()
+            || !hasUsableAccessibilityWindow(in: appElement)
+        guard needsRecovery else {
+            throw recoveryError
+        }
+        let notice = "probe notice: transient focus/window loss during \(target.rawValue) "
+            + "attempt \(attempt + 1); restoring KLMS Sync before retry.\n"
+        FileHandle.standardError.write(Data(notice.utf8))
+        bringKLMSAppForward(app: app, appElement: appElement)
+        try openDashboardWindowIfNeeded(appElement: appElement)
+    }
+    guard let lastError else {
+        throw ProbeFailure.accessibilityTreeUnavailable(frontmostApp: nil)
+    }
+    throw lastError
 }
 
 private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
@@ -269,6 +323,16 @@ private func openDashboardWindowIfNeeded(appElement: AXUIElement) throws {
 }
 
 private func requestDashboardWindowReopen() {
+    if let appPath, !appPath.isEmpty {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        process.arguments = [appPath]
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try? process.run()
+        process.waitUntilExit()
+        return
+    }
     let escapedAppName = appName.replacingOccurrences(of: "\"", with: "\\\"")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
@@ -282,6 +346,10 @@ private func requestDashboardWindowReopen() {
 private func hasVisibleDashboardWindow() -> Bool {
     let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
     return windows.contains { info in
+        if let targetProcessIdentifier {
+            let ownerPID = (info[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value
+            guard ownerPID == targetProcessIdentifier else { return false }
+        }
         let owner = info[kCGWindowOwnerName as String] as? String ?? ""
         return owner == appName || owner == "KLMS Sync" || owner == "KLMSMac"
     }
@@ -434,13 +502,12 @@ private func findElement(
     maxNodes: Int,
     predicate: (AXUIElement) -> Bool
 ) -> AXUIElement? {
-    var stack: [(AXUIElement, Int)] = [(root, 0)]
-    var visited = Set<CFHashCode>()
+    var stack: [(AXUIElement, Int)] = [(refreshedApplicationRoot(ifNeeded: root), 0)]
+    var visited = Set<AXUIElement>()
     var visitedCount = 0
 
     while let (element, depth) = stack.popLast() {
-        let elementHash = CFHash(element)
-        guard visited.insert(elementHash).inserted else {
+        guard visited.insert(element).inserted else {
             continue
         }
 
@@ -472,13 +539,12 @@ private func findIdentifiers(
 ) -> Set<String> {
     var remaining = identifiers
     var found = Set<String>()
-    var stack: [(AXUIElement, Int)] = [(root, 0)]
-    var visited = Set<CFHashCode>()
+    var stack: [(AXUIElement, Int)] = [(refreshedApplicationRoot(ifNeeded: root), 0)]
+    var visited = Set<AXUIElement>()
     var visitedCount = 0
 
     while let (element, depth) = stack.popLast() {
-        let elementHash = CFHash(element)
-        guard visited.insert(elementHash).inserted else {
+        guard visited.insert(element).inserted else {
             continue
         }
 
@@ -505,6 +571,21 @@ private func findIdentifiers(
         }
     }
     return found
+}
+
+private func refreshedApplicationRoot(ifNeeded root: AXUIElement) -> AXUIElement {
+    guard let targetProcessIdentifier else {
+        return root
+    }
+    if let app = NSRunningApplication(processIdentifier: targetProcessIdentifier),
+       !app.isTerminated,
+       !app.isActive {
+        app.unhide()
+        app.activate(options: [.activateAllWindows])
+    }
+    let currentRoot = AXUIElementCreateApplication(targetProcessIdentifier)
+    AXUIElementSetAttributeValue(currentRoot, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    return CFEqual(root, currentRoot) ? currentRoot : root
 }
 
 private func childElements(of element: AXUIElement) -> [AXUIElement] {

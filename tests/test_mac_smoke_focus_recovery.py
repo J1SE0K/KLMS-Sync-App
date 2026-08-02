@@ -17,7 +17,25 @@ class MacSmokeFocusRecoveryTests(unittest.TestCase):
         self.assertIn("transient focus/window loss", self.source)
         self.assertIn("NSRunningApplication(processIdentifier: targetProcessIdentifier)", self.source)
         self.assertIn("!hasVisibleDashboardWindow()", self.source)
-        self.assertIn("!hasMeaningfulWorkspaceAccessibilityTree(in: appElement)", self.source)
+        self.assertIn("hasMeaningfulWorkspaceAccessibilityTree(in: appElement)", self.source)
+        self.assertIn("!app.isActive", self.source)
+        self.assertIn("app.activate(options: [.activateAllWindows])", self.source)
+
+    def test_accessibility_smoke_only_reopens_a_missing_candidate_window(self) -> None:
+        bring_start = self.source.index("private func bringKLMSAppForward")
+        bring_end = self.source.index("private func hasMeaningfulWorkspaceAccessibilityTree", bring_start)
+        bring_source = self.source[bring_start:bring_end]
+        reopen_start = self.source.index("private func requestDashboardWindowReopen")
+        reopen_end = self.source.index("private func hasVisibleDashboardWindow", reopen_start)
+        reopen_source = self.source[reopen_start:reopen_end]
+
+        self.assertIn(
+            "if !hasVisibleDashboardWindow() || !hasUsableAccessibilityWindow(in: appElement)",
+            bring_source,
+        )
+        self.assertIn('process.executableURL = URL(fileURLWithPath: "/usr/bin/open")', reopen_source)
+        self.assertIn('process.arguments = [appPath]', reopen_source)
+        self.assertNotIn("tell application id", reopen_source)
 
     def test_resize_crossings_validate_selection_without_owning_global_focus(self) -> None:
         start = self.source.index("private func verifyRepeatedNavigationBoundaryCrossings")
