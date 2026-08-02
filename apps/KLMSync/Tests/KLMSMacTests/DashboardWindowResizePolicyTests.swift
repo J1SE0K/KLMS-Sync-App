@@ -47,18 +47,18 @@ final class DashboardWindowResizePolicyTests: XCTestCase {
         )
     }
 
-    func testDefaultHitThicknessIncludesTwelvePointInnerBoundaryOnly() {
-        XCTAssertEqual(KLMSDashboardResizePolicy.defaultHitThickness, 12)
+    func testDefaultHitThicknessIncludesSixteenPointInnerBoundaryOnly() {
+        XCTAssertEqual(KLMSDashboardResizePolicy.defaultHitThickness, 16)
         XCTAssertEqual(
             KLMSDashboardResizePolicy.edge(
-                at: CGPoint(x: bounds.maxX - 12, y: bounds.midY),
+                at: CGPoint(x: bounds.maxX - 16, y: bounds.midY),
                 in: bounds
             ),
             .right
         )
         XCTAssertNil(
             KLMSDashboardResizePolicy.edge(
-                at: CGPoint(x: bounds.maxX - 12.01, y: bounds.midY),
+                at: CGPoint(x: bounds.maxX - 16.01, y: bounds.midY),
                 in: bounds
             )
         )
@@ -78,7 +78,7 @@ final class DashboardWindowResizePolicyTests: XCTestCase {
         overlay.frame = contentView.bounds
         contentView.addSubview(overlay)
 
-        XCTAssertTrue(overlay.hitTest(CGPoint(x: 10, y: bounds.midY)) === overlay)
+        XCTAssertTrue(overlay.hitTest(CGPoint(x: 15.5, y: bounds.midY)) === overlay)
         XCTAssertNil(overlay.hitTest(CGPoint(x: bounds.midX, y: bounds.midY)))
 
         window.styleMask.remove(.resizable)

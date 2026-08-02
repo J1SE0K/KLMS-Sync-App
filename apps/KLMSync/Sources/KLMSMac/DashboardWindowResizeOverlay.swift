@@ -28,7 +28,7 @@ enum KLMSDashboardResizeEdge: CaseIterable, Equatable, Sendable {
 }
 
 enum KLMSDashboardResizePolicy {
-    static let defaultHitThickness: CGFloat = 12
+    static let defaultHitThickness: CGFloat = 16
 
     static func edge(
         at point: CGPoint,

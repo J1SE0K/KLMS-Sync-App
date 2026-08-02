@@ -11,10 +11,13 @@ class MacSmokeFocusRecoveryTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.source = SMOKE_SCRIPT.read_text(encoding="utf-8")
 
-    def test_accessibility_smoke_retries_once_after_external_focus_loss(self) -> None:
+    def test_accessibility_smoke_recovers_bounded_focus_or_window_loss(self) -> None:
         self.assertIn("try runSmokeWithFocusRecovery()", self.source)
-        self.assertIn("another app took focus; restoring KLMS Sync and retrying once", self.source)
+        self.assertIn("for attempt in 0..<3", self.source)
+        self.assertIn("transient focus/window loss", self.source)
         self.assertIn("NSRunningApplication(processIdentifier: targetProcessIdentifier)", self.source)
+        self.assertIn("!hasVisibleDashboardWindow()", self.source)
+        self.assertIn("!hasMeaningfulWorkspaceAccessibilityTree(in: appElement)", self.source)
 
     def test_resize_crossings_validate_selection_without_owning_global_focus(self) -> None:
         start = self.source.index("private func verifyRepeatedNavigationBoundaryCrossings")

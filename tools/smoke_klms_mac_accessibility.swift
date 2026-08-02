@@ -116,22 +116,42 @@ do {
 }
 
 private func runSmokeWithFocusRecovery() throws {
-    do {
-        try runSmoke()
-    } catch {
+    var lastError: Error?
+    for attempt in 0..<3 {
+        do {
+            try runSmoke()
+            return
+        } catch {
+            lastError = error
+        }
+
+        guard let recoveryError = lastError else {
+            throw SmokeFailure.accessibilityTreeUnavailable(frontmostApp: nil)
+        }
         guard let targetProcessIdentifier,
-              NSWorkspace.shared.frontmostApplication?.processIdentifier != targetProcessIdentifier,
               let app = NSRunningApplication(processIdentifier: targetProcessIdentifier),
               !app.isTerminated else {
-            throw error
+            throw recoveryError
         }
         let appElement = AXUIElementCreateApplication(targetProcessIdentifier)
+        let needsRecovery = NSWorkspace.shared.frontmostApplication?.processIdentifier != targetProcessIdentifier
+            || !hasVisibleDashboardWindow()
+            || !hasUsableAccessibilityWindow(in: appElement)
+            || !hasMeaningfulWorkspaceAccessibilityTree(in: appElement)
+        guard needsRecovery else {
+            throw recoveryError
+        }
+        let notice = "smoke notice: transient focus/window loss during attempt \(attempt + 1): "
+            + "\(recoveryError). Restoring KLMS Sync before retry.\n"
         FileHandle.standardError.write(
-            Data("smoke notice: another app took focus; restoring KLMS Sync and retrying once.\n".utf8)
+            Data(notice.utf8)
         )
         bringKLMSAppForward(app: app, appElement: appElement)
-        try runSmoke()
     }
+    guard let lastError else {
+        throw SmokeFailure.accessibilityTreeUnavailable(frontmostApp: nil)
+    }
+    throw lastError
 }
 
 private func accessibilityIdentifierDiagnostics() -> String {
@@ -263,17 +283,46 @@ private func bringKLMSAppForward(app: NSRunningApplication, appElement: AXUIElem
     activateApplicationWithAppleScript()
     requestDashboardWindowReopen()
 
-    let deadline = Date().addingTimeInterval(min(1.5, timeout))
+    let deadline = Date().addingTimeInterval(timeout)
+    var stableSamples = 0
     repeat {
         app.unhide()
         app.activate(options: [.activateAllWindows])
         AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
         let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-        if isFrontmost, hasUsableAccessibilityWindow(in: appElement) {
-            return
+        if isFrontmost,
+           hasVisibleDashboardWindow(),
+           hasUsableAccessibilityWindow(in: appElement),
+           hasMeaningfulWorkspaceAccessibilityTree(in: appElement) {
+            stableSamples += 1
+            if stableSamples >= 2 {
+                return
+            }
+        } else {
+            stableSamples = 0
         }
-        Thread.sleep(forTimeInterval: 0.05)
+        Thread.sleep(forTimeInterval: 0.10)
     } while Date() < deadline
+}
+
+private func hasMeaningfulWorkspaceAccessibilityTree(in appElement: AXUIElement) -> Bool {
+    guard findElement(in: appElement, maxDepth: 32, maxNodes: 35_000, where: {
+        identifierMatches(stringAttribute($0, "AXIdentifier" as CFString), expected: "workspace-dashboard")
+    }) != nil else {
+        return false
+    }
+    return workspaceTargets.contains { target in
+        guard let content = findElement(in: appElement, maxDepth: 32, maxNodes: 35_000, where: {
+            identifierMatches(
+                stringAttribute($0, "AXIdentifier" as CFString),
+                expected: target.contentRootIdentifier
+            )
+        }),
+        let frame = accessibilityFrame(of: content) else {
+            return false
+        }
+        return isMeaningful(frame)
+    }
 }
 
 private func activateApplicationBundle() {
@@ -1590,7 +1639,23 @@ private func captureScreenshotIfRequested(named rawName: String) throws {
         [.posixPermissions: 0o600],
         ofItemAtPath: outputURL.path
     )
+    restoreTargetApplicationAfterCaptureIfNeeded()
     print("screenshot: \(outputURL.path)")
+}
+
+private func restoreTargetApplicationAfterCaptureIfNeeded() {
+    guard let targetProcessIdentifier,
+          let app = NSRunningApplication(processIdentifier: targetProcessIdentifier),
+          !app.isTerminated,
+          NSWorkspace.shared.frontmostApplication?.processIdentifier != targetProcessIdentifier
+            || !hasVisibleDashboardWindow()
+            || !hasUsableAccessibilityWindow(in: AXUIElementCreateApplication(targetProcessIdentifier)) else {
+        return
+    }
+    bringKLMSAppForward(
+        app: app,
+        appElement: AXUIElementCreateApplication(targetProcessIdentifier)
+    )
 }
 
 private func waitForVisibleDashboardWindowID() -> Int? {
