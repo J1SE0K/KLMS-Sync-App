@@ -54,6 +54,8 @@ Windows companion app for the KLMS Sync server relay.
 
 ## 개발 실행
 
+처음 이어서 개발한다면 명령을 실행하기 전에 [Windows 개발 인수인계](../../docs/windows-development-handoff.md)의 보안 기준선, 작업 순서, 실기 QA와 완료 게이트를 먼저 확인한다.
+
 Windows에서:
 
 ```powershell
@@ -94,7 +96,7 @@ HTTP와 WS는 이 PC의 정확한 loopback 주소인 `localhost`, `127.0.0.1`, `
 
 ## 구현 가이드
 
-Windows 앱을 Mac/iPhone/iPad UI와 맞춰 고도화할 때는 [docs/windows-implementation-guide.md](../../docs/windows-implementation-guide.md)를 기준으로 작업한다. 실제 서버 URL, 토큰, 개인 경로는 코드나 문서 기본값에 넣지 않는다.
+Windows PC 작업의 시작점은 [Windows 개발 인수인계](../../docs/windows-development-handoff.md)다. Mac/iPhone/iPad UI와 맞춘 세부 기능은 [docs/windows-implementation-guide.md](../../docs/windows-implementation-guide.md)를 기준으로 작업한다. 실제 서버 URL, 토큰, 개인 경로는 코드나 문서 기본값에 넣지 않는다.
 
 ## 패치 반영 원칙
 

@@ -11,4 +11,5 @@
 | [superpowers/specs/2026-06-14-klms-sync-app-visual-redesign.md](./superpowers/specs/2026-06-14-klms-sync-app-visual-redesign.md) | Mac/iPhone/iPad/Windows 공통 시각 재설계, P4 라이트 + D1 다크 색상 토큰 |
 | [windows-ui-ux-design.md](./windows-ui-ux-design.md) | Windows companion 앱 UI/UX, 색상, 화면 구조, 보안 기준 |
 | [windows-implementation-guide.md](./windows-implementation-guide.md) | Mac/iPhone/iPad 변경을 Windows companion에 반영하기 위한 기능 parity 가이드 |
+| [windows-development-handoff.md](./windows-development-handoff.md) | Windows 11 개발 시작 순서, 현재 보안 기준선, 실기 QA와 완료 판정 |
 | [publication-checklist.md](./publication-checklist.md) | 공개 repo로 push하기 전 보안/검증 체크리스트 |

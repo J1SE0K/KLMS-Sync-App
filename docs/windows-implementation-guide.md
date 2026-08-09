@@ -1,6 +1,6 @@
 # KLMS Sync Windows 구현 가이드
 
-이 문서는 Mac 앱과 iPhone/iPad companion의 최신 동작을 Windows companion에 맞추기 위한 구현 지시서다. 실제 서버 URL, 토큰, 로컬 주소, 개인 파일 경로, KLMS 원본 URL은 절대 기본값이나 예시에 넣지 않는다.
+이 문서는 Mac 앱과 iPhone/iPad companion의 최신 동작을 Windows companion에 맞추기 위한 구현 지시서다. Windows PC의 환경 준비, 보안 기준선, 검증·패키징 순서는 [Windows 개발 인수인계](./windows-development-handoff.md)를 먼저 따른다. 실제 서버 URL, 토큰, 로컬 주소, 개인 파일 경로, KLMS 원본 URL은 절대 기본값이나 예시에 넣지 않는다.
 
 ## 목표
 

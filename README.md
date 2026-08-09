@@ -46,7 +46,7 @@ iPhone/iPad companion 타깃은 같은 package의 `KLMSiOS`에 있다. 이 타�
 
 서버 릴레이에는 원본 로그, KLMS URL, `config.env`, 인증 상태 파일, 절대 파일 경로를 올리지 않는다. 파일 원본은 사용자가 파일 열기를 요청했을 때 Mac 앱이 R2에 임시 업로드하고, 만료 시간이 지나면 삭제한다. 같은 Wi-Fi의 Mac 앱에 직접 붙는 로컬 원격 제어는 개발/비상용 fallback으로만 남겨 둔다. 자세한 설정은 [docs/server-relay.md](./docs/server-relay.md)를 참고한다.
 
-Windows companion 앱은 [apps/KLMSyncWindows](./apps/KLMSyncWindows)에 있다. Windows 앱도 iPhone/iPad와 같은 서버 릴레이를 사용한다. 상태와 항목 목록을 읽고, 공지 읽음/중요 토글, 원격 실행 요청, 파일 열기 요청을 서버에 남긴다. KLMS scraping과 macOS Notes/Calendar/Reminders 반영은 계속 Mac 앱이 담당한다. Windows 쪽 UI/UX와 기능 parity 작업 지시는 [windows-implementation-guide.md](./docs/windows-implementation-guide.md)에 둔다.
+Windows companion 앱은 [apps/KLMSyncWindows](./apps/KLMSyncWindows)에 있다. Windows 앱도 iPhone/iPad와 같은 서버 릴레이를 사용한다. 상태와 항목 목록을 읽고, 공지 읽음/중요 토글, 원격 실행 요청, 파일 열기 요청을 서버에 남긴다. KLMS scraping과 macOS Notes/Calendar/Reminders 반영은 계속 Mac 앱이 담당한다. Windows PC에서 개발을 이어갈 때는 [Windows 개발 인수인계](./docs/windows-development-handoff.md)부터 시작하고, 세부 기능 parity는 [windows-implementation-guide.md](./docs/windows-implementation-guide.md)를 따른다.
 
 Mac에서 릴레이 서버를 백그라운드 서비스로 켜려면:
 
@@ -122,6 +122,7 @@ iPhone/iPad용 Xcode 프로젝트는 `apps/KLMSync/Xcode/KLMSiOS/KLMSiOS.xcodepr
 - [repository-layout.md](./docs/repository-layout.md): 폴더 구조, wrapper/implementation 경계, ignored runtime 데이터
 - [windows-ui-ux-design.md](./docs/windows-ui-ux-design.md): Windows companion 앱 UI/UX, 색상, 화면 구조, 보안 기준
 - [windows-implementation-guide.md](./docs/windows-implementation-guide.md): Windows companion 기능 parity 구현 가이드
+- [windows-development-handoff.md](./docs/windows-development-handoff.md): Windows 11 개발 시작 순서, 보안 기준선, 실기 QA와 완료 게이트
 - [publication-checklist.md](./docs/publication-checklist.md): 공개 레포로 push하기 전 보안/검증 체크리스트
 
 ## 검증
