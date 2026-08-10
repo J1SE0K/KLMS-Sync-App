@@ -27,6 +27,7 @@ src/python/klms_sync_v2/models.py
 src/python/klms_sync_v2/overrides.py
 src/python/klms_sync_v2/pipeline.py
 src/python/klms_sync_v2/render.py
+src/python/klms_sync_v2/state_continuity.py
 src/python/klms_sync_v2/text.py
 src/python/klms_transport.py
 src/python/managed_course_file_adoption.py

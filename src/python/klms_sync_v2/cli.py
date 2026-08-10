@@ -21,6 +21,7 @@ from .models import Assignment, Event, Notice, Page
 from .overrides import split_override_key
 from .pipeline import build_sync_state
 from .render import render_error_html, render_success_html
+from .state_continuity import prior_active_assignment_records
 from .text import clean_course_candidate, html_to_text, one_line, split_course_title
 
 
@@ -573,6 +574,14 @@ def command_build_note(args: argparse.Namespace) -> int:
         if source_payload is None:
             raise RuntimeError("validated source payload is missing")
         source_assignments, source_events, source_metadata, course_pages = source_payload
+        source_assignments.extend(
+            legacy_assignment_to_v2(record)
+            for record in prior_active_assignment_records(
+                previous_state,
+                course_pages,
+                source_assignments + source_events,
+            )
+        )
         file_assignments, file_events, file_metadata = load_file_manifest_items(
             args.course_file_manifest_json,
             generated_at=generated_at,
