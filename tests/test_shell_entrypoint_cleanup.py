@@ -1688,6 +1688,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("tools/klms_public_log_redactor.mjs", payload_allowlist)
         self.assertIn("tools/klms_realtime_admission.mjs", payload_allowlist)
         self.assertIn("tools/install_klms_relay_agent.sh", payload_allowlist)
+        self.assertIn("src/python/prune_backup_retention.py", payload_allowlist)
         self.assertNotIn("docs", {path.split("/", 1)[0] for path in payload_allowlist})
         self.assertNotIn("src/swift/capture_notice_native_state.swift", payload_allowlist)
         self.assertNotIn("src/swift/decode_qr_image.swift", payload_allowlist)

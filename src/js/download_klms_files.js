@@ -508,6 +508,7 @@ function run(argv) {
               directFetchParallelism,
               directFetchMaxBytes,
               directFetchBatchTimeoutSeconds,
+              expectedPageUrl: directFetchPage,
               prefetchedDirectDownloads,
             }
           );
@@ -1943,6 +1944,9 @@ function prefetchDirectDownloadBatch(windowRef, manifest, startIndex, context) {
   }
 
   const batchId = `klms-direct-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  if (!waitForHtmlDocumentReady(windowRef, 10, context.expectedPageUrl)) {
+    return {};
+  }
   const startResult = startSafariDirectFetchBatch(
     windowRef,
     batchId,
@@ -1958,10 +1962,14 @@ function prefetchDirectDownloadBatch(windowRef, manifest, startIndex, context) {
     batchId,
     context.directFetchBatchTimeoutSeconds
   );
-  clearSafariDirectFetchBatch(windowRef, batchId);
-  if (!state || state.status !== "done" || !Array.isArray(state.results)) {
+  if (!state || state.status !== "done" || Number(state.resultCount) !== items.length) {
+    clearSafariDirectFetchBatch(windowRef, batchId);
     return {};
   }
+  const batchResults = items.map((item) =>
+    readSafariDirectFetchBatch(windowRef, batchId, item.index)
+  );
+  clearSafariDirectFetchBatch(windowRef, batchId);
 
   const itemByIndex = {};
   items.forEach((item) => {
@@ -1969,7 +1977,7 @@ function prefetchDirectDownloadBatch(windowRef, manifest, startIndex, context) {
   });
 
   const downloads = {};
-  state.results.forEach((result) => {
+  batchResults.forEach((result) => {
     const item = itemByIndex[String(result && result.index)];
     if (!item || !result || !result.ok || !result.base64 || !fetchedPayloadCompatibleWithExpected(result)) {
       return;
@@ -2171,18 +2179,37 @@ function waitForSafariDirectFetchBatch(windowRef, batchId, timeoutSeconds) {
     if (state.status === "done" || state.status === "error") {
       return state;
     }
+    if (state.status === "missing") {
+      return state;
+    }
   }
-  return { status: "timeout", results: [] };
+  return { status: "timeout", resultCount: 0 };
 }
 
-function readSafariDirectFetchBatch(windowRef, batchId) {
+function readSafariDirectFetchBatch(windowRef, batchId, itemIndex) {
   const script = [
     "(function(){",
     `  var batchId = ${JSON.stringify(batchId)};`,
+    `  var requestedIndex = ${itemIndex == null ? "null" : Number(itemIndex)};`,
     "  var batches = window.__klmsDirectFetchBatches || {};",
     "  var state = batches[batchId] || null;",
-    "  if (!state) { return JSON.stringify({status:'missing', results:[]}); }",
-    "  return JSON.stringify(state);",
+    "  if (!state) { return JSON.stringify({status:'missing', resultCount:0}); }",
+    "  if (requestedIndex !== null) {",
+    "    var results = Array.isArray(state.results) ? state.results : [];",
+    "    for (var index = 0; index < results.length; index += 1) {",
+    "      if (Number(results[index] && results[index].index) === requestedIndex) {",
+    "        return JSON.stringify(results[index]);",
+    "      }",
+    "    }",
+    "    return JSON.stringify({index:requestedIndex,ok:false,error:'direct-fetch-result-missing'});",
+    "  }",
+    "  return JSON.stringify({",
+    "    status: state.status || '',",
+    "    startedAt: state.startedAt || 0,",
+    "    finishedAt: state.finishedAt || 0,",
+    "    resultCount: Array.isArray(state.results) ? state.results.length : 0,",
+    "    error: state.error || ''",
+    "  });",
     "})()",
   ].join("\n");
   const result = runSafariJavaScript(windowRef, script);
@@ -2280,10 +2307,10 @@ function sanitizeDownloadFilename(value) {
     .replace(/\s+/g, " ");
 }
 
-function waitForHtmlDocumentReady(windowRef, timeoutSeconds) {
+function waitForHtmlDocumentReady(windowRef, timeoutSeconds, expectedUrl) {
   const deadline = Date.now() + Math.max(3, timeoutSeconds) * 1000;
   while (Date.now() < deadline) {
-    const state = getHtmlDocumentReadyState(windowRef);
+    const state = getHtmlDocumentReadyState(windowRef, expectedUrl);
     if (state.ready) {
       return true;
     }
@@ -2292,12 +2319,15 @@ function waitForHtmlDocumentReady(windowRef, timeoutSeconds) {
   return false;
 }
 
-function getHtmlDocumentReadyState(windowRef) {
+function getHtmlDocumentReadyState(windowRef, expectedUrl) {
+  const expectedDocumentUrl = String(expectedUrl || "").trim().replace(/#.*$/, "");
   const script = [
     "(function(){",
     "  try {",
+    `    var expectedUrl = ${JSON.stringify(expectedDocumentUrl)};`,
+    "    var documentUrl = String(document.location.href || '').replace(/#.*$/, '');",
     "    return JSON.stringify({",
-    "      ready: document.readyState === 'complete' && !!document.body,",
+    "      ready: document.readyState === 'complete' && !!document.body && (!expectedUrl || documentUrl === expectedUrl),",
     "      readyState: document.readyState || '',",
     "      title: document.title || ''",
     "    });",
@@ -2329,11 +2359,13 @@ function fetchBinaryPayloadViaSafari(windowRef, targetUrl, timeoutSeconds) {
     return { ok: false, error: startResult.error || "direct-fetch-start-failed" };
   }
   const state = waitForSafariDirectFetchBatch(windowRef, batchId, timeoutSeconds || 30);
-  clearSafariDirectFetchBatch(windowRef, batchId);
-  if (!state || state.status !== "done" || !Array.isArray(state.results)) {
+  if (!state || state.status !== "done" || Number(state.resultCount) < 1) {
+    clearSafariDirectFetchBatch(windowRef, batchId);
     return { ok: false, error: state && state.status ? state.status : "direct-fetch-timeout" };
   }
-  return state.results[0] || { ok: false, error: "empty-result" };
+  const result = readSafariDirectFetchBatch(windowRef, batchId, 0);
+  clearSafariDirectFetchBatch(windowRef, batchId);
+  return result || { ok: false, error: "empty-result" };
 }
 
 function recoverSynapViewerPdf(
@@ -2727,7 +2759,9 @@ function openReusableDownloadPage(safari, existingWindowRef, targetUrl) {
     throw new Error("Reusable Safari download window is missing a current tab");
   }
 
-  if (targetUrl) {
+  const currentDocumentUrl = currentTabUrl(activeWindow).replace(/#.*$/, "");
+  const targetDocumentUrl = String(targetUrl || "").replace(/#.*$/, "");
+  if (targetUrl && currentDocumentUrl !== targetDocumentUrl) {
     navigateTabWithoutFocus(tab, targetUrl, activeWindow);
     waitForWindowUrl(activeWindow, targetUrl, 8);
   }
