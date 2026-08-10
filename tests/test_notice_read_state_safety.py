@@ -716,7 +716,7 @@ console.log(JSON.stringify({ nonfatal, appNonfatal, code: summary.code }));
         self.assertIn("...nativeEnv", js)
         self.assertIn('defaults.push("NOTICE_NATIVE_PLAIN_TEXT_PASTE=0")', js)
 
-    def test_runtime_env_undefined_does_not_disable_notice_formatting(self) -> None:
+    def test_runtime_environment_overrides_config_without_erasing_missing_values(self) -> None:
         node = shutil.which("node")
         if node is None:
             self.skipTest("node is not installed")
@@ -750,19 +750,22 @@ eval([
 let mode = "undefined";
 function envValue(key) {
   if (key === "NOTICE_COLLAPSE_SECTIONS") return mode;
+  if (key === "OVERRIDES_JSON_PATH") return "/canonical/manual_assignment_overrides.json";
   return "";
 }
 
 const config = {
   NOTICE_COLLAPSE_SECTIONS: "1",
   NOTICE_STYLE_NOTICE_ITEMS_AS_HEADINGS: "1",
+  OVERRIDES_JSON_PATH: "/stale/manual_assignment_overrides.json",
 };
 applyRuntimeConfigOverrides(config);
 const kept = config.NOTICE_COLLAPSE_SECTIONS;
+const overridesPath = config.OVERRIDES_JSON_PATH;
 mode = "0";
 applyRuntimeConfigOverrides(config);
 const overridden = config.NOTICE_COLLAPSE_SECTIONS;
-console.log(JSON.stringify({ kept, overridden }));
+console.log(JSON.stringify({ kept, overridden, overridesPath }));
 """
         result = subprocess.run(
             [node, "-e", script],
@@ -772,7 +775,10 @@ console.log(JSON.stringify({ kept, overridden }));
             capture_output=True,
         )
 
-        self.assertEqual(result.stdout.strip(), '{"kept":"1","overridden":"0"}')
+        self.assertEqual(
+            result.stdout.strip(),
+            '{"kept":"1","overridden":"0","overridesPath":"/canonical/manual_assignment_overrides.json"}',
+        )
 
     def test_app_notice_post_render_verify_can_be_disabled(self) -> None:
         node = shutil.which("node")

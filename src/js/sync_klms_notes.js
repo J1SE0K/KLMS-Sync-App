@@ -1963,6 +1963,7 @@ function parseEnvFile(path) {
 
 function applyRuntimeConfigOverrides(config) {
   const overrideKeys = [
+    "OVERRIDES_JSON_PATH",
     "NOTICE_COLLAPSE_SECTIONS",
     "NOTICE_COLLAPSE_COURSES",
     "NOTICE_COLLAPSE_NOTICE_ITEMS",
