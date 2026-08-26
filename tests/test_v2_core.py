@@ -36,6 +36,19 @@ class V2CoreTests(unittest.TestCase):
         ):
             self.assertFalse(looks_like_authenticated_klms_page(Page(url=url)), url)
 
+    def test_authenticated_empty_dashboard_is_valid_when_no_assignments_are_posted(self) -> None:
+        result = klms_sync.parse_dashboard_page(
+            {
+                "requestedUrl": "https://klms.kaist.ac.kr/my/",
+                "url": "https://klms.kaist.ac.kr/my/",
+                "title": "강의 현황",
+                "html": '<html><body><a href="/login/logout.php">logout</a></body></html>',
+            }
+        )
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(result.items, [])
+
     def write_authoritative_dashboard(self, directory: Path) -> Path:
         dashboard = directory / "dashboard.json"
         dashboard.write_text(
