@@ -54,7 +54,7 @@ function run(argv) {
     throw new Error("Every fetch URL must use the exact https://klms.kaist.ac.kr origin.");
   }
 
-  const safari = Application("/Applications/Safari.app");
+  const safari = Application("Safari");
   const safariWasRunning = safeValue(() => safari.running()) === true;
   const frontmostApp = safariRestoreFrontmostEnabled() ? frontmostApplicationName() : "";
   if (!safariWasRunning) {
@@ -152,6 +152,9 @@ function fetchPage(windowRef, tab, targetUrl, options) {
     options.minWaitSeconds,
     options.stablePolls
   );
+  if (!isExactKlmsHttpsUrl(navigationPage.url)) {
+    throw new Error(`Safari navigation escaped the exact KLMS origin: ${navigationPage.url}`);
+  }
   if (navigationPage.status != null) {
     return navigationPage;
   }
@@ -214,7 +217,7 @@ function fetchPagesViaXHRBatch(tab, urls) {
   return JSON.stringify(results);
 })();
 `;
-  const raw = safeString(() => Application("/Applications/Safari.app").doJavaScript(script, { in: tab }));
+  const raw = safeString(() => Application("Safari").doJavaScript(script, { in: tab }));
   if (!raw) {
     throw new Error("Empty batch XHR response");
   }
@@ -229,6 +232,9 @@ function fetchPagesViaXHRBatch(tab, urls) {
   }
   return payload.map((page, index) => {
     const status = Number(page && page.status);
+    if (!isExactKlmsHttpsUrl(page && page.url)) {
+      throw new Error(`Batch XHR escaped the exact KLMS origin for ${urls[index]}`);
+    }
     if (!page || !page.html || !isSuccessfulHttpStatus(status)) {
       throw new Error(
         `Batch XHR fetch failed for ${urls[index]}: ${(page && (page.error || page.status)) || "empty"}`
@@ -279,7 +285,7 @@ function fetchPageViaXHR(tab, targetUrl) {
   }
 })();
 `;
-  const raw = safeString(() => Application("/Applications/Safari.app").doJavaScript(script, { in: tab }));
+  const raw = safeString(() => Application("Safari").doJavaScript(script, { in: tab }));
   if (!raw) {
     throw new Error(`Empty XHR response for ${targetUrl}`);
   }
@@ -288,6 +294,9 @@ function fetchPageViaXHR(tab, targetUrl) {
     payload = JSON.parse(raw);
   } catch (_error) {
     throw new Error(`Invalid XHR response for ${targetUrl}: ${raw.slice(0, 200)}`);
+  }
+  if (!isExactKlmsHttpsUrl(payload.url)) {
+    throw new Error(`XHR escaped the exact KLMS origin for ${targetUrl}`);
   }
   const status = Number(payload.status);
   if (!payload.html || !isSuccessfulHttpStatus(status)) {
@@ -355,7 +364,7 @@ function readNavigationStatus(tab) {
   return Number.isFinite(status) && status > 0 ? String(status) : "";
 })();
 `;
-  const raw = safeString(() => Application("/Applications/Safari.app").doJavaScript(script, { in: tab }));
+  const raw = safeString(() => Application("Safari").doJavaScript(script, { in: tab }));
   const status = Number(raw);
   return Number.isFinite(status) && status > 0 ? status : null;
 }
