@@ -129,6 +129,24 @@ do {
 
 func main() throws {
     let arguments = Array(CommandLine.arguments.dropFirst())
+    if let outputPath = parseStringArgument(arguments, prefix: "--result-output=") {
+        let outputURL = URL(fileURLWithPath: outputPath)
+        try FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        guard freopen(outputPath, "w", stdout) != nil else {
+            throw SuiteError.message("Failed to open Calendar result output.")
+        }
+    }
+    if arguments.contains("--permission-probe") {
+        let store = EKEventStore()
+        guard requestAccess(store: store) else {
+            throw SuiteError.message("Calendar access was not granted.")
+        }
+        print("calendar_permission=granted")
+        return
+    }
     guard !arguments.isEmpty else {
         throw SuiteError.message(
             "Usage: sync_klms_calendar_suite.swift <state_json> [--duration-minutes=15] [--lookback-days=365] [--exam-calendar=...] [--helpdesk-calendar=...]"

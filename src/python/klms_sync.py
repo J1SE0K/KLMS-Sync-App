@@ -2553,6 +2553,8 @@ def parse_dashboard_page(page: dict[str, Any]) -> DashboardParseResult:
         )
 
     if not items:
+        if is_same_klms_url(str(page.get("url", ""))) and normalize_whitespace(str(page.get("title", ""))) == "강의 현황":
+            return DashboardParseResult(status="ok", items=[])
         return DashboardParseResult(
             status="error",
             items=[],

@@ -7,6 +7,35 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 
 
+def observe_calendar_command(config: dict[str, str]) -> list[str]:
+    bridge_path = PROJECT_DIR / "src" / "js" / "sync_calendar_bridge.js"
+    script = f"""
+const fs = require("fs");
+let observed = [];
+function ensureDir() {{}}
+function runCommand(command) {{ observed = command; return "calendar-summary"; }}
+function writeCalendarSyncResult() {{}}
+function readText() {{ return "calendar-summary"; }}
+function removeFileIfExists() {{}}
+eval(fs.readFileSync({json.dumps(str(bridge_path))}, "utf8"));
+syncCalendarsFromState(
+  "/tmp/state.json",
+  "/tmp/project",
+  {json.dumps(config)},
+  {{ examEnabled: true, helpDeskEnabled: false, tmpDir: "/tmp/run" }}
+);
+console.log(JSON.stringify(observed));
+"""
+    result = subprocess.run(
+        ["node", "-e", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_DIR,
+    )
+    return json.loads(result.stdout)
+
+
 def observe_calendar_stage(dry_run: bool) -> tuple[int, int, int, list[str]]:
     bridge_path = PROJECT_DIR / "src" / "js" / "sync_calendar_bridge.js"
     script = f"""
@@ -81,6 +110,36 @@ console.log(JSON.stringify({{
 
 
 class CalendarDryRunBehaviorTests(unittest.TestCase):
+    def test_signed_calendar_binary_replaces_interpreted_swift_command(self) -> None:
+        command = observe_calendar_command(
+            {"KLMS_CALENDAR_BIN_PATH": "/Applications/KLMSCalendarSync.app/Contents/MacOS/KLMSCalendarSync"}
+        )
+
+        self.assertEqual(
+            command[0],
+            "/Applications/KLMSCalendarSync.app/Contents/MacOS/KLMSCalendarSync",
+        )
+        self.assertNotIn("/usr/bin/swift", command)
+        self.assertIn("/tmp/state.json", command)
+
+    def test_signed_calendar_app_uses_launch_services_and_result_file(self) -> None:
+        command = observe_calendar_command(
+            {"KLMS_CALENDAR_APP_PATH": "/Applications/KLMSCalendarSync.app"}
+        )
+
+        self.assertEqual(
+            command[:5],
+            [
+                "/usr/bin/open",
+                "-W",
+                "-g",
+                "/Applications/KLMSCalendarSync.app",
+                "--args",
+            ],
+        )
+        self.assertIn("/tmp/state.json", command)
+        self.assertTrue(any(item.startswith("--result-output=") for item in command))
+
     def test_dry_run_never_invokes_calendar_bridge_or_hash_writer(self) -> None:
         # Given a successful sync result with Calendar enabled,
         # when the Calendar stage runs in dry-run mode,
