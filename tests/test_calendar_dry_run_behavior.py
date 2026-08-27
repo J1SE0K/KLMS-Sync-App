@@ -15,6 +15,8 @@ let observed = [];
 function ensureDir() {{}}
 function runCommand(command) {{ observed = command; return "calendar-summary"; }}
 function writeCalendarSyncResult() {{}}
+function readText() {{ return "calendar-summary"; }}
+function removeFileIfExists() {{}}
 eval(fs.readFileSync({json.dumps(str(bridge_path))}, "utf8"));
 syncCalendarsFromState(
   "/tmp/state.json",
@@ -119,6 +121,24 @@ class CalendarDryRunBehaviorTests(unittest.TestCase):
         )
         self.assertNotIn("/usr/bin/swift", command)
         self.assertIn("/tmp/state.json", command)
+
+    def test_signed_calendar_app_uses_launch_services_and_result_file(self) -> None:
+        command = observe_calendar_command(
+            {"KLMS_CALENDAR_APP_PATH": "/Applications/KLMSCalendarSync.app"}
+        )
+
+        self.assertEqual(
+            command[:5],
+            [
+                "/usr/bin/open",
+                "-W",
+                "-g",
+                "/Applications/KLMSCalendarSync.app",
+                "--args",
+            ],
+        )
+        self.assertIn("/tmp/state.json", command)
+        self.assertTrue(any(item.startswith("--result-output=") for item in command))
 
     def test_dry_run_never_invokes_calendar_bridge_or_hash_writer(self) -> None:
         # Given a successful sync result with Calendar enabled,

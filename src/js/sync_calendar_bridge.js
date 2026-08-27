@@ -6,8 +6,25 @@ function syncCalendarsFromState(stateJsonPath, scriptDir, config, calendarOption
   const clangModuleCacheDir = `${tmpDir}/clang-module-cache`;
   ensureDir(swiftModuleCacheDir);
   ensureDir(clangModuleCacheDir);
+  const calendarApp = String(config.KLMS_CALENDAR_APP_PATH || "").trim();
   const calendarBinary = String(config.KLMS_CALENDAR_BIN_PATH || "").trim();
-  const command = calendarBinary
+  const resultOutput = calendarApp ? `${tmpDir}/calendar-helper-result.txt` : "";
+  if (resultOutput) {
+    removeFileIfExists(resultOutput);
+  }
+  const command = calendarApp
+    ? [
+        "/usr/bin/open",
+        "-W",
+        "-g",
+        calendarApp,
+        "--args",
+        stateJsonPath,
+        `--duration-minutes=${durationMinutes}`,
+        `--lookback-days=${lookbackDays}`,
+        `--result-output=${resultOutput}`,
+      ]
+    : calendarBinary
     ? [
         calendarBinary,
         stateJsonPath,
@@ -34,8 +51,13 @@ function syncCalendarsFromState(stateJsonPath, scriptDir, config, calendarOption
     command.push(`--helpdesk-calendar=${config.HELP_DESK_CALENDAR_NAME || "기타"}`);
   }
 
-  const output = runCommand(command, scriptDir);
-  writeCalendarSyncResult(calendarOptions && calendarOptions.resultJson, output, "swift");
+  const launchOutput = runCommand(command, scriptDir);
+  const output = resultOutput ? readText(resultOutput) : launchOutput;
+  writeCalendarSyncResult(
+    calendarOptions && calendarOptions.resultJson,
+    output,
+    calendarApp ? "signed-app" : calendarBinary ? "signed-binary" : "swift"
+  );
 }
 
 function runCalendarSyncStage(options) {

@@ -129,6 +129,16 @@ do {
 
 func main() throws {
     let arguments = Array(CommandLine.arguments.dropFirst())
+    if let outputPath = parseStringArgument(arguments, prefix: "--result-output=") {
+        let outputURL = URL(fileURLWithPath: outputPath)
+        try FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        guard freopen(outputPath, "w", stdout) != nil else {
+            throw SuiteError.message("Failed to open Calendar result output.")
+        }
+    }
     if arguments.contains("--permission-probe") {
         let store = EKEventStore()
         guard requestAccess(store: store) else {
