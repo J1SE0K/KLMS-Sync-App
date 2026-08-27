@@ -153,6 +153,16 @@ class CalendarExamFieldTests(unittest.TestCase):
         self.assertIn('line.startsWith("calendar_change_json=")', js_source)
         self.assertIn("changes,", js_source)
 
+    def test_calendar_permission_probe_exits_before_state_or_event_changes(self) -> None:
+        source = (
+            PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"
+        ).read_text(encoding="utf-8")
+
+        probe_index = source.index('arguments.contains("--permission-probe")')
+        state_index = source.index("let statePath = arguments[0]")
+        self.assertLess(probe_index, state_index)
+        self.assertIn('print("calendar_permission=granted")', source)
+
     def test_calendar_suite_deduplicates_desired_event_identifiers(self) -> None:
         source = (
             PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"

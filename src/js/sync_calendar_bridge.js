@@ -6,18 +6,26 @@ function syncCalendarsFromState(stateJsonPath, scriptDir, config, calendarOption
   const clangModuleCacheDir = `${tmpDir}/clang-module-cache`;
   ensureDir(swiftModuleCacheDir);
   ensureDir(clangModuleCacheDir);
-  const command = [
-    "/usr/bin/env",
-    `SWIFT_MODULE_CACHE_PATH=${swiftModuleCacheDir}`,
-    `CLANG_MODULE_CACHE_PATH=${clangModuleCacheDir}`,
-    "/usr/bin/swift",
-    "-module-cache-path",
-    swiftModuleCacheDir,
-    `${scriptDir}/src/swift/sync_klms_calendar_suite.swift`,
-    stateJsonPath,
-    `--duration-minutes=${durationMinutes}`,
-    `--lookback-days=${lookbackDays}`,
-  ];
+  const calendarBinary = String(config.KLMS_CALENDAR_BIN_PATH || "").trim();
+  const command = calendarBinary
+    ? [
+        calendarBinary,
+        stateJsonPath,
+        `--duration-minutes=${durationMinutes}`,
+        `--lookback-days=${lookbackDays}`,
+      ]
+    : [
+        "/usr/bin/env",
+        `SWIFT_MODULE_CACHE_PATH=${swiftModuleCacheDir}`,
+        `CLANG_MODULE_CACHE_PATH=${clangModuleCacheDir}`,
+        "/usr/bin/swift",
+        "-module-cache-path",
+        swiftModuleCacheDir,
+        `${scriptDir}/src/swift/sync_klms_calendar_suite.swift`,
+        stateJsonPath,
+        `--duration-minutes=${durationMinutes}`,
+        `--lookback-days=${lookbackDays}`,
+      ];
 
   if (calendarOptions && calendarOptions.examEnabled) {
     command.push(`--exam-calendar=${config.EXAM_CALENDAR_NAME || "시험"}`);

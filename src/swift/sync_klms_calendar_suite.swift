@@ -129,6 +129,14 @@ do {
 
 func main() throws {
     let arguments = Array(CommandLine.arguments.dropFirst())
+    if arguments.contains("--permission-probe") {
+        let store = EKEventStore()
+        guard requestAccess(store: store) else {
+            throw SuiteError.message("Calendar access was not granted.")
+        }
+        print("calendar_permission=granted")
+        return
+    }
     guard !arguments.isEmpty else {
         throw SuiteError.message(
             "Usage: sync_klms_calendar_suite.swift <state_json> [--duration-minutes=15] [--lookback-days=365] [--exam-calendar=...] [--helpdesk-calendar=...]"
