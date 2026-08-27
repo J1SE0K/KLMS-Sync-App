@@ -444,15 +444,11 @@ func syncItemBaseIdentifier(from url: String) -> String {
 func itemIdentifier(for item: SyncItem) -> String {
     let base = syncItemBaseIdentifier(from: item.url)
     if item.category == "exam" {
-        let titlePart = identifierFragment(item.title)
-        let duePart = identifierFragment(item.syncDue ?? item.due)
-        return "exam:\(base):\(titlePart):\(duePart)"
+        return "exam:\(base)"
     }
 
     if item.category == "help_desk" {
-        let titlePart = identifierFragment(item.title)
-        let duePart = identifierFragment(item.syncDue ?? item.due)
-        return "helpdesk:\(base):\(titlePart):\(duePart)"
+        return "helpdesk:\(base)"
     }
 
     return base

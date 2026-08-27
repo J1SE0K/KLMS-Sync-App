@@ -173,6 +173,21 @@ class CalendarExamFieldTests(unittest.TestCase):
         self.assertLess(redirect_index, main_index)
         self.assertIn("freopen(outputPath, \"w\", stdout)", source)
 
+    def test_calendar_identifier_is_stable_across_title_and_due_updates(self) -> None:
+        source = (
+            PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"
+        ).read_text(encoding="utf-8")
+        body = source[
+            source.index("func itemIdentifier(for item: SyncItem)") : source.index(
+                "func parseDueDate", source.index("func itemIdentifier(for item: SyncItem)")
+            )
+        ]
+
+        self.assertIn('return "exam:\\(base)"', body)
+        self.assertIn('return "helpdesk:\\(base)"', body)
+        self.assertNotIn("item.title", body)
+        self.assertNotIn("item.syncDue", body)
+
     def test_calendar_suite_deduplicates_desired_event_identifiers(self) -> None:
         source = (
             PROJECT_DIR / "src" / "swift" / "sync_klms_calendar_suite.swift"
