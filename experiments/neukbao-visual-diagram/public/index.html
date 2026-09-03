@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Neukbao Visual Diagram · KLMS-Sync-App</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect x=%271%27 y=%271%27 width=%2714%27 height=%2714%27 rx=%273%27 fill=%27%23F7F7F4%27 stroke=%27%2330343A%27/%3E%3Ccircle cx=%275%27 cy=%275%27 r=%271.5%27 fill=%27%2330343A%27/%3E%3Ccircle cx=%2711%27 cy=%2711%27 r=%271.5%27 fill=%27%2330343A%27/%3E%3Cpath d=%27M5 5L11 11%27 stroke=%27%2330343A%27/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#diagram">다이어그램으로 건너뛰기</a>
+  <div class="app" id="app">
+    <header class="topbar" role="banner">
+      <div class="topbar__title">
+        <span class="eyebrow">Neukbao · Visual Diagram</span>
+        <h1 id="repo-title">KLMS-Sync-App</h1>
+      </div>
+      <nav class="breadcrumb" id="breadcrumb" aria-label="현재 위치">
+        <button type="button" class="crumb crumb--root" data-action="overview" aria-current="page">System overview</button>
+      </nav>
+      <div class="topbar__meta" id="meta-strip" aria-live="polite">
+        <span class="meta-item"><span class="meta-label">commit</span> <code id="meta-commit">…</code></span>
+        <span class="meta-item"><span class="meta-label">tracked</span> <span id="meta-files">…</span></span>
+        <span class="meta-item"><span class="meta-label">generated</span> <span id="meta-generated">…</span></span>
+      </div>
+    </header>
+
+    <div class="workspace">
+      <aside class="sidebar" aria-label="탐색과 필터">
+        <section class="panel">
+          <h2 class="panel__title">보기</h2>
+          <div class="level-switch" role="group" aria-label="구조 수준">
+            <button type="button" class="chip" data-level="0" aria-pressed="true">L0 System</button>
+            <button type="button" class="chip" data-level="1" aria-pressed="false">L1 Components</button>
+            <button type="button" class="chip" data-level="2" aria-pressed="false" disabled>L2 Files</button>
+          </div>
+          <div class="button-row">
+            <button type="button" class="btn" data-action="overview">↩ Overview</button>
+            <button type="button" class="btn" data-action="zoom-out" aria-label="축소">−</button>
+            <button type="button" class="btn" data-action="zoom-in" aria-label="확대">+</button>
+            <button type="button" class="btn" data-action="zoom-fit">맞춤</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel__title"><label for="search">검색</label></h2>
+          <input id="search" type="search" placeholder="파일, 디렉터리, component 이름" autocomplete="off" aria-describedby="search-help">
+          <p class="help" id="search-help">경로 일부를 입력하면 일치하는 node를 목록으로 보여준다. Enter로 첫 결과를 연다.</p>
+          <ul class="results" id="search-results" aria-label="검색 결과"></ul>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel__title">필터</h2>
+          <fieldset class="filter">
+            <legend>언어</legend>
+            <div id="language-filter" class="checks"></div>
+          </fieldset>
+          <fieldset class="filter">
+            <legend>관계 종류</legend>
+            <div id="edge-type-filter" class="checks"></div>
+          </fieldset>
+          <fieldset class="filter">
+            <legend>Confidence</legend>
+            <div id="confidence-filter" class="checks"></div>
+          </fieldset>
+        </section>
+
+        <section class="panel">
+          <h2 class="panel__title">Legend</h2>
+          <ul class="legend" id="legend"></ul>
+          <div class="legend__intensity">
+            <span class="legend__label">Git 변경 강도</span>
+            <span class="intensity-scale" aria-hidden="true"><i style="--t:0"></i><i style="--t:.25"></i><i style="--t:.5"></i><i style="--t:.75"></i><i style="--t:1"></i></span>
+            <span class="legend__hint">node 왼쪽 막대: 커밋 수(로그 스케일)</span>
+          </div>
+        </section>
+      </aside>
+
+      <main class="canvas-wrap" id="diagram" tabindex="-1" aria-label="다이어그램">
+        <div class="canvas-toolbar">
+          <span id="canvas-status" class="canvas-status" aria-live="polite">불러오는 중…</span>
+          <span class="canvas-hint">클릭: 선택 · 더블클릭/Enter: 확대 · Esc: 위로 · 방향키: 이동 · 마우스 휠: zoom · 드래그: pan</span>
+        </div>
+        <svg id="svg" class="diagram" role="application" aria-labelledby="svg-title" aria-describedby="svg-desc" tabindex="0">
+          <title id="svg-title">KLMS-Sync-App 구조 다이어그램</title>
+          <desc id="svg-desc">component와 파일 사이의 contains, invokes, imports, packages, tests, communicates 관계를 보여준다.</desc>
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrow-head"></path>
+            </marker>
+            <marker id="arrow-selected" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" class="arrow-head arrow-head--selected"></path>
+            </marker>
+          </defs>
+          <g id="viewport">
+            <g id="edges-layer"></g>
+            <g id="labels-layer" pointer-events="none"></g>
+            <g id="nodes-layer"></g>
+          </g>
+        </svg>
+      </main>
+
+      <aside class="detail" id="detail" aria-label="상세 정보">
+        <div class="detail__empty" id="detail-empty">
+          <h2>상세</h2>
+          <p>node나 edge를 선택하면 이름, 역할, 경로, 언어, 하위 파일, 연결, Git 변경 횟수, 마지막 변경, 생성 근거를 여기 표시한다.</p>
+          <p class="help">이 화면의 모든 정보는 저장소의 tracked 파일과 <code>git log</code>에서만 추출했다. 연결선은 근거 없이 만들지 않는다.</p>
+        </div>
+        <div class="detail__body" id="detail-body" hidden></div>
+      </aside>
+    </div>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
