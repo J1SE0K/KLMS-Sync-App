@@ -802,14 +802,18 @@
       select({ kind: "node", id });
       return;
     }
+    let leavingMatrix = false;
     if (state.viewMode === "matrix") {
       if (n.kind === "component") { select({ kind: "node", id }); return; }
-      state.viewMode = "graph"; // setLevel/openComponent below render once in graph mode
+      // A file or directory is not drawn in the matrix, so we have to leave it.
+      // setLevel / openComponent below switch the mode and render; never write
+      // state.viewMode here, or a path that skips them would strand the canvas.
+      leavingMatrix = true;
       if (state.selected && state.selected.kind === "cell") state.selected = null;
     }
     if (n.kind === "system") { setLevel(0); select({ kind: "node", id }); return; }
     if (n.kind === "component") {
-      if (state.level === 2 && state.focusComponent !== id) openComponent(id);
+      if (leavingMatrix || (state.level === 2 && state.focusComponent !== id)) openComponent(id);
       else if (state.level < 1) { setLevel(1); }
       select({ kind: "node", id });
       if (state.level === 2 && state.focusComponent === id) return;
@@ -817,7 +821,7 @@
       return;
     }
     const comp = componentOf(id);
-    if (state.focusComponent !== comp || state.level !== 2) openComponent(comp);
+    if (leavingMatrix || state.focusComponent !== comp || state.level !== 2) openComponent(comp);
     select({ kind: "node", id });
     centerOn(id);
   }

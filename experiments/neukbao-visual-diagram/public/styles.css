@@ -340,8 +340,8 @@ button { font: inherit; color: inherit; }
   .viewtab[aria-selected="true"] { border-bottom-color: Highlight; }
   .mx-cell, .tm-tile, .sb-arc { fill: Canvas; stroke: CanvasText; }
   .node .mx-cell--selected, .node .tm-tile--selected, .node .sb-arc--selected,
-  .node .shape--focus, .node--selected .mx-headbox { stroke: Highlight; }
   .node .shape--related { stroke: LinkText; }
+  .node .shape--focus, .node--selected .mx-headbox { stroke: Highlight; }
   .node__box { fill: Canvas; stroke: CanvasText; }
   .edge { stroke: CanvasText; }
   .node--selected .node__box, .edge--selected { stroke: Highlight; }
