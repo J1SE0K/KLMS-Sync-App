@@ -80,10 +80,13 @@
       : `자동 clustering ${cur.auto_episode_count}개 (override 없음)`;
     $("#arc-summary").textContent = s.arc_summary;
     const points = $("#arc-points");
-    points.replaceChildren(...(s.arc_points || []).map((p, i) => el("li", {
+    // arc points map to episodes by position only when the two lists have the same length;
+    // otherwise render them as plain text so a stale override cannot mis-navigate.
+    const linkable = Array.isArray(s.arc_points) && s.arc_points.length === s.episodes.length;
+    points.replaceChildren(...(s.arc_points || []).map((p, i) => el("li", linkable ? {
       class: "arc-point", tabindex: "0", role: "button", "aria-label": `Episode ${i + 1}로 이동: ${p}`,
       onclick: () => goTo(i, true), onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goTo(i, true); } },
-    }, [p])));
+    } : { class: "arc-point" }, [p])));
     if (!s.arc_points || !s.arc_points.length) points.hidden = true;
   }
 

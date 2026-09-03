@@ -33,14 +33,17 @@ experiments/neukbao-storytelling/
 cd experiments/neukbao-storytelling
 
 # 1. Git history 분석 → JSON 생성 (story.override.json이 있으면 자동 적용)
+#    --ref는 앱 history의 마지막 commit 67e2f63로 고정한다. experiments/ 아래 프로토타입 commit은
+#    KLMS-Sync-App 개발 이야기의 일부가 아니므로 분석 대상에서 뺀다. --ref HEAD를 주면
+#    그 commit들이 큐레이션 밖(uncovered)으로 집계된다.
 python3 build_story.py \
   --repo ../.. \
-  --ref HEAD \
+  --ref 67e2f63 \
   --commits-output public/commits.json \
   --story-output public/story.json
 
 # override 없이 자동 clustering 결과만 보려면
-python3 build_story.py --repo ../.. --no-override \
+python3 build_story.py --repo ../.. --ref 67e2f63 --no-override \
   --commits-output public/commits.json --story-output public/story.json
 
 # 2. 테스트
@@ -181,7 +184,7 @@ override는 Git 근거를 벗어나는 문장을 넣을 수 없다. 모든 claim
 | 1 | `build_story.py` 실행 | 약 9초, exit 0 |
 | 2 | commits.json | 1184 commits, 2.3 MB |
 | 3 | story.json | 8 episodes + 61 auto episodes + 89 commit의 diff excerpt, 0.68 MB |
-| 4 | `python3 -B -m unittest discover -s tests -v` | 25 tests OK (fixture repo 16 + 실제 story.json 검증 4 + pure 5) |
+| 4 | `python3 -B -m unittest discover -s tests -v` | 26 tests OK (fixture repo 16 + 실제 story.json 검증 5 + pure 5). story.json이 override와 어긋나면(빌드 누락) 실패한다 |
 | 5 | `python3 -m http.server 4174 -d public` | 200 OK |
 | 6 | 브라우저 콘솔 (headless Chromium, Playwright) | error/warning/requestfailed 0건 |
 | 7 | 모든 episode commit hash가 실제 history에 존재 | test `test_every_commit_hash_exists_and_episodes_are_chronological` 통과 |

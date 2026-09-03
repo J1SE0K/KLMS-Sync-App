@@ -671,7 +671,7 @@
       "commit_range": { "from": "63ee290", "to": "67e2f63" },
       "change_type": ["repair", "extension"],
       "confidence": "high",
-      "summary": "8월에는 commit이 16개뿐이다. 8월 9일 Windows 개발 인수인계 문서가 추가되고, 8월 10일에는 다른 작성자(서지석)의 수정 3건이 들어왔다. 8월 26~27일 side branch fix/klms-empty-dashboard에서 Discord 연동, 빈 dashboard 허용, 서명된 Calendar helper가 작업된 뒤 history에서 유일한 merge commit(71c01e8)으로 합쳐졌다.",
+      "summary": "8월 전체 commit은 16개뿐이며, 8월 3일의 6개는 앞 Episode(hardening)에 속하고 이 Episode는 8월 9일 이후 10개를 다룬다. 8월 9일 Windows 개발 인수인계 문서가 추가되고, 8월 10일에는 다른 작성자(서지석)의 수정 3건이 들어왔다. 8월 26~27일 side branch fix/klms-empty-dashboard에서 Discord 연동, 빈 dashboard 허용, 서명된 Calendar helper가 작업된 뒤 history에서 유일한 merge commit(71c01e8)으로 합쳐졌다.",
       "problem_or_context": "e9a292f의 테스트 이름은 '과제가 없을 때 인증된 빈 dashboard도 유효하다'는 조건을 말한다. Calendar 관련 세 commit은 helper 실행 방식과 식별자 안정성을 다룬다. 8월 이후 commit 빈도 감소의 이유는 기록에 없다.",
       "what_changed": "docs/windows-development-handoff.md가 추가됐다. src/python/klms_sync_v2/state_continuity.py와 테스트가 새로 생겼다. integrations/hermes-klms-discord-control/이 처음 등장했다. klms_sync.py는 제목이 '강의 현황'인 빈 페이지를 status ok로 반환하고, sync_klms_calendar_suite.swift와 sync_calendar_bridge.js는 서명된 helper와 LaunchServices 실행을 지원한다.",
       "result": "현재 HEAD(67e2f63)가 이 구간의 마지막 commit이다. integrations/, state_continuity.py, Calendar helper 변경은 모두 HEAD에 남아 있다.",
