@@ -54,7 +54,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, dev
 const pageErrors = [];
 page.on("pageerror", (e) => pageErrors.push(e.message));
 
-await page.goto(`http://127.0.0.1:${PORT}/film/film.html`, { waitUntil: "networkidle" });
+await page.goto(`http://127.0.0.1:${PORT}/public/film/index.html?capture=1`, { waitUntil: "networkidle" });
 const info = await page.evaluate(() => window.filmReady);
 console.log(`film: ${info.total.toFixed(1)}s, ${info.scenes.length} scenes`);
 info.scenes.forEach((s) => console.log(`  ${s.id.padEnd(14)} start ${s.start.toFixed(1).padStart(6)}s  dur ${s.dur.toFixed(1)}s`));
@@ -96,8 +96,8 @@ await browser.close();
 stopServer();
 
 // ------------------------------------------------------------------ narration track
-const timings = JSON.parse(fs.readFileSync(path.join(HERE, "timings.json"), "utf8"));
-const script = JSON.parse(fs.readFileSync(path.join(HERE, "script.json"), "utf8"));
+const WEB = path.join(ROOT, "public", "film");
+const script = JSON.parse(fs.readFileSync(path.join(WEB, "script.json"), "utf8"));
 const work = path.join(HERE, "audio");
 fs.rmSync(work, { recursive: true, force: true });
 fs.mkdirSync(work, { recursive: true });
@@ -115,6 +115,8 @@ const listFile = path.join(work, "concat.txt");
 fs.writeFileSync(listFile, parts.map((p) => `file '${p.replace(/\\/g, "/")}'`).join("\n"));
 const voice = path.join(work, "narration.wav");
 run(FFMPEG, ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", listFile, "-c:a", "pcm_s16le", voice]);
+// the web player uses the same single narration track as its master clock
+run(FFMPEG, ["-y", "-loglevel", "error", "-i", voice, "-c:a", "libmp3lame", "-b:a", "96k", "-ac", "1", path.join(WEB, "narration.mp3")]);
 
 // ------------------------------------------------------------------ mux
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
