@@ -1,11 +1,11 @@
 {
  "generator": "experiments/neukbao-storytelling/build_story.py",
- "generated_at": "2026-09-03T05:07:27+00:00",
+ "generated_at": "2026-09-03T08:13:46+00:00",
  "source": {
   "repository": "J1SE0K/KLMS-Sync-App",
   "remote_url": "https://github.com/J1SE0K/KLMS-Sync-App.git",
-  "ref": "HEAD",
-  "branch": "main",
+  "ref": "67e2f63",
+  "branch": "",
   "head_commit": "67e2f63e12ccf9808949cd8a7290e30d6ab30416",
   "head_short": "67e2f63",
   "first_parent_count": 1180,

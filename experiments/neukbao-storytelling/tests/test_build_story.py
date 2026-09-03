@@ -390,6 +390,32 @@ class RealRepositoryOutputTests(unittest.TestCase):
         self.assertIn(self.story["source"]["head_commit"], self.known)
         self.assertTrue(4 <= len(self.story["episodes"]) <= 8)
 
+    def test_story_json_matches_current_override(self):
+        """Catch a stale public/story.json left behind after editing story.override.json without rebuilding."""
+        override_path = ROOT / "story.override.json"
+        if not override_path.exists():
+            self.skipTest("no override present")
+        override = json.loads(override_path.read_text(encoding="utf-8"))
+        self.assertTrue(self.story["curation"]["override_applied"])
+        self.assertEqual(self.story["title"], override["story"]["title"])
+        self.assertEqual(self.story["arc_summary"], override["story"]["arc_summary"])
+        self.assertEqual(self.story["arc_points"], override["story"].get("arc_points", []))
+        spec_by_id = {e["id"]: e for e in override["episodes"]}
+        self.assertEqual([e["id"] for e in self.story["episodes"]], list(spec_by_id))
+        for ep in self.story["episodes"]:
+            spec = spec_by_id[ep["id"]]
+            for key in ("title", "summary", "problem_or_context", "what_changed", "result", "change_type", "confidence"):
+                self.assertEqual(ep[key], spec[key], f"{ep['id']}.{key} differs from override; rerun build_story.py")
+            self.assertEqual([c["id"] for c in ep["claims"]], [c["id"] for c in spec["claims"]])
+            for out_claim, spec_claim in zip(ep["claims"], spec["claims"]):
+                for key in ("text", "status", "confidence"):
+                    self.assertEqual(out_claim[key], spec_claim[key], f"{out_claim['id']}.{key} differs from override")
+        self.assertEqual(len(self.story["arc_points"]), len(self.story["episodes"]))
+        # every analyzed commit must belong to an episode; a rebuild against a newer ref that
+        # includes experiments/ commits would leave them uncovered and must fail here
+        self.assertEqual(self.story["curation"]["uncovered_commit_count"], 0, self.story["curation"]["uncovered_commit_ids"])
+        self.assertEqual(self.story["stats"]["commit_count"], sum(e["commit_count"] for e in self.story["episodes"]))
+
     def test_every_commit_hash_exists_and_episodes_are_chronological(self):
         prev_end = None
         for ep in self.story["episodes"]:

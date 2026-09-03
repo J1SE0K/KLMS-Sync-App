@@ -102,7 +102,7 @@ Paper Graphite palette, keep-all 한글 줄바꿈, 키보드 이동, reduced-mot
 
 ### 검증 방법
 
-build 실행, commits/story 생성, 25개 unit test(fixture repo + 실제 story.json), 정적 서버, headless 브라우저 콘솔 0건,
+build 실행, commits/story 생성, 26개 unit test(fixture repo + 실제 story.json), 정적 서버, headless 브라우저 콘솔 0건,
 모든 hash 실존, 시간순 정렬, claim evidence 확인, override 없이 생성, 잘못된 override 거부, private 데이터 미포함. 상세는 README의 검증 표.
 
 ---
@@ -148,4 +148,4 @@ build 실행, commits/story 생성, 25개 unit test(fixture repo + 실제 story.
 - 자동 Episode 61 → 큐레이션 8
 - claim 59 (observed 38 / supported 13 / inferred 8)
 - 월별 commit: 5월 111, 6월 853, 7월 204, 8월 16
-- 테스트 25 OK, 브라우저 콘솔 오류 0
+- 테스트 26 OK, 브라우저 콘솔 오류 0
