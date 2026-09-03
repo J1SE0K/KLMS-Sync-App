@@ -1,7 +1,0 @@
-# Build artifacts of the film renderer. The finished film is committed at
-# ../public/storytelling-film.mp4; everything below is regenerable.
-node_modules/
-frames/
-probe/
-audio/
-narration/
