@@ -2,14 +2,14 @@
  "meta": {
   "repository": "https://github.com/J1SE0K/KLMS-Sync-App.git",
   "repository_name": "KLMS-Sync-App",
-  "source_commit": "8b94ca0a207e851797478b206c8f31e0c85d629c",
+  "source_commit": "e7a2365c12ac1514cfa27f37ae69cb9372e98456",
   "source_branch": "main",
   "worktree_dirty": true,
-  "generated_at": "2026-09-03T09:25:59.174299+00:00",
-  "tracked_file_count": 442,
+  "generated_at": "2026-09-03T11:11:29.924382+00:00",
+  "tracked_file_count": 446,
   "analyzed_text_file_count": 300,
-  "node_count": 557,
-  "edge_count": 1291,
+  "node_count": 562,
+  "edge_count": 1296,
   "edge_types": [
    "contains",
    "invokes",
@@ -21,8 +21,8 @@
   "languages": {
    "Python": 101,
    "Swift": 68,
+   "Image": 45,
    "Shell (zsh)": 43,
-   "Image": 42,
    "Markdown": 35,
    "JavaScript": 35,
    "Text": 19,
@@ -31,8 +31,8 @@
    "SVG": 10,
    "Shell": 9,
    "SQL": 9,
+   "Other": 7,
    "JavaScript (JXA)": 7,
-   "Other": 6,
    "YAML": 5,
    "HTML": 4,
    "CSS": 4,
@@ -60,8 +60,8 @@
    "path": null,
    "language": null,
    "description": "Safari에 로그인된 KAIST KLMS 세션을 재사용해 과제·시험·공지·첨부파일을 macOS 기본 앱과 로컬 폴더로 정리하는 개인용 동기화 도구. shell, JXA, Python, Swift, Electron, Cloudflare Worker가 한 저장소에 공존한다.",
-   "commit_count": 4614,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "commit_count": 4639,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": ".",
@@ -71,8 +71,8 @@
    "languages": {
     "Python": 101,
     "Swift": 68,
+    "Image": 45,
     "Shell (zsh)": 43,
-    "Image": 42,
     "Markdown": 35,
     "JavaScript": 35,
     "Text": 19,
@@ -81,8 +81,8 @@
     "SVG": 10,
     "Shell": 9,
     "SQL": 9,
+    "Other": 7,
     "JavaScript (JXA)": 7,
-    "Other": 6,
     "YAML": 5,
     "HTML": 4,
     "CSS": 4,
@@ -93,7 +93,7 @@
     "TOML": 1,
     "Dockerfile": 1
    },
-   "file_count": 442
+   "file_count": 446
   },
   {
    "id": "component:apple-applications",
@@ -377,12 +377,12 @@
    "path": null,
    "language": null,
    "description": "저장소를 분석 대상으로 삼는 독립 프로토타입(Storytelling, Visual Diagram). KLMS 동기화 기능과 무관하며 tracked 소스만 읽는다.",
-   "commit_count": 48,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "commit_count": 73,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/**",
-     "reason": "component-map.json 규칙 'experiments/**'에 tracked 파일 40개가 매칭"
+     "reason": "component-map.json 규칙 'experiments/**'에 tracked 파일 44개가 매칭"
     }
    ],
    "component_id": "neukbao-experiments",
@@ -390,16 +390,16 @@
     "col": 5,
     "row": 2
    },
-   "file_count": 40,
+   "file_count": 44,
    "languages": {
-    "Image": 11,
+    "Image": 14,
     "JSON": 7,
     "Markdown": 4,
     "Python": 4,
     "JavaScript": 4,
+    "Other": 4,
     "CSS": 3,
     "HTML": 3,
-    "Other": 3,
     "Config": 1
    }
   },
@@ -1649,26 +1649,26 @@
    "parent_id": "component:neukbao-experiments",
    "path": "experiments",
    "language": null,
-   "description": "experiments/ 아래 tracked 파일 40개 (Image 11, JSON 7, Markdown 4)",
-   "commit_count": 48,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "description": "experiments/ 아래 tracked 파일 44개 (Image 14, JSON 7, Markdown 4)",
+   "commit_count": 73,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments",
-     "reason": "tracked 파일 40개의 상위 디렉터리"
+     "reason": "tracked 파일 44개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 40,
+   "file_count": 44,
    "languages": {
-    "Image": 11,
+    "Image": 14,
     "JSON": 7,
     "Markdown": 4,
     "Python": 4,
     "JavaScript": 4,
+    "Other": 4,
     "CSS": 3,
     "HTML": 3,
-    "Other": 3,
     "Config": 1
    }
   },
@@ -1679,22 +1679,22 @@
    "parent_id": "dir:neukbao-experiments:experiments",
    "path": "experiments/neukbao-storytelling",
    "language": null,
-   "description": "experiments/neukbao-storytelling/ 아래 tracked 파일 26개 (Image 6, JSON 5, JavaScript 3)",
-   "commit_count": 34,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "description": "experiments/neukbao-storytelling/ 아래 tracked 파일 27개 (Image 6, JSON 5, Other 4)",
+   "commit_count": 39,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling",
-     "reason": "tracked 파일 26개의 상위 디렉터리"
+     "reason": "tracked 파일 27개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 26,
+   "file_count": 27,
    "languages": {
     "Image": 6,
     "JSON": 5,
+    "Other": 4,
     "JavaScript": 3,
-    "Other": 3,
     "Markdown": 2,
     "Python": 2,
     "CSS": 2,
@@ -1753,23 +1753,20 @@
    "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling",
    "path": "experiments/neukbao-storytelling/film",
    "language": null,
-   "description": "experiments/neukbao-storytelling/film/ 아래 tracked 파일 8개 (JavaScript 2, JSON 2, Config 1)",
-   "commit_count": 8,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "description": "experiments/neukbao-storytelling/film/ 아래 tracked 파일 3개 (Config 1, JavaScript 1, Other 1)",
+   "commit_count": 5,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/film",
-     "reason": "tracked 파일 8개의 상위 디렉터리"
+     "reason": "tracked 파일 3개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 8,
+   "file_count": 3,
    "languages": {
-    "JavaScript": 2,
-    "JSON": 2,
     "Config": 1,
-    "CSS": 1,
-    "HTML": 1,
+    "JavaScript": 1,
     "Other": 1
    }
   },
@@ -1780,23 +1777,49 @@
    "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling",
    "path": "experiments/neukbao-storytelling/public",
    "language": null,
-   "description": "experiments/neukbao-storytelling/public/ 아래 tracked 파일 7개 (JSON 2, Other 2, JavaScript 1)",
-   "commit_count": 10,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "description": "experiments/neukbao-storytelling/public/ 아래 tracked 파일 13개 (JSON 4, Other 3, JavaScript 2)",
+   "commit_count": 17,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public",
-     "reason": "tracked 파일 7개의 상위 디렉터리"
+     "reason": "tracked 파일 13개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 7,
+   "file_count": 13,
+   "languages": {
+    "JSON": 4,
+    "Other": 3,
+    "JavaScript": 2,
+    "CSS": 2,
+    "HTML": 2
+   }
+  },
+  {
+   "id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "label": "film/",
+   "kind": "directory",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
+   "path": "experiments/neukbao-storytelling/public/film",
+   "language": null,
+   "description": "experiments/neukbao-storytelling/public/film/ 아래 tracked 파일 6개 (JSON 2, CSS 1, JavaScript 1)",
+   "commit_count": 6,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film",
+     "reason": "tracked 파일 6개의 상위 디렉터리"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "file_count": 6,
    "languages": {
     "JSON": 2,
-    "Other": 2,
+    "CSS": 1,
     "JavaScript": 1,
     "HTML": 1,
-    "CSS": 1
+    "Other": 1
    }
   },
   {
@@ -1828,19 +1851,19 @@
    "parent_id": "dir:neukbao-experiments:experiments",
    "path": "experiments/neukbao-visual-diagram",
    "language": null,
-   "description": "experiments/neukbao-visual-diagram/ 아래 tracked 파일 14개 (Image 5, Markdown 2, Python 2)",
-   "commit_count": 14,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "description": "experiments/neukbao-visual-diagram/ 아래 tracked 파일 17개 (Image 8, Markdown 2, Python 2)",
+   "commit_count": 34,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram",
-     "reason": "tracked 파일 14개의 상위 디렉터리"
+     "reason": "tracked 파일 17개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 14,
+   "file_count": 17,
    "languages": {
-    "Image": 5,
+    "Image": 8,
     "Markdown": 2,
     "Python": 2,
     "JSON": 2,
@@ -1856,19 +1879,19 @@
    "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
    "path": "experiments/neukbao-visual-diagram/docs",
    "language": null,
-   "description": "experiments/neukbao-visual-diagram/docs/ 아래 tracked 파일 5개 (Image 5)",
-   "commit_count": 5,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "description": "experiments/neukbao-visual-diagram/docs/ 아래 tracked 파일 8개 (Image 8)",
+   "commit_count": 15,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs",
-     "reason": "tracked 파일 5개의 상위 디렉터리"
+     "reason": "tracked 파일 8개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 5,
+   "file_count": 8,
    "languages": {
-    "Image": 5
+    "Image": 8
    }
   },
   {
@@ -1879,8 +1902,8 @@
    "path": "experiments/neukbao-visual-diagram/public",
    "language": null,
    "description": "experiments/neukbao-visual-diagram/public/ 아래 tracked 파일 4개 (JavaScript 1, JSON 1, HTML 1)",
-   "commit_count": 4,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 10,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/public",
@@ -1904,8 +1927,8 @@
    "path": "experiments/neukbao-visual-diagram/tests",
    "language": null,
    "description": "experiments/neukbao-visual-diagram/tests/ 아래 tracked 파일 1개 (Python 1)",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/tests",
@@ -8182,8 +8205,8 @@
    "path": "experiments/neukbao-storytelling/README.md",
    "language": "Markdown",
    "description": "Markdown 파일",
-   "commit_count": 3,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "commit_count": 4,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/README.md",
@@ -8195,7 +8218,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 16455
+   "size_bytes": 17892
   },
   {
    "id": "file:experiments/neukbao-storytelling/build_story.py",
@@ -8389,8 +8412,8 @@
    "path": "experiments/neukbao-storytelling/film/build_film.mjs",
    "language": "JavaScript",
    "description": "Render the storytelling film.",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/film/build_film.mjs",
@@ -8402,76 +8425,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 6053
-  },
-  {
-   "id": "file:experiments/neukbao-storytelling/film/film.css",
-   "label": "film.css",
-   "kind": "file",
-   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "path": "experiments/neukbao-storytelling/film/film.css",
-   "language": "CSS",
-   "description": "CSS 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/film.css",
-     "reason": "git ls-files에 tracked"
-    },
-    {
-     "path": "experiments/neukbao-storytelling/film/film.css",
-     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
-    }
-   ],
-   "component_id": "neukbao-experiments",
-   "size_bytes": 6433
-  },
-  {
-   "id": "file:experiments/neukbao-storytelling/film/film.html",
-   "label": "film.html",
-   "kind": "file",
-   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "path": "experiments/neukbao-storytelling/film/film.html",
-   "language": "HTML",
-   "description": "HTML 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/film.html",
-     "reason": "git ls-files에 tracked"
-    },
-    {
-     "path": "experiments/neukbao-storytelling/film/film.html",
-     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
-    }
-   ],
-   "component_id": "neukbao-experiments",
-   "size_bytes": 810
-  },
-  {
-   "id": "file:experiments/neukbao-storytelling/film/film.js",
-   "label": "film.js",
-   "kind": "file",
-   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "path": "experiments/neukbao-storytelling/film/film.js",
-   "language": "JavaScript",
-   "description": "Deterministic film renderer.",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/film.js",
-     "reason": "git ls-files에 tracked"
-    },
-    {
-     "path": "experiments/neukbao-storytelling/film/film.js",
-     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
-    }
-   ],
-   "component_id": "neukbao-experiments",
-   "size_bytes": 11440
+   "size_bytes": 6244
   },
   {
    "id": "file:experiments/neukbao-storytelling/film/make_narration.ps1",
@@ -8481,8 +8435,8 @@
    "path": "experiments/neukbao-storytelling/film/make_narration.ps1",
    "language": "Other",
    "description": "Other 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/film/make_narration.ps1",
@@ -8494,53 +8448,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 2063
-  },
-  {
-   "id": "file:experiments/neukbao-storytelling/film/script.json",
-   "label": "script.json",
-   "kind": "file",
-   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "path": "experiments/neukbao-storytelling/film/script.json",
-   "language": "JSON",
-   "description": "JSON 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/script.json",
-     "reason": "git ls-files에 tracked"
-    },
-    {
-     "path": "experiments/neukbao-storytelling/film/script.json",
-     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
-    }
-   ],
-   "component_id": "neukbao-experiments",
-   "size_bytes": 8240
-  },
-  {
-   "id": "file:experiments/neukbao-storytelling/film/timings.json",
-   "label": "timings.json",
-   "kind": "file",
-   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "path": "experiments/neukbao-storytelling/film/timings.json",
-   "language": "JSON",
-   "description": "JSON 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T08:57:09+00:00",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/timings.json",
-     "reason": "git ls-files에 tracked"
-    },
-    {
-     "path": "experiments/neukbao-storytelling/film/timings.json",
-     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
-    }
-   ],
-   "component_id": "neukbao-experiments",
-   "size_bytes": 282
+   "size_bytes": 2093
   },
   {
    "id": "file:experiments/neukbao-storytelling/public/app.js",
@@ -8589,6 +8497,144 @@
    "size_bytes": 2337659
   },
   {
+   "id": "file:experiments/neukbao-storytelling/public/film/film.css",
+   "label": "film.css",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "path": "experiments/neukbao-storytelling/public/film/film.css",
+   "language": "CSS",
+   "description": "CSS 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/film.css",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/film/film.css",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 6433
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/film/film.js",
+   "label": "film.js",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "path": "experiments/neukbao-storytelling/public/film/film.js",
+   "language": "JavaScript",
+   "description": "Deterministic film renderer.",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/film.js",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/film/film.js",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 11749
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/film/index.html",
+   "label": "index.html",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "path": "experiments/neukbao-storytelling/public/film/index.html",
+   "language": "HTML",
+   "description": "HTML 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/index.html",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/film/index.html",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 9981
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/film/narration.mp3",
+   "label": "narration.mp3",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "path": "experiments/neukbao-storytelling/public/film/narration.mp3",
+   "language": "Other",
+   "description": "Other 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/narration.mp3",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/film/narration.mp3",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 2266028
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/film/script.json",
+   "label": "script.json",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "path": "experiments/neukbao-storytelling/public/film/script.json",
+   "language": "JSON",
+   "description": "JSON 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/script.json",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/film/script.json",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 8520
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/film/timings.json",
+   "label": "timings.json",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "path": "experiments/neukbao-storytelling/public/film/timings.json",
+   "language": "JSON",
+   "description": "JSON 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/timings.json",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/film/timings.json",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 282
+  },
+  {
    "id": "file:experiments/neukbao-storytelling/public/index.html",
    "label": "index.html",
    "kind": "file",
@@ -8596,8 +8642,8 @@
    "path": "experiments/neukbao-storytelling/public/index.html",
    "language": "HTML",
    "description": "HTML 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T11:06:18+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public/index.html",
@@ -8609,7 +8655,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 4648
+   "size_bytes": 4794
   },
   {
    "id": "file:experiments/neukbao-storytelling/public/story.json",
@@ -8757,8 +8803,8 @@
    "path": "experiments/neukbao-visual-diagram/PRESENTATION.md",
    "language": "Markdown",
    "description": "Markdown 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/PRESENTATION.md",
@@ -8780,8 +8826,8 @@
    "path": "experiments/neukbao-visual-diagram/README.md",
    "language": "Markdown",
    "description": "Markdown 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 3,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/README.md",
@@ -8793,7 +8839,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 16646
+   "size_bytes": 16844
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/analyze.py",
@@ -8849,8 +8895,8 @@
    "path": "experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
    "language": "Image",
    "description": "Image 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
@@ -8862,7 +8908,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 188855
+   "size_bytes": 135702
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
@@ -8872,8 +8918,8 @@
    "path": "experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
    "language": "Image",
    "description": "Image 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
@@ -8885,7 +8931,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 141556
+   "size_bytes": 141657
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
@@ -8895,8 +8941,8 @@
    "path": "experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
    "language": "Image",
    "description": "Image 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
@@ -8908,7 +8954,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 248020
+   "size_bytes": 248154
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
@@ -8918,8 +8964,8 @@
    "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
    "language": "Image",
    "description": "Image 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
@@ -8931,7 +8977,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 131846
+   "size_bytes": 132014
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
@@ -8941,8 +8987,8 @@
    "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
    "language": "Image",
    "description": "Image 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 3,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
@@ -8954,7 +9000,76 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 155458
+   "size_bytes": 166234
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+   "label": "screenshot-matrix.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 180060
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+   "label": "screenshot-sunburst.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 370596
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
+   "label": "screenshot-treemap.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 172347
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/public/app.js",
@@ -8964,8 +9079,8 @@
    "path": "experiments/neukbao-visual-diagram/public/app.js",
    "language": "JavaScript",
    "description": "Neukbao Visual Diagram viewer — vanilla JS + SVG, no dependencies. */",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 3,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/public/app.js",
@@ -8977,7 +9092,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 76912
+   "size_bytes": 77005
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/public/graph.json",
@@ -8987,8 +9102,8 @@
    "path": "experiments/neukbao-visual-diagram/public/graph.json",
    "language": "JSON",
    "description": "JSON 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/public/graph.json",
@@ -9000,7 +9115,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 1196160
+   "size_bytes": 1211319
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/public/index.html",
@@ -9010,8 +9125,8 @@
    "path": "experiments/neukbao-visual-diagram/public/index.html",
    "language": "HTML",
    "description": "HTML 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/public/index.html",
@@ -9023,7 +9138,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 7928
+   "size_bytes": 8152
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/public/styles.css",
@@ -9033,8 +9148,8 @@
    "path": "experiments/neukbao-visual-diagram/public/styles.css",
    "language": "CSS",
    "description": "CSS 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 3,
+   "last_changed_at": "2026-09-03T09:39:27+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/public/styles.css",
@@ -9046,7 +9161,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 18414
+   "size_bytes": 20947
   },
   {
    "id": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
@@ -9056,8 +9171,8 @@
    "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
    "language": "Python",
    "description": "Unit tests for the Neukbao Visual Diagram analyzer.",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T09:27:25+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
@@ -16997,48 +17112,6 @@
    "level": "file"
   },
   {
-   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/film.css",
-   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "target": "file:experiments/neukbao-storytelling/film/film.css",
-   "type": "contains",
-   "confidence": "high",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/film.css",
-     "reason": "디렉터리가 이 tracked 파일을 포함"
-    }
-   ],
-   "level": "file"
-  },
-  {
-   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/film.html",
-   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "target": "file:experiments/neukbao-storytelling/film/film.html",
-   "type": "contains",
-   "confidence": "high",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/film.html",
-     "reason": "디렉터리가 이 tracked 파일을 포함"
-    }
-   ],
-   "level": "file"
-  },
-  {
-   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/film.js",
-   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "target": "file:experiments/neukbao-storytelling/film/film.js",
-   "type": "contains",
-   "confidence": "high",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/film.js",
-     "reason": "디렉터리가 이 tracked 파일을 포함"
-    }
-   ],
-   "level": "file"
-  },
-  {
    "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/make_narration.ps1",
    "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
    "target": "file:experiments/neukbao-storytelling/film/make_narration.ps1",
@@ -17053,32 +17126,18 @@
    "level": "file"
   },
   {
-   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/script.json",
-   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "target": "file:experiments/neukbao-storytelling/film/script.json",
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public->dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
+   "target": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
    "type": "contains",
    "confidence": "high",
    "evidence": [
     {
-     "path": "experiments/neukbao-storytelling/film/script.json",
-     "reason": "디렉터리가 이 tracked 파일을 포함"
+     "path": "experiments/neukbao-storytelling/public/film",
+     "reason": "tracked 파일 경로의 상위 디렉터리"
     }
    ],
-   "level": "file"
-  },
-  {
-   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/timings.json",
-   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
-   "target": "file:experiments/neukbao-storytelling/film/timings.json",
-   "type": "contains",
-   "confidence": "high",
-   "evidence": [
-    {
-     "path": "experiments/neukbao-storytelling/film/timings.json",
-     "reason": "디렉터리가 이 tracked 파일을 포함"
-    }
-   ],
-   "level": "file"
+   "level": "structure"
   },
   {
    "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public->file:experiments/neukbao-storytelling/public/app.js",
@@ -17173,6 +17232,90 @@
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public/styles.css",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public/film->file:experiments/neukbao-storytelling/public/film/film.css",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "target": "file:experiments/neukbao-storytelling/public/film/film.css",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/film.css",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public/film->file:experiments/neukbao-storytelling/public/film/film.js",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "target": "file:experiments/neukbao-storytelling/public/film/film.js",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/film.js",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public/film->file:experiments/neukbao-storytelling/public/film/index.html",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "target": "file:experiments/neukbao-storytelling/public/film/index.html",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/index.html",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public/film->file:experiments/neukbao-storytelling/public/film/narration.mp3",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "target": "file:experiments/neukbao-storytelling/public/film/narration.mp3",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/narration.mp3",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public/film->file:experiments/neukbao-storytelling/public/film/script.json",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "target": "file:experiments/neukbao-storytelling/public/film/script.json",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/script.json",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public/film->file:experiments/neukbao-storytelling/public/film/timings.json",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public/film",
+   "target": "file:experiments/neukbao-storytelling/public/film/timings.json",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/film/timings.json",
      "reason": "디렉터리가 이 tracked 파일을 포함"
     }
    ],
@@ -17355,6 +17498,48 @@
    "evidence": [
     {
      "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-matrix.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-sunburst.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-treemap.png",
      "reason": "디렉터리가 이 tracked 파일을 포함"
     }
    ],
@@ -21401,7 +21586,7 @@
    "evidence": [
     {
      "path": ".",
-     "reason": "component-map.json이 40개 파일을 'Neukbao Experiments'로 분류"
+     "reason": "component-map.json이 44개 파일을 'Neukbao Experiments'로 분류"
     }
    ],
    "level": "structure"

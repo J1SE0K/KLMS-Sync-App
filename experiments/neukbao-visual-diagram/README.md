@@ -115,35 +115,36 @@ tracked 파일이라도 `config.env`, `.env`, `*.cookies`, `session*.json`, `kai
 ### 방사형 (sunburst)
 
 - 가운데가 현재 기준, 바깥으로 갈수록 하위 계층. 각도 = 파일 수(또는 커밋 수) 비율, 최대 4겹.
-- 한 화면에 전부 담기지 않는다. 4겹 밖이거나 각이 0.012 rad보다 얇은 조각은 그리지 않고, 상태 줄에 몇 개를 왜 안 그렸는지 밝힌다. 저장소 전체 기준으로는 303개를 그리고 253개가 4겹 밖이라 조각을 열어야 보인다.
+- 한 화면에 전부 담기지 않는다. 4겹 밖이거나 각이 0.012 rad보다 얇은 조각은 그리지 않고, 상태 줄에 몇 개를 왜 안 그렸는지 밝힌다. 저장소 전체 기준으로는 303개를 그리고 258개가 4겹 밖이라 조각을 열어야 보인다.
 - 더블클릭/Enter로 그 조각을 가운데로 내리고 Esc로 올라온다. 면적 뷰와 위치(breadcrumb)를 공유한다.
 - node 클릭: 이름, 역할, 경로, 언어, 크기, 하위, 연결(타입·방향·confidence·근거 버튼), Git 변경 횟수(로그 스케일 막대), 마지막 변경, 생성 근거.
 - edge 클릭: 관계 종류, source/target, confidence(합쳐진 경우 분포), 추출 파일과 이유, 원본 파일 관계 목록.
 ### 네 뷰가 공유하는 것
 
-- 검색(`/` 키로 포커스), 언어·관계 종류(contains 제외, 포함 관계는 트리 자체라 토글하지 않음)·confidence 필터, legend, commit 표시, 변경 강도, breadcrumb, Overview 복귀.
+- 검색(`/` 키로 포커스), 관계 종류·confidence·언어 필터, commit 표시, 변경 강도, breadcrumb, 처음으로 복귀.
+- 관계와 confidence 필터가 곧 범례다. 각 줄이 실제 선 모양이나 confidence 알약을 그대로 보여 주고 한 줄 설명을 달고 있어서, 별도 legend 패널을 두지 않는다. `contains`는 트리 구조 자체라 토글 대상이 아니다.
 - 오른쪽 상세 패널. node를 고르면 이름·역할·경로·언어·하위·연결·커밋 수·마지막 변경·생성 근거가, edge나 행렬 칸을 고르면 관계 종류·source/target·confidence·추출 파일과 이유가 나온다.
 - 상세 패널의 경로 링크를 누르면 지금 보고 있는 뷰에 맞게 이동한다. 관계도에서는 해당 파일의 L2로, 면적/방사형에서는 그 위치로 내려가고, 행렬에서 파일을 고르면 관계도로 넘어간다.
 - 키보드: SVG 포커스 후 방향키 이동(`aria-activedescendant`로 현재 요소 지정, 상태 줄에 라벨 낭독), Enter 선택/확대, Space 선택, Esc 상위, `+`/`-`/`0` zoom. 행렬의 칸과 면적/방사형의 조각도 같은 방식으로 순회한다. 모든 정보는 hover 없이 상세 패널에 나온다.
 - `prefers-reduced-motion`이면 transition 제거. `prefers-color-scheme: dark`와 `forced-colors` 대응. node 위치는 `component-map.json`의 고정 격자와 결정적 packing으로 계산해서 필터·선택 때 흔들리지 않는다.
 - 색상은 DESIGN.md의 Paper Graphite 팔레트를 그대로 썼다. 관계는 색뿐 아니라 선 종류(실선/대시/점선/이중선)와 라벨로도 구분한다.
 
-## 검증 결과 (2026-09-03, source commit `8b94ca0a207e851797478b206c8f31e0c85d629c`)
+## 검증 결과 (2026-09-03, source commit `e7a2365c12ac1514cfa27f37ae69cb9372e98456`)
 
 | 항목 | 결과 |
 | --- | --- |
-| `python analyze.py --repo ../.. --output public/graph.json` | 1.5초, tracked 442, node 557 (system 1 / component 14 / directory 100 / file 442), edge 1291 |
-| edge 타입 분포 | contains 556, invokes 168, imports 93, packages 179, tests 269, communicates 26 |
+| `python analyze.py --repo ../.. --output public/graph.json` | 1.5초, tracked 446, node 562 (system 1 / component 14 / directory 101 / file 446), edge 1296 |
+| edge 타입 분포 | contains 561, invokes 168, imports 93, packages 179, tests 269, communicates 26 |
 | confidence 분포 (contains 제외) | high 480, medium 92, low 163 |
 | `python -B -m unittest discover -s tests` | 32 tests OK (synthetic repo 22, pattern/private 3, real repo 7) |
 | 존재하지 않는 파일 참조 | 없음 (`RealRepositoryTests.test_all_file_nodes_are_tracked`, `test_all_edges_reference_existing_nodes`) |
 | `source_commit` | 생성 당시 HEAD와 일치. 테스트가 보장하는 것은 **출처**이지 **최신성**이 아니다. `test_source_commit_is_a_real_ancestor_of_head`는 그 값이 HEAD에서 도달 가능한 진짜 커밋인지, `test_every_file_node_exists_in_the_recorded_commit`은 그 커밋의 트리와 graph.json의 파일 집합이 양방향으로 일치하는지 본다. 즉 오래된 graph.json도 자기 커밋과 아귀가 맞으면 통과한다. 커밋이 쌓이면 뒤처지므로 **발표 전에 `analyze.py`를 다시 실행해 HEAD로 맞춘다** |
-| private/ignored 데이터 | file node 442개 전부 `git ls-files`에 있고 private 패턴에 걸리는 것 없음 |
+| private/ignored 데이터 | file node 446개 전부 `git ls-files`에 있고 private 패턴에 걸리는 것 없음 |
 | 브라우저 콘솔 | 오류 0 (Playwright, Chromium 1600×1000) |
 | 흐름 (관계도) | overview → L1 → component 클릭 → L2 → 파일 클릭 → 근거 버튼 → edge 상세 → 필터 on/off → 키보드 이동/Esc → Overview 복귀 확인 |
 | 흐름 (행렬) | 탭 전환 → 관계가 있는 칸 52개 / 182칸 → 칸 클릭 → 관계 목록과 대표 근거 → `근거`로 edge 상세 확인 |
 | 흐름 (면적) | 탭 전환 → component 14개 → 크기 기준 파일↔커밋 전환 → 더블클릭으로 하위 진입 → Esc 복귀 확인 |
-| 흐름 (방사형) | 탭 전환 → 전체 기준 303개 조각과 "안 그린 것 253개 (4겹 밖 253개)" 안내 → 키보드 이동/Enter로 하위 진입 → breadcrumb 갱신 확인 |
+| 흐름 (방사형) | 탭 전환 → 전체 기준 303개 조각과 "안 그린 것 258개 (4겹 밖 258개)" 안내 → 키보드 이동/Enter로 하위 진입 → breadcrumb 갱신 확인 |
 | 800px 폭 | 가로 스크롤 없음 |
 | dark + reduced motion | 렌더 확인 (`docs/screenshot-dark-reduced-motion.png`) |
 
@@ -160,8 +161,8 @@ tracked 파일이라도 `config.env`, `.env`, `*.cookies`, `session*.json`, `kai
 - `graph.json`은 한 커밋의 스냅샷이다. 테스트는 그 커밋과의 정합성만 보고 최신성은 보지 않으므로, 저장소가 앞서 나간 뒤에도 초록으로 통과한다. 화면 상단의 commit 값이 지금 HEAD와 다르면 다시 생성해야 한다.
 - 언어 필터는 node를 흐리게만 하고 edge를 제거하지 않는다.
 - L2에서 파일이 70개 이상인 component(Tests and Verification 95개, Apple Applications 74개)는 박스가 커져 zoom이 필요하다.
-- 행렬은 component 단위만 다룬다. 파일 단위 행렬은 442×442이라 만들지 않았다.
+- 행렬은 component 단위만 다룬다. 파일 단위 행렬은 446×446이라 만들지 않았다.
 - 면적/방사형의 크기 기준은 파일 수와 커밋 수 둘뿐이다. 코드 줄 수는 tracked 파일을 전부 읽어야 해서 넣지 않았다.
-- 방사형은 4겹까지만 그린다. 저장소 전체를 기준으로 하면 303개를 그리고 253개가 4겹 밖이라 화면에 없다. 크기 기준을 커밋 수로 바꾸면 얇은 조각까지 더해져 443개가 빠진다. 상태 줄이 그 수와 이유를 밝히며, 전부 보려면 조각을 눌러 내려가야 한다.
+- 방사형은 4겹까지만 그린다. 저장소 전체를 기준으로 하면 303개를 그리고 258개가 4겹 밖이라 화면에 없다. 크기 기준을 커밋 수로 바꾸면 얇은 조각까지 더해져 더 많이 빠진다. 상태 줄이 그 수와 이유를 밝히며, 전부 보려면 조각을 눌러 내려가야 한다.
 - Swift 파일 사이의 타입 참조(같은 target 안)는 분석하지 않는다. target 단위만 다룬다.
 - `docs/` 안 문서가 다른 파일을 언급하는 관계는 만들지 않았다 (문서를 근거로 쓰지 않는다는 원칙).

@@ -1,6 +1,6 @@
 # Neukbao Visual Diagram · 발표 노트
 
-대상 저장소: `J1SE0K/KLMS-Sync-App` (commit `8b94ca0a`, tracked 442 files)
+대상 저장소: `J1SE0K/KLMS-Sync-App` (commit `e7a2365c`, tracked 446 files)
 프로토타입 위치: `experiments/neukbao-visual-diagram/`
 성격: Neukbao의 첫 독립 프로토타입. Storytelling(Development Episode, 타임라인 재생)과 분리된 별개 실험.
 
@@ -34,7 +34,7 @@ README는 의도를 설명하지만 실제 코드가 README와 같은지 검증�
 ### 왜 Visual Diagram인가
 
 구조 이해는 공간적 문제다. "무엇이 무엇을 부르는가"를 목록으로 읽는 것보다
-좌표와 선으로 보는 편이 빠르다. 다만 442개 파일을 한 화면에 뿌리면 오히려 잃는다.
+좌표와 선으로 보는 편이 빠르다. 다만 446개 파일을 한 화면에 뿌리면 오히려 잃는다.
 그래서 **System → Component → File** 세 단계로 확대하는 구조를 택했다.
 
 ### 파일 트리, 일반 dependency graph와 무엇이 다른가
@@ -88,12 +88,12 @@ README는 의도를 설명하지만 실제 코드가 README와 같은지 검증�
 }
 ```
 
-실측: node 557, edge 1291 (contains 556, invokes 168, imports 93, packages 179, tests 269, communicates 26). contains 제외 confidence: high 480, medium 92, low 163.
+실측: node 562, edge 1296 (contains 561, invokes 168, imports 93, packages 179, tests 269, communicates 26). contains 제외 confidence: high 480, medium 92, low 163.
 
 ### UI 구조
 
 - 상단: breadcrumb, source commit, tracked 수, 생성일. 그 아래 **뷰 탭 4개**
-- 좌측: 레벨 전환, Overview/zoom, 검색, 언어·관계·confidence 필터, legend, 변경 강도 범례
+- 좌측: 레벨 전환, 처음으로/zoom, 검색, 관계·confidence·언어 필터, 변경 강도 눈금. 관계 필터의 각 줄이 실제 선 모양을 그대로 보여 주므로 범례를 따로 두지 않는다
 - 중앙 SVG: 선택한 뷰를 그린다
   - **관계도**: L0 격자(14 component, 주요 흐름만) / L1(모든 component 관계, `type ×N` 라벨) / L2(중첩 디렉터리·파일 박스 + 외부 component stub)
   - **행렬**: 14×14. 행=source, 열=target, 숫자=원본 관계 수, 색 진하기=로그 스케일, 아래 띠=관계 종류
@@ -161,7 +161,7 @@ python3 -m http.server 4173 -d public
 
 | 시간 | 행동 | 보이는 것 | 말할 것 |
 | --- | --- | --- | --- |
-| 0–10s | 브라우저에서 열기 | L0: 14개 component 격자, 상단에 commit `8b94ca0a`, 442 files | "이 화면은 저장소의 tracked 파일 442개를 14개 덩어리로 나눈 것이다. 문서가 아니라 코드에서 뽑았다." |
+| 0–10s | 브라우저에서 열기 | L0: 14개 component 격자, 상단에 commit `e7a2365c`, 446 files | "이 화면은 저장소의 tracked 파일 446개를 14개 덩어리로 나눈 것이다. 문서가 아니라 코드에서 뽑았다." |
 | 10–20s | row 1을 손으로 짚기 | User Entry Points → Shell Orchestration → KLMS Web Access → Parsing → Native macOS 순서의 화살표 | "root 스크립트에서 시작해 Safari, Python, Reminders/Calendar까지 실행이 왼쪽에서 오른쪽으로 흐른다." |
 | 20–30s | `Shell Orchestration` 클릭 | 우측 패널: 파일 16개, 커밋 86, 연결된 component 6개(관계 9개)와 confidence | "이 component가 무엇과 연결되는지, 각 연결이 얼마나 확실한지 바로 나온다." |
 | 30–40s | "파일 구조 열기 (L2)" | `bin/` 12개, `src/sh/` 4개 박스, 오른쪽에 외부 component stub 6개 | "이제 파일 수준이다. 왼쪽 막대가 진할수록 자주 바뀐 파일." |

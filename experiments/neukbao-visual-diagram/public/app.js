@@ -5,14 +5,19 @@
   const SVG_NS = "http://www.w3.org/2000/svg";
   const EDGE_TYPES = ["contains", "invokes", "imports", "packages", "tests", "communicates"];
   const EDGE_STYLE = {
-    contains: { label: "contains", desc: "디렉터리/컴포넌트가 하위를 포함", dash: "" },
-    invokes: { label: "invokes", desc: "스크립트 실행·exec·subprocess 호출", dash: "" },
-    imports: { label: "imports", desc: "import / require / source", dash: "dashed" },
-    packages: { label: "packages", desc: "패키지/번들/allowlist에 포함", dash: "dotted" },
-    tests: { label: "tests", desc: "테스트가 대상 모듈을 검증", dash: "double" },
-    communicates: { label: "communicates", desc: "HTTP/WebSocket 경로 공유", dash: "" },
+    contains: { label: "contains", desc: "하위를 담는다", dash: "" },
+    invokes: { label: "invokes", desc: "실행하고 호출한다", dash: "" },
+    imports: { label: "imports", desc: "import · require · source", dash: "dashed" },
+    packages: { label: "packages", desc: "번들에 담아 나른다", dash: "dotted" },
+    tests: { label: "tests", desc: "테스트가 검증한다", dash: "double" },
+    communicates: { label: "communicates", desc: "같은 API 경로를 쓴다", dash: "" },
   };
   const CONFIDENCES = ["high", "medium", "low"];
+  const CONFIDENCE_DESC = {
+    high: "코드에서 확인",
+    medium: "경로·패턴에서 추정",
+    low: "이름만 일치",
+  };
   const KIND_LABEL = { system: "System", component: "Component", directory: "Directory", file: "File" };
 
   const TILE_W = 236, TILE_H = 118, GAP_X = 96, GAP_Y = 120;
@@ -143,7 +148,6 @@
     state.maxComponentCommits = Math.max(1, ...graph.nodes.filter((n) => n.kind === "component").map((n) => n.commit_count || 0));
     renderMeta();
     renderFilters();
-    renderLegend();
     render();
     fitView();
   }
@@ -169,9 +173,11 @@
     for (const [lang, count] of Object.entries(langs)) {
       langBox.appendChild(checkbox(lang, `${lang}`, count, state.filters.languages.has(lang), (on) => {
         if (on) state.filters.languages.add(lang); else state.filters.languages.delete(lang);
+        updateLanguageSummary();
         render();
       }));
     }
+    updateLanguageSummary();
     const typeBox = $("#edge-type-filter");
     clear(typeBox);
     const typeCounts = {};
@@ -182,39 +188,35 @@
       typeBox.appendChild(checkbox(`type-${t}`, t, typeCounts[t] || 0, state.filters.edgeTypes.has(t), (on) => {
         if (on) state.filters.edgeTypes.add(t); else state.filters.edgeTypes.delete(t);
         render();
-      }, sw));
+      }, sw, EDGE_STYLE[t].desc));
     }
     const confBox = $("#confidence-filter");
     clear(confBox);
     const confCounts = {};
     for (const e of state.graph.edges) if (e.type !== "contains") confCounts[e.confidence] = (confCounts[e.confidence] || 0) + 1;
     for (const c of CONFIDENCES) {
+      const pill = h("span", { class: "pill pill--" + c, text: c });
       confBox.appendChild(checkbox(`conf-${c}`, c, confCounts[c] || 0, state.filters.confidences.has(c), (on) => {
         if (on) state.filters.confidences.add(c); else state.filters.confidences.delete(c);
         render();
-      }));
+      }, pill, CONFIDENCE_DESC[c]));
     }
   }
-  function checkbox(id, label, count, checked, onChange, swatch) {
+  function checkbox(id, label, count, checked, onChange, swatch, desc) {
     const input = h("input", { type: "checkbox", id: `f-${id.replace(/[^\w-]/g, "_")}` });
     input.checked = checked;
     input.addEventListener("change", () => onChange(input.checked));
-    return h("label", { for: input.id }, [input, swatch || null, h("span", { text: label }), h("span", { class: "count", text: String(count) })]);
+    const body = desc
+      ? h("span", { class: "check__body" }, [h("span", { class: "check__name", text: label }), h("span", { class: "check__desc", text: desc })])
+      : h("span", { class: "check__name", text: label });
+    return h("label", { for: input.id, class: desc ? "check check--stacked" : "check" }, [
+      input, swatch || null, body, h("span", { class: "count", text: String(count) }),
+    ]);
   }
-  function renderLegend() {
-    const ul = $("#legend");
-    clear(ul);
-    for (const t of EDGE_TYPES) {
-      ul.appendChild(h("li", null, [
-        h("span", { class: `line line--${EDGE_STYLE[t].dash}`, style: `border-color: var(--edge-${t})` }),
-        h("span", null, [h("strong", { text: t }), " ", h("span", { class: "help", text: EDGE_STYLE[t].desc })]),
-      ]));
-    }
-    ul.appendChild(h("li", null, [h("span", { class: "pill pill--high", text: "high" }), h("span", { class: "help", text: "파일 내용에서 직접 확인" })]));
-    ul.appendChild(h("li", null, [h("span", { class: "pill pill--medium", text: "medium" }), h("span", { class: "help", text: "경로 문자열/공유 패턴에서 추정" })]));
-    ul.appendChild(h("li", null, [h("span", { class: "pill pill--low", text: "low" }), h("span", { class: "help", text: "이름만 일치" })]));
+  function updateLanguageSummary() {
+    const on = state.filters.languages.size, all = state.allLanguages.length;
+    $("#language-state").textContent = on === all ? `${all}개 전부` : `${on} / ${all}개만`;
   }
-
   // ------------------------------------------------------------------ layout
   function componentNodes() {
     return (state.children.get("system") || []).map((id) => state.nodes.get(id));
