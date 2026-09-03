@@ -1,7 +1,7 @@
 # Generate one narration WAV per scene with the installed Korean voice, then
 # write timings.json (scene id -> audio seconds) for the deterministic renderer.
 param(
-  [string]$ScriptPath = "$PSScriptRoot\script.json",
+  [string]$ScriptPath = "$PSScriptRoot\..\public\film\script.json",
   [string]$OutDir     = "$PSScriptRoot\narration",
   [string]$VoiceName  = "Microsoft Heami Desktop",
   [int]$Rate          = -1
@@ -44,6 +44,6 @@ $synth.Dispose()
 
 $total = ($timings.Values | Measure-Object -Sum).Sum
 $holds = ($film.scenes | ForEach-Object { $_.hold } | Measure-Object -Sum).Sum
-$timings | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $PSScriptRoot "timings.json")
+$timings | ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $PSScriptRoot "..\public\film\timings.json")
 "---"
 "narration total {0:N1}s + holds {1:N1}s = film {2:N1}s" -f $total, $holds, ($total + $holds)

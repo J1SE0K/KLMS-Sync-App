@@ -1,5 +1,5 @@
 /* Deterministic film renderer.
-   filmLoad() fetches script.json, ../public/story.json and timings.json (optional).
+   filmLoad() fetches script.json, ../story.json and timings.json (optional).
    filmRender(t) paints the exact frame at time t seconds. Nothing animates on its own,
    so a frame grabber can step through the film and stay perfectly in sync with narration. */
 (function () {
@@ -273,7 +273,7 @@
   async function filmLoad() {
     const [script, story] = await Promise.all([
       fetch("script.json").then((r) => r.json()),
-      fetch("../public/story.json").then((r) => r.json()),
+      fetch("../story.json").then((r) => r.json()),
     ]);
     let timings = null;
     try {

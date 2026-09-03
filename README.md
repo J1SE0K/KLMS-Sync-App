@@ -32,33 +32,49 @@ experiments/neukbao-storytelling/
 
 ## 영상 두 편
 
-| 파일 | 길이 | 내용 |
+필름은 **브라우저에서 재생된다.** 정적 서버를 띄우고 `http://127.0.0.1:4174/film/`을 열면
+완성된 동영상을 트는 것이 아니라 `script.json`과 `story.json`을 읽어 매 프레임을 그 자리에서 그린다.
+mp4 파일은 같은 렌더러로 오프라인에서 뽑은 결과물이며, 웹 재생에 필요하지 않다.
+
+| 경로 | 형태 | 내용 |
 | --- | --- | --- |
-| `public/storytelling-film.mp4` | 3분 9초 | 내레이션이 있는 다큐멘터리형 필름. story.json을 대본으로 개발 이야기를 처음부터 끝까지 들려준다 |
-| `public/storytelling-demo.mp4` | 43초 | UI 화면 녹화. PRESENTATION.md의 60초 데모 흐름을 그대로 조작한 기록 |
+| `public/film/` | 웹 플레이어 | 브라우저가 직접 그리는 필름. 재생·정지·구간 이동·14개 챕터 버튼 |
+| `public/storytelling-film.mp4` | 3분 9초 mp4 | 위와 같은 화면을 오프라인에서 뽑은 파일. 공유·발표용 |
+| `public/storytelling-demo.mp4` | 43초 mp4 | UI 화면 녹화. PRESENTATION.md의 60초 데모 흐름 |
 
-정적 서버를 띄우면 `http://127.0.0.1:4174/storytelling-film.mp4`로 열 수 있다.
-
-### 필름 구성 (`film/`)
+### 웹 플레이어 (`public/film/`)
 
 ```
-film/
-├── script.json          ← 장면 대본과 나레이션 문장
-├── make_narration.ps1   ← Windows 한국어 음성(Heami)으로 장면별 wav + timings.json
-├── film.html/.css/.js   ← 결정적 렌더러. filmRender(t)가 t초의 화면을 그린다
-└── build_film.mjs       ← 프레임 캡처 → 나레이션 결합 → mp4
+public/film/
+├── index.html      ← 플레이어. ?capture=1 이면 컨트롤을 숨긴 캡처 모드
+├── film.css
+├── film.js         ← 결정적 렌더러. filmRender(t)가 t초의 화면을 그린다
+├── script.json     ← 장면 대본과 나레이션 문장
+├── timings.json    ← 장면별 나레이션 길이
+└── narration.mp3   ← 한 트랙짜리 나레이션 (2.2MB)
 ```
+
+소리는 `narration.mp3` 한 트랙이고, 그 재생 시각이 화면의 기준이다.
+`<audio>` 대신 WebAudio 버퍼로 디코딩해서 쓰는데, 구간 이동에 HTTP Range 응답이 필요한
+`<audio>`와 달리 버퍼는 어디로든 즉시 이동할 수 있기 때문이다. Range를 지원하지 않는
+`python -m http.server` 위에서도 챕터 이동이 정확히 동작한다.
+
+### 오프라인 렌더 (`film/`)
 
 ```sh
 cd film
-pwsh ./make_narration.ps1        # 나레이션 생성 (약 172초 분량)
+pwsh ./make_narration.ps1        # 장면별 wav + ../public/film/timings.json
 node build_film.mjs --probe      # 장면별 샘플 프레임만 확인
-node build_film.mjs              # 전체 렌더 (20fps, 3775 프레임, 약 100초 소요)
+node build_film.mjs              # 전체 렌더 + narration.mp3 + mp4 (20fps, 3775 프레임, 약 100초)
 ```
 
-프레임을 실시간 녹화하지 않고 `filmRender(t)`로 한 장씩 그려 저장하기 때문에,
-프레임 드랍 없이 나레이션과 화면이 정확히 맞는다. 두 트랙 모두 `timings.json`의
-같은 장면 길이에서 나온다.
+나레이션 문장을 고쳤다면 두 명령을 순서대로 모두 돌려야 한다. `make_narration.ps1`은 장면 길이만
+갱신하고 웹 플레이어가 쓰는 `narration.mp3`는 `build_film.mjs`가 만들기 때문에, 앞만 돌리면
+화면 길이와 소리가 어긋난다.
+
+`build_film.mjs`는 플레이어를 `?capture=1`로 열고 `filmRender(t)`를 호출하며 프레임을 한 장씩
+저장한다. 실시간 녹화가 아니라서 프레임 드랍이 없고, 화면과 나레이션이 `timings.json`의
+같은 장면 길이에서 나오므로 정확히 맞는다.
 
 장면 순서는 콜드 오픈(commit 1184개) → 질문 → 타이틀 → Episode 1~8 → 근거 등급
 (observed 38 / supported 13 / inferred 8) → inferred 예시와 한계 → 클로징이다.
