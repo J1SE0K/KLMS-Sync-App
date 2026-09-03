@@ -2,14 +2,14 @@
  "meta": {
   "repository": "https://github.com/J1SE0K/KLMS-Sync-App.git",
   "repository_name": "KLMS-Sync-App",
-  "source_commit": "09f546704a712780833e96039ce40ff362eb859e",
+  "source_commit": "8b94ca0a207e851797478b206c8f31e0c85d629c",
   "source_branch": "main",
-  "worktree_dirty": false,
-  "generated_at": "2026-09-03T07:50:12.057277+00:00",
-  "tracked_file_count": 418,
-  "analyzed_text_file_count": 289,
-  "node_count": 528,
-  "edge_count": 1216,
+  "worktree_dirty": true,
+  "generated_at": "2026-09-03T09:25:59.174299+00:00",
+  "tracked_file_count": 442,
+  "analyzed_text_file_count": 300,
+  "node_count": 557,
+  "edge_count": 1291,
   "edge_types": [
    "contains",
    "invokes",
@@ -19,27 +19,27 @@
    "communicates"
   ],
   "languages": {
-   "Python": 99,
+   "Python": 101,
    "Swift": 68,
    "Shell (zsh)": 43,
-   "Image": 37,
-   "Markdown": 33,
-   "JavaScript": 32,
+   "Image": 42,
+   "Markdown": 35,
+   "JavaScript": 35,
    "Text": 19,
-   "Config": 17,
-   "JSON": 12,
+   "Config": 18,
+   "JSON": 16,
    "SVG": 10,
    "Shell": 9,
    "SQL": 9,
    "JavaScript (JXA)": 7,
+   "Other": 6,
    "YAML": 5,
-   "Other": 3,
+   "HTML": 4,
+   "CSS": 4,
    "Lockfile": 3,
    "JavaScript (Node)": 2,
    "Caddyfile": 2,
    "Xcode": 2,
-   "HTML": 2,
-   "CSS": 2,
    "TOML": 1,
    "Dockerfile": 1
   },
@@ -60,8 +60,8 @@
    "path": null,
    "language": null,
    "description": "Safari에 로그인된 KAIST KLMS 세션을 재사용해 과제·시험·공지·첨부파일을 macOS 기본 앱과 로컬 폴더로 정리하는 개인용 동기화 도구. shell, JXA, Python, Swift, Electron, Cloudflare Worker가 한 저장소에 공존한다.",
-   "commit_count": 4582,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 4614,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
    "evidence": [
     {
      "path": ".",
@@ -69,31 +69,31 @@
     }
    ],
    "languages": {
-    "Python": 99,
+    "Python": 101,
     "Swift": 68,
     "Shell (zsh)": 43,
-    "Image": 37,
-    "Markdown": 33,
-    "JavaScript": 32,
+    "Image": 42,
+    "Markdown": 35,
+    "JavaScript": 35,
     "Text": 19,
-    "Config": 17,
-    "JSON": 12,
+    "Config": 18,
+    "JSON": 16,
     "SVG": 10,
     "Shell": 9,
     "SQL": 9,
     "JavaScript (JXA)": 7,
+    "Other": 6,
     "YAML": 5,
-    "Other": 3,
+    "HTML": 4,
+    "CSS": 4,
     "Lockfile": 3,
     "JavaScript (Node)": 2,
     "Caddyfile": 2,
     "Xcode": 2,
-    "HTML": 2,
-    "CSS": 2,
     "TOML": 1,
     "Dockerfile": 1
    },
-   "file_count": 418
+   "file_count": 442
   },
   {
    "id": "component:apple-applications",
@@ -377,12 +377,12 @@
    "path": null,
    "language": null,
    "description": "저장소를 분석 대상으로 삼는 독립 프로토타입(Storytelling, Visual Diagram). KLMS 동기화 기능과 무관하며 tracked 소스만 읽는다.",
-   "commit_count": 16,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 48,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
    "evidence": [
     {
      "path": "experiments/**",
-     "reason": "component-map.json 규칙 'experiments/**'에 tracked 파일 16개가 매칭"
+     "reason": "component-map.json 규칙 'experiments/**'에 tracked 파일 40개가 매칭"
     }
    ],
    "component_id": "neukbao-experiments",
@@ -390,15 +390,17 @@
     "col": 5,
     "row": 2
    },
-   "file_count": 16,
+   "file_count": 40,
    "languages": {
-    "Image": 6,
-    "JSON": 3,
-    "Markdown": 2,
-    "Python": 2,
-    "JavaScript": 1,
-    "HTML": 1,
-    "CSS": 1
+    "Image": 11,
+    "JSON": 7,
+    "Markdown": 4,
+    "Python": 4,
+    "JavaScript": 4,
+    "CSS": 3,
+    "HTML": 3,
+    "Other": 3,
+    "Config": 1
    }
   },
   {
@@ -1647,25 +1649,27 @@
    "parent_id": "component:neukbao-experiments",
    "path": "experiments",
    "language": null,
-   "description": "experiments/ 아래 tracked 파일 16개 (Image 6, JSON 3, Markdown 2)",
-   "commit_count": 16,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "description": "experiments/ 아래 tracked 파일 40개 (Image 11, JSON 7, Markdown 4)",
+   "commit_count": 48,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
    "evidence": [
     {
      "path": "experiments",
-     "reason": "tracked 파일 16개의 상위 디렉터리"
+     "reason": "tracked 파일 40개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 16,
+   "file_count": 40,
    "languages": {
-    "Image": 6,
-    "JSON": 3,
-    "Markdown": 2,
-    "Python": 2,
-    "JavaScript": 1,
-    "HTML": 1,
-    "CSS": 1
+    "Image": 11,
+    "JSON": 7,
+    "Markdown": 4,
+    "Python": 4,
+    "JavaScript": 4,
+    "CSS": 3,
+    "HTML": 3,
+    "Other": 3,
+    "Config": 1
    }
   },
   {
@@ -1675,25 +1679,27 @@
    "parent_id": "dir:neukbao-experiments:experiments",
    "path": "experiments/neukbao-storytelling",
    "language": null,
-   "description": "experiments/neukbao-storytelling/ 아래 tracked 파일 16개 (Image 6, JSON 3, Markdown 2)",
-   "commit_count": 16,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "description": "experiments/neukbao-storytelling/ 아래 tracked 파일 26개 (Image 6, JSON 5, JavaScript 3)",
+   "commit_count": 34,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling",
-     "reason": "tracked 파일 16개의 상위 디렉터리"
+     "reason": "tracked 파일 26개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 16,
+   "file_count": 26,
    "languages": {
     "Image": 6,
-    "JSON": 3,
+    "JSON": 5,
+    "JavaScript": 3,
+    "Other": 3,
     "Markdown": 2,
     "Python": 2,
-    "JavaScript": 1,
-    "HTML": 1,
-    "CSS": 1
+    "CSS": 2,
+    "HTML": 2,
+    "Config": 1
    }
   },
   {
@@ -1741,25 +1747,53 @@
    }
   },
   {
+   "id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "label": "film/",
+   "kind": "directory",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling",
+   "path": "experiments/neukbao-storytelling/film",
+   "language": null,
+   "description": "experiments/neukbao-storytelling/film/ 아래 tracked 파일 8개 (JavaScript 2, JSON 2, Config 1)",
+   "commit_count": 8,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film",
+     "reason": "tracked 파일 8개의 상위 디렉터리"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "file_count": 8,
+   "languages": {
+    "JavaScript": 2,
+    "JSON": 2,
+    "Config": 1,
+    "CSS": 1,
+    "HTML": 1,
+    "Other": 1
+   }
+  },
+  {
    "id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
    "label": "public/",
    "kind": "directory",
    "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling",
    "path": "experiments/neukbao-storytelling/public",
    "language": null,
-   "description": "experiments/neukbao-storytelling/public/ 아래 tracked 파일 5개 (JSON 2, JavaScript 1, HTML 1)",
-   "commit_count": 5,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "description": "experiments/neukbao-storytelling/public/ 아래 tracked 파일 7개 (JSON 2, Other 2, JavaScript 1)",
+   "commit_count": 10,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public",
-     "reason": "tracked 파일 5개의 상위 디렉터리"
+     "reason": "tracked 파일 7개의 상위 디렉터리"
     }
    ],
    "component_id": "neukbao-experiments",
-   "file_count": 5,
+   "file_count": 7,
    "languages": {
     "JSON": 2,
+    "Other": 2,
     "JavaScript": 1,
     "HTML": 1,
     "CSS": 1
@@ -1773,11 +1807,108 @@
    "path": "experiments/neukbao-storytelling/tests",
    "language": null,
    "description": "experiments/neukbao-storytelling/tests/ 아래 tracked 파일 1개 (Python 1)",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/tests",
+     "reason": "tracked 파일 1개의 상위 디렉터리"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "file_count": 1,
+   "languages": {
+    "Python": 1
+   }
+  },
+  {
+   "id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "label": "neukbao-visual-diagram/",
+   "kind": "directory",
+   "parent_id": "dir:neukbao-experiments:experiments",
+   "path": "experiments/neukbao-visual-diagram",
+   "language": null,
+   "description": "experiments/neukbao-visual-diagram/ 아래 tracked 파일 14개 (Image 5, Markdown 2, Python 2)",
+   "commit_count": 14,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram",
+     "reason": "tracked 파일 14개의 상위 디렉터리"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "file_count": 14,
+   "languages": {
+    "Image": 5,
+    "Markdown": 2,
+    "Python": 2,
+    "JSON": 2,
+    "JavaScript": 1,
+    "HTML": 1,
+    "CSS": 1
+   }
+  },
+  {
+   "id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "label": "docs/",
+   "kind": "directory",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/docs",
+   "language": null,
+   "description": "experiments/neukbao-visual-diagram/docs/ 아래 tracked 파일 5개 (Image 5)",
+   "commit_count": 5,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs",
+     "reason": "tracked 파일 5개의 상위 디렉터리"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "file_count": 5,
+   "languages": {
+    "Image": 5
+   }
+  },
+  {
+   "id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "label": "public/",
+   "kind": "directory",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/public",
+   "language": null,
+   "description": "experiments/neukbao-visual-diagram/public/ 아래 tracked 파일 4개 (JavaScript 1, JSON 1, HTML 1)",
+   "commit_count": 4,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public",
+     "reason": "tracked 파일 4개의 상위 디렉터리"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "file_count": 4,
+   "languages": {
+    "JavaScript": 1,
+    "JSON": 1,
+    "HTML": 1,
+    "CSS": 1
+   }
+  },
+  {
+   "id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/tests",
+   "label": "tests/",
+   "kind": "directory",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/tests",
+   "language": null,
+   "description": "experiments/neukbao-visual-diagram/tests/ 아래 tracked 파일 1개 (Python 1)",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests",
      "reason": "tracked 파일 1개의 상위 디렉터리"
     }
    ],
@@ -8028,8 +8159,8 @@
    "path": "experiments/neukbao-storytelling/PRESENTATION.md",
    "language": "Markdown",
    "description": "Markdown 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/PRESENTATION.md",
@@ -8051,8 +8182,8 @@
    "path": "experiments/neukbao-storytelling/README.md",
    "language": "Markdown",
    "description": "Markdown 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 3,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/README.md",
@@ -8064,7 +8195,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 14269
+   "size_bytes": 16455
   },
   {
    "id": "file:experiments/neukbao-storytelling/build_story.py",
@@ -8228,6 +8359,190 @@
    "size_bytes": 48259
   },
   {
+   "id": "file:experiments/neukbao-storytelling/film/.gitignore",
+   "label": ".gitignore",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/.gitignore",
+   "language": "Config",
+   "description": "Config 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/.gitignore",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/.gitignore",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 189
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/build_film.mjs",
+   "label": "build_film.mjs",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/build_film.mjs",
+   "language": "JavaScript",
+   "description": "Render the storytelling film.",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/build_film.mjs",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/build_film.mjs",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 6053
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/film.css",
+   "label": "film.css",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/film.css",
+   "language": "CSS",
+   "description": "CSS 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/film.css",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/film.css",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 6433
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/film.html",
+   "label": "film.html",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/film.html",
+   "language": "HTML",
+   "description": "HTML 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/film.html",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/film.html",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 810
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/film.js",
+   "label": "film.js",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/film.js",
+   "language": "JavaScript",
+   "description": "Deterministic film renderer.",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/film.js",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/film.js",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 11440
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/make_narration.ps1",
+   "label": "make_narration.ps1",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/make_narration.ps1",
+   "language": "Other",
+   "description": "Other 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/make_narration.ps1",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/make_narration.ps1",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 2063
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/script.json",
+   "label": "script.json",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/script.json",
+   "language": "JSON",
+   "description": "JSON 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/script.json",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/script.json",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 8240
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/film/timings.json",
+   "label": "timings.json",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "path": "experiments/neukbao-storytelling/film/timings.json",
+   "language": "JSON",
+   "description": "JSON 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/timings.json",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/film/timings.json",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 282
+  },
+  {
    "id": "file:experiments/neukbao-storytelling/public/app.js",
    "label": "app.js",
    "kind": "file",
@@ -8235,8 +8550,8 @@
    "path": "experiments/neukbao-storytelling/public/app.js",
    "language": "JavaScript",
    "description": "Development Storytelling UI. Vanilla JS, no external dependencies.",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public/app.js",
@@ -8248,7 +8563,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 22875
+   "size_bytes": 23182
   },
   {
    "id": "file:experiments/neukbao-storytelling/public/commits.json",
@@ -8258,8 +8573,8 @@
    "path": "experiments/neukbao-storytelling/public/commits.json",
    "language": "JSON",
    "description": "JSON 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public/commits.json",
@@ -8271,7 +8586,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 2337660
+   "size_bytes": 2337659
   },
   {
    "id": "file:experiments/neukbao-storytelling/public/index.html",
@@ -8304,8 +8619,8 @@
    "path": "experiments/neukbao-storytelling/public/story.json",
    "language": "JSON",
    "description": "JSON 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/public/story.json",
@@ -8317,7 +8632,53 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 680112
+   "size_bytes": 680221
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+   "label": "storytelling-demo.mp4",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
+   "path": "experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+   "language": "Other",
+   "description": "Other 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 4495905
+  },
+  {
+   "id": "file:experiments/neukbao-storytelling/public/storytelling-film.mp4",
+   "label": "storytelling-film.mp4",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
+   "path": "experiments/neukbao-storytelling/public/storytelling-film.mp4",
+   "language": "Other",
+   "description": "Other 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T08:57:09+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/storytelling-film.mp4",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-storytelling/public/storytelling-film.mp4",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 7946143
   },
   {
    "id": "file:experiments/neukbao-storytelling/public/styles.css",
@@ -8350,8 +8711,8 @@
    "path": "experiments/neukbao-storytelling/story.override.json",
    "language": "JSON",
    "description": "JSON 파일",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/story.override.json",
@@ -8363,7 +8724,7 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 56661
+   "size_bytes": 56771
   },
   {
    "id": "file:experiments/neukbao-storytelling/tests/test_build_story.py",
@@ -8373,8 +8734,8 @@
    "path": "experiments/neukbao-storytelling/tests/test_build_story.py",
    "language": "Python",
    "description": "Unit and integration tests for build_story.py.",
-   "commit_count": 1,
-   "last_changed_at": "2026-09-03T07:40:38+00:00",
+   "commit_count": 2,
+   "last_changed_at": "2026-09-03T08:18:13+00:00",
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/tests/test_build_story.py",
@@ -8386,7 +8747,329 @@
     }
    ],
    "component_id": "neukbao-experiments",
-   "size_bytes": 24781
+   "size_bytes": 26819
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/PRESENTATION.md",
+   "label": "PRESENTATION.md",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/PRESENTATION.md",
+   "language": "Markdown",
+   "description": "Markdown 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/PRESENTATION.md",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/PRESENTATION.md",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 12905
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/README.md",
+   "label": "README.md",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/README.md",
+   "language": "Markdown",
+   "description": "Markdown 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/README.md",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/README.md",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 16646
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/analyze.py",
+   "label": "analyze.py",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/analyze.py",
+   "language": "Python",
+   "description": "Neukbao Visual Diagram analyzer.",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 50111
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/component-map.json",
+   "label": "component-map.json",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "path": "experiments/neukbao-visual-diagram/component-map.json",
+   "language": "JSON",
+   "description": "JSON 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/component-map.json",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/component-map.json",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 8325
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+   "label": "screenshot-dark-reduced-motion.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 188855
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+   "label": "screenshot-l0-overview.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 141556
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+   "label": "screenshot-l1-components.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 248020
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+   "label": "screenshot-l2-edge-detail.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 131846
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+   "label": "screenshot-l2-file.png",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+   "language": "Image",
+   "description": "Image 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 155458
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/public/app.js",
+   "label": "app.js",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "path": "experiments/neukbao-visual-diagram/public/app.js",
+   "language": "JavaScript",
+   "description": "Neukbao Visual Diagram viewer — vanilla JS + SVG, no dependencies. */",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/app.js",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/public/app.js",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 76912
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/public/graph.json",
+   "label": "graph.json",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "path": "experiments/neukbao-visual-diagram/public/graph.json",
+   "language": "JSON",
+   "description": "JSON 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/graph.json",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/public/graph.json",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 1196160
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/public/index.html",
+   "label": "index.html",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "path": "experiments/neukbao-visual-diagram/public/index.html",
+   "language": "HTML",
+   "description": "HTML 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/index.html",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/public/index.html",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 7928
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/public/styles.css",
+   "label": "styles.css",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "path": "experiments/neukbao-visual-diagram/public/styles.css",
+   "language": "CSS",
+   "description": "CSS 파일",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/styles.css",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/public/styles.css",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 18414
+  },
+  {
+   "id": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "label": "test_analyze.py",
+   "kind": "file",
+   "parent_id": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/tests",
+   "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "language": "Python",
+   "description": "Unit tests for the Neukbao Visual Diagram analyzer.",
+   "commit_count": 1,
+   "last_changed_at": "2026-09-03T07:51:49+00:00",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "git ls-files에 tracked"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "component-map.json 규칙 'experiments/**'로 'neukbao-experiments'에 분류"
+    }
+   ],
+   "component_id": "neukbao-experiments",
+   "size_bytes": 23371
   },
   {
    "id": "file:integrations/hermes-klms-discord-control/SKILL.md",
@@ -12591,6 +13274,32 @@
    }
   },
   {
+   "id": "communicates:component:neukbao-experiments->component:relay-infrastructure",
+   "source": "component:neukbao-experiments",
+   "target": "component:relay-infrastructure",
+   "type": "communicates",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ deploy/cloudflare-worker/src/worker.mjs: HTTP 경로 문자열 3개 공유 (/v1/commands, /v1/logs, /v1/status). 테스트 보조 파일이라 실제 통신이 아니라 같은 경로를 흉내 내는 것일 수 있다. 배포 형태에 따라 두 서버 중 하나만 실제로 쓰인다"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ tools/klms_relay_server.mjs: HTTP 경로 문자열 3개 공유 (/v1/commands, /v1/logs, /v1/status). 테스트 보조 파일이라 실제 통신이 아니라 같은 경로를 흉내 내는 것일 수 있다. 배포 형태에 따라 두 서버 중 하나만 실제로 쓰인다"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 2,
+   "member_edge_ids": [
+    "communicates:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:deploy/cloudflare-worker/src/worker.mjs",
+    "communicates:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tools/klms_relay_server.mjs"
+   ],
+   "confidence_breakdown": {
+    "low": 2
+   }
+  },
+  {
    "id": "communicates:component:tests-verification->component:relay-infrastructure",
    "source": "component:tests-verification",
    "target": "component:relay-infrastructure",
@@ -12979,6 +13688,34 @@
     {
      "path": "deploy/relay/test_relay.mjs",
      "reason": "HTTP 경로 문자열 9개 공유 (/v1/commands, /v1/commands/pending, /v1/events, /v1/file-access 등); 양쪽 모두 WebSocket 사용. 테스트 보조 파일이라 실제 통신이 아니라 같은 경로를 흉내 내는 것일 수 있다. 배포 형태에 따라 두 서버 중 하나만 실제로 쓰인다"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "communicates:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:deploy/cloudflare-worker/src/worker.mjs",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:deploy/cloudflare-worker/src/worker.mjs",
+   "type": "communicates",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "HTTP 경로 문자열 3개 공유 (/v1/commands, /v1/logs, /v1/status). 테스트 보조 파일이라 실제 통신이 아니라 같은 경로를 흉내 내는 것일 수 있다. 배포 형태에 따라 두 서버 중 하나만 실제로 쓰인다"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "communicates:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tools/klms_relay_server.mjs",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:tools/klms_relay_server.mjs",
+   "type": "communicates",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "HTTP 경로 문자열 3개 공유 (/v1/commands, /v1/logs, /v1/status). 테스트 보조 파일이라 실제 통신이 아니라 같은 경로를 흉내 내는 것일 수 있다. 배포 형태에 따라 두 서버 중 하나만 실제로 쓰인다"
     }
    ],
    "level": "file"
@@ -16008,6 +16745,20 @@
    "level": "structure"
   },
   {
+   "id": "contains:dir:neukbao-experiments:experiments->dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "source": "dir:neukbao-experiments:experiments",
+   "target": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram",
+     "reason": "tracked 파일 경로의 상위 디렉터리"
+    }
+   ],
+   "level": "structure"
+  },
+  {
    "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling->dir:neukbao-experiments:experiments/neukbao-storytelling/docs",
    "source": "dir:neukbao-experiments:experiments/neukbao-storytelling",
    "target": "dir:neukbao-experiments:experiments/neukbao-storytelling/docs",
@@ -16016,6 +16767,20 @@
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/docs",
+     "reason": "tracked 파일 경로의 상위 디렉터리"
+    }
+   ],
+   "level": "structure"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling->dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling",
+   "target": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film",
      "reason": "tracked 파일 경로의 상위 디렉터리"
     }
    ],
@@ -16204,6 +16969,118 @@
    "level": "file"
   },
   {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/.gitignore",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/.gitignore",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/.gitignore",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/build_film.mjs",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/build_film.mjs",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/build_film.mjs",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/film.css",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/film.css",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/film.css",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/film.html",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/film.html",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/film.html",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/film.js",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/film.js",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/film.js",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/make_narration.ps1",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/make_narration.ps1",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/make_narration.ps1",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/script.json",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/script.json",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/script.json",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/film->file:experiments/neukbao-storytelling/film/timings.json",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/film",
+   "target": "file:experiments/neukbao-storytelling/film/timings.json",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/film/timings.json",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
    "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public->file:experiments/neukbao-storytelling/public/app.js",
    "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
    "target": "file:experiments/neukbao-storytelling/public/app.js",
@@ -16260,6 +17137,34 @@
    "level": "file"
   },
   {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public->file:experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
+   "target": "file:experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/storytelling-demo.mp4",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public->file:experiments/neukbao-storytelling/public/storytelling-film.mp4",
+   "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
+   "target": "file:experiments/neukbao-storytelling/public/storytelling-film.mp4",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/public/storytelling-film.mp4",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
    "id": "contains:dir:neukbao-experiments:experiments/neukbao-storytelling/public->file:experiments/neukbao-storytelling/public/styles.css",
    "source": "dir:neukbao-experiments:experiments/neukbao-storytelling/public",
    "target": "file:experiments/neukbao-storytelling/public/styles.css",
@@ -16282,6 +17187,244 @@
    "evidence": [
     {
      "path": "experiments/neukbao-storytelling/tests/test_build_story.py",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs",
+     "reason": "tracked 파일 경로의 상위 디렉터리"
+    }
+   ],
+   "level": "structure"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public",
+     "reason": "tracked 파일 경로의 상위 디렉터리"
+    }
+   ],
+   "level": "structure"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->dir:neukbao-experiments:experiments/neukbao-visual-diagram/tests",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/tests",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests",
+     "reason": "tracked 파일 경로의 상위 디렉터리"
+    }
+   ],
+   "level": "structure"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->file:experiments/neukbao-visual-diagram/PRESENTATION.md",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "file:experiments/neukbao-visual-diagram/PRESENTATION.md",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/PRESENTATION.md",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->file:experiments/neukbao-visual-diagram/README.md",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "file:experiments/neukbao-visual-diagram/README.md",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/README.md",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->file:experiments/neukbao-visual-diagram/analyze.py",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "file:experiments/neukbao-visual-diagram/analyze.py",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram->file:experiments/neukbao-visual-diagram/component-map.json",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram",
+   "target": "file:experiments/neukbao-visual-diagram/component-map.json",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/component-map.json",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-dark-reduced-motion.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l0-overview.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l1-components.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-edge-detail.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs->file:experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/docs",
+   "target": "file:experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/docs/screenshot-l2-file.png",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/public->file:experiments/neukbao-visual-diagram/public/app.js",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "target": "file:experiments/neukbao-visual-diagram/public/app.js",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/app.js",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/public->file:experiments/neukbao-visual-diagram/public/graph.json",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "target": "file:experiments/neukbao-visual-diagram/public/graph.json",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/graph.json",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/public->file:experiments/neukbao-visual-diagram/public/index.html",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "target": "file:experiments/neukbao-visual-diagram/public/index.html",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/index.html",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/public->file:experiments/neukbao-visual-diagram/public/styles.css",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/public",
+   "target": "file:experiments/neukbao-visual-diagram/public/styles.css",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/styles.css",
+     "reason": "디렉터리가 이 tracked 파일을 포함"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "contains:dir:neukbao-experiments:experiments/neukbao-visual-diagram/tests->file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "source": "dir:neukbao-experiments:experiments/neukbao-visual-diagram/tests",
+   "target": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "type": "contains",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
      "reason": "디렉터리가 이 tracked 파일을 포함"
     }
    ],
@@ -20258,7 +21401,7 @@
    "evidence": [
     {
      "path": ".",
-     "reason": "component-map.json이 16개 파일을 'Neukbao Experiments'로 분류"
+     "reason": "component-map.json이 40개 파일을 'Neukbao Experiments'로 분류"
     }
    ],
    "level": "structure"
@@ -20766,6 +21909,34 @@
     {
      "path": "deploy/cloudflare-worker/src/worker.mjs",
      "reason": "`require/import '../../../tools/klms_realtime_admission.mjs'`"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "imports:file:experiments/neukbao-visual-diagram/public/index.html->file:experiments/neukbao-visual-diagram/public/app.js",
+   "source": "file:experiments/neukbao-visual-diagram/public/index.html",
+   "target": "file:experiments/neukbao-visual-diagram/public/app.js",
+   "type": "imports",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/index.html",
+     "reason": "HTML이 './app.js'을 로드"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "imports:file:experiments/neukbao-visual-diagram/public/index.html->file:experiments/neukbao-visual-diagram/public/styles.css",
+   "source": "file:experiments/neukbao-visual-diagram/public/index.html",
+   "target": "file:experiments/neukbao-visual-diagram/public/styles.css",
+   "type": "imports",
+   "confidence": "high",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/public/index.html",
+     "reason": "HTML이 './styles.css'을 로드"
     }
    ],
    "level": "file"
@@ -22038,12 +23209,59 @@
     {
      "path": "experiments/neukbao-storytelling/build_story.py",
      "reason": "→ apps/KLMSync/Package.swift: 파일 이름 'Package.swift'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "→ apps/KLMSync/Package.swift: 파일 이름 'Package.swift'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 2,
+   "member_edge_ids": [
+    "invokes:file:experiments/neukbao-storytelling/build_story.py->file:apps/KLMSync/Package.swift",
+    "invokes:file:experiments/neukbao-visual-diagram/analyze.py->file:apps/KLMSync/Package.swift"
+   ],
+   "confidence_breakdown": {
+    "low": 2
+   }
+  },
+  {
+   "id": "invokes:component:neukbao-experiments->component:shell-orchestration",
+   "source": "component:neukbao-experiments",
+   "target": "component:shell-orchestration",
+   "type": "invokes",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "→ src/sh/klms_common.sh: Python 코드 안의 저장소 상대 경로 문자열: 'src/sh/klms_common.sh'"
     }
    ],
    "level": "component",
    "member_edge_count": 1,
    "member_edge_ids": [
-    "invokes:file:experiments/neukbao-storytelling/build_story.py->file:apps/KLMSync/Package.swift"
+    "invokes:file:experiments/neukbao-visual-diagram/analyze.py->file:src/sh/klms_common.sh"
+   ],
+   "confidence_breakdown": {
+    "medium": 1
+   }
+  },
+  {
+   "id": "invokes:component:neukbao-experiments->component:user-entry-points",
+   "source": "component:neukbao-experiments",
+   "target": "component:user-entry-points",
+   "type": "invokes",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "→ sync_klms_core.sh: 파일 이름 'sync_klms_core.sh'만 문자열로 등장. 같은 이름이 2곳에 있어 root 파일로 해석"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "invokes:file:experiments/neukbao-visual-diagram/analyze.py->file:sync_klms_core.sh"
    ],
    "confidence_breakdown": {
     "low": 1
@@ -23599,6 +24817,48 @@
    "level": "file"
   },
   {
+   "id": "invokes:file:experiments/neukbao-visual-diagram/analyze.py->file:apps/KLMSync/Package.swift",
+   "source": "file:experiments/neukbao-visual-diagram/analyze.py",
+   "target": "file:apps/KLMSync/Package.swift",
+   "type": "invokes",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "파일 이름 'Package.swift'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "invokes:file:experiments/neukbao-visual-diagram/analyze.py->file:src/sh/klms_common.sh",
+   "source": "file:experiments/neukbao-visual-diagram/analyze.py",
+   "target": "file:src/sh/klms_common.sh",
+   "type": "invokes",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/sh/klms_common.sh'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "invokes:file:experiments/neukbao-visual-diagram/analyze.py->file:sync_klms_core.sh",
+   "source": "file:experiments/neukbao-visual-diagram/analyze.py",
+   "target": "file:sync_klms_core.sh",
+   "type": "invokes",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/analyze.py",
+     "reason": "파일 이름 'sync_klms_core.sh'만 문자열로 등장. 같은 이름이 2곳에 있어 root 파일로 해석"
+    }
+   ],
+   "level": "file"
+  },
+  {
    "id": "invokes:file:klms_login_assist.sh->file:bin/klms_login_assist.sh",
    "source": "file:klms_login_assist.sh",
    "target": "file:bin/klms_login_assist.sh",
@@ -25126,6 +26386,69 @@
    "member_edge_count": 1,
    "member_edge_ids": [
     "packages:file:.github/workflows/ci.yml->file:apps/KLMSyncWindows/package-lock.json"
+   ],
+   "confidence_breakdown": {
+    "low": 1
+   }
+  },
+  {
+   "id": "packages:component:neukbao-experiments->component:build-distribution",
+   "source": "component:neukbao-experiments",
+   "target": "component:build-distribution",
+   "type": "packages",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ apps/KLMSync/EnginePayloadAllowlist.txt: Python 코드 안의 저장소 상대 경로 문자열: 'apps/KLMSync/EnginePayloadAllowlist.txt' (실행 파일이 아니라 로드/참조)"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "packages:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSync/EnginePayloadAllowlist.txt"
+   ],
+   "confidence_breakdown": {
+    "low": 1
+   }
+  },
+  {
+   "id": "packages:component:neukbao-experiments->component:docs-examples",
+   "source": "component:neukbao-experiments",
+   "target": "component:docs-examples",
+   "type": "packages",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ examples/config.env.example: Python 코드 안의 저장소 상대 경로 문자열: 'examples/config.env.example' (실행 파일이 아니라 로드/참조)"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "packages:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:examples/config.env.example"
+   ],
+   "confidence_breakdown": {
+    "low": 1
+   }
+  },
+  {
+   "id": "packages:component:neukbao-experiments->component:tests-verification",
+   "source": "component:neukbao-experiments",
+   "target": "component:tests-verification",
+   "type": "packages",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ tools/security/security-tool-versions.env: Python 코드 안의 저장소 상대 경로 문자열: 'tools/security/security-tool-versions.env' (실행 파일이 아니라 로드/참조)"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "packages:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tools/security/security-tool-versions.env"
    ],
    "confidence_breakdown": {
     "low": 1
@@ -27212,6 +28535,48 @@
    "level": "file"
   },
   {
+   "id": "packages:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSync/EnginePayloadAllowlist.txt",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:apps/KLMSync/EnginePayloadAllowlist.txt",
+   "type": "packages",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'apps/KLMSync/EnginePayloadAllowlist.txt' (실행 파일이 아니라 로드/참조)"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "packages:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:examples/config.env.example",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:examples/config.env.example",
+   "type": "packages",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'examples/config.env.example' (실행 파일이 아니라 로드/참조)"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "packages:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tools/security/security-tool-versions.env",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:tools/security/security-tool-versions.env",
+   "type": "packages",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'tools/security/security-tool-versions.env' (실행 파일이 아니라 로드/참조)"
+    }
+   ],
+   "level": "file"
+  },
+  {
    "id": "packages:file:tests/test_core_state_continuity.py->file:apps/KLMSync/EnginePayloadAllowlist.txt",
    "source": "file:tests/test_core_state_continuity.py",
    "target": "file:apps/KLMSync/EnginePayloadAllowlist.txt",
@@ -27494,6 +28859,256 @@
     }
    ],
    "level": "file"
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:apple-applications",
+   "source": "component:neukbao-experiments",
+   "target": "component:apple-applications",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ apps/KLMSync/Package.swift: Python 코드 안의 저장소 상대 경로 문자열: 'apps/KLMSync/Package.swift'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSync/Package.swift"
+   ],
+   "confidence_breakdown": {
+    "medium": 1
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:klms-web-access",
+   "source": "component:neukbao-experiments",
+   "target": "component:klms-web-access",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/python/klms_transport.py: Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_transport.py'"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/python/fetch_pages_backend.py: Python 코드 안의 저장소 상대 경로 문자열: 'src/python/fetch_pages_backend.py'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 2,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_transport.py",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/fetch_pages_backend.py"
+   ],
+   "confidence_breakdown": {
+    "medium": 2
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:native-macos-integration",
+   "source": "component:neukbao-experiments",
+   "target": "component:native-macos-integration",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/js/sync_klms_notes.js: Python 코드 안의 저장소 상대 경로 문자열: 'src/js/sync_klms_notes.js'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/js/sync_klms_notes.js"
+   ],
+   "confidence_breakdown": {
+    "medium": 1
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:parsing-file-pipeline",
+   "source": "component:neukbao-experiments",
+   "target": "component:parsing-file-pipeline",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/python/klms_sync_v2/cli.py: Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_sync_v2/cli.py'"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/python/doctor.py: Python 코드 안의 저장소 상대 경로 문자열: 'src/python/doctor.py'"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/python/klms_sync_v2/__init__.py: Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_sync_v2/__init__.py'"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/python/klms_sync_v2/models.py: Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_sync_v2/models.py'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 4,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_sync_v2/cli.py",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/doctor.py",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_sync_v2/__init__.py",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_sync_v2/models.py"
+   ],
+   "confidence_breakdown": {
+    "medium": 4
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:relay-infrastructure",
+   "source": "component:neukbao-experiments",
+   "target": "component:relay-infrastructure",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ tools/klms_relay_server.mjs: Python 코드 안의 저장소 상대 경로 문자열: 'tools/klms_relay_server.mjs'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tools/klms_relay_server.mjs"
+   ],
+   "confidence_breakdown": {
+    "medium": 1
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:shell-orchestration",
+   "source": "component:neukbao-experiments",
+   "target": "component:shell-orchestration",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ bin/run_all.sh: Python 코드 안의 저장소 상대 경로 문자열: 'bin/run_all.sh'"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ bin/sync_klms_core.sh: Python 코드 안의 저장소 상대 경로 문자열: 'bin/sync_klms_core.sh'"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ src/sh/klms_common.sh: Python 코드 안의 저장소 상대 경로 문자열: 'src/sh/klms_common.sh'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 3,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:bin/run_all.sh",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:bin/sync_klms_core.sh",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/sh/klms_common.sh"
+   ],
+   "confidence_breakdown": {
+    "medium": 3
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:tests-verification",
+   "source": "component:neukbao-experiments",
+   "target": "component:tests-verification",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ tests/test_doctor.py: Python 코드 안의 저장소 상대 경로 문자열: 'tests/test_doctor.py'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tests/test_doctor.py"
+   ],
+   "confidence_breakdown": {
+    "medium": 1
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:user-entry-points",
+   "source": "component:neukbao-experiments",
+   "target": "component:user-entry-points",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ run_all.sh: 파일 이름 'run_all.sh'만 문자열로 등장. 같은 이름이 2곳에 있어 root 파일로 해석"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ sync_klms_core.sh: 파일 이름 'sync_klms_core.sh'만 문자열로 등장. 같은 이름이 2곳에 있어 root 파일로 해석"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 2,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:run_all.sh",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:sync_klms_core.sh"
+   ],
+   "confidence_breakdown": {
+    "low": 2
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:vendored-dependencies",
+   "source": "component:neukbao-experiments",
+   "target": "component:vendored-dependencies",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ vendor/python-packages/bs4/__init__.py: Python 코드 안의 저장소 상대 경로 문자열: 'vendor/python-packages/bs4/__init__.py'"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 1,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:vendor/python-packages/bs4/__init__.py"
+   ],
+   "confidence_breakdown": {
+    "medium": 1
+   }
+  },
+  {
+   "id": "tests:component:neukbao-experiments->component:windows-companion",
+   "source": "component:neukbao-experiments",
+   "target": "component:windows-companion",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ apps/KLMSyncWindows/src/preload.cjs: 파일 이름 'preload.cjs'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    },
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "→ apps/KLMSyncWindows/src/main.cjs: 파일 이름 'main.cjs'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "component",
+   "member_edge_count": 2,
+   "member_edge_ids": [
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSyncWindows/src/preload.cjs",
+    "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSyncWindows/src/main.cjs"
+   ],
+   "confidence_breakdown": {
+    "low": 2
+   }
   },
   {
    "id": "tests:component:tests-verification->component:apple-applications",
@@ -29160,6 +30775,286 @@
     {
      "path": "deploy/relay/test_restore_db.mjs",
      "reason": "파일 이름 'restore_db.sh'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-storytelling/tests/test_build_story.py->file:experiments/neukbao-storytelling/build_story.py",
+   "source": "file:experiments/neukbao-storytelling/tests/test_build_story.py",
+   "target": "file:experiments/neukbao-storytelling/build_story.py",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-storytelling/tests/test_build_story.py",
+     "reason": "파일 이름 'build_story.py'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSync/Package.swift",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:apps/KLMSync/Package.swift",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'apps/KLMSync/Package.swift'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSyncWindows/src/main.cjs",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:apps/KLMSyncWindows/src/main.cjs",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "파일 이름 'main.cjs'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:apps/KLMSyncWindows/src/preload.cjs",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:apps/KLMSyncWindows/src/preload.cjs",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "파일 이름 'preload.cjs'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:bin/run_all.sh",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:bin/run_all.sh",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'bin/run_all.sh'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:bin/sync_klms_core.sh",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:bin/sync_klms_core.sh",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'bin/sync_klms_core.sh'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:experiments/neukbao-visual-diagram/analyze.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:experiments/neukbao-visual-diagram/analyze.py",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "파일 이름 'analyze.py'만 문자열로 등장. 유일한 tracked 파일과 이름이 일치"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:run_all.sh",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:run_all.sh",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "파일 이름 'run_all.sh'만 문자열로 등장. 같은 이름이 2곳에 있어 root 파일로 해석"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/js/sync_klms_notes.js",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/js/sync_klms_notes.js",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/js/sync_klms_notes.js'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/doctor.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/python/doctor.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/python/doctor.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/fetch_pages_backend.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/python/fetch_pages_backend.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/python/fetch_pages_backend.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_sync_v2/__init__.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/python/klms_sync_v2/__init__.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_sync_v2/__init__.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_sync_v2/cli.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/python/klms_sync_v2/cli.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_sync_v2/cli.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_sync_v2/models.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/python/klms_sync_v2/models.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_sync_v2/models.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/python/klms_transport.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/python/klms_transport.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/python/klms_transport.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:src/sh/klms_common.sh",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:src/sh/klms_common.sh",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'src/sh/klms_common.sh'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:sync_klms_core.sh",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:sync_klms_core.sh",
+   "type": "tests",
+   "confidence": "low",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "파일 이름 'sync_klms_core.sh'만 문자열로 등장. 같은 이름이 2곳에 있어 root 파일로 해석"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tests/test_doctor.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:tests/test_doctor.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'tests/test_doctor.py'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:tools/klms_relay_server.mjs",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:tools/klms_relay_server.mjs",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'tools/klms_relay_server.mjs'"
+    }
+   ],
+   "level": "file"
+  },
+  {
+   "id": "tests:file:experiments/neukbao-visual-diagram/tests/test_analyze.py->file:vendor/python-packages/bs4/__init__.py",
+   "source": "file:experiments/neukbao-visual-diagram/tests/test_analyze.py",
+   "target": "file:vendor/python-packages/bs4/__init__.py",
+   "type": "tests",
+   "confidence": "medium",
+   "evidence": [
+    {
+     "path": "experiments/neukbao-visual-diagram/tests/test_analyze.py",
+     "reason": "Python 코드 안의 저장소 상대 경로 문자열: 'vendor/python-packages/bs4/__init__.py'"
     }
    ],
    "level": "file"

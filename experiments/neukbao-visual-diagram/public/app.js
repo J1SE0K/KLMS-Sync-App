@@ -26,8 +26,11 @@
     edgesBySource: new Map(),
     edgesByTarget: new Map(),
     edgesById: new Map(),
+    viewMode: "graph", // graph | matrix | treemap | sunburst
     level: 0,
     focusComponent: null, // component node id in L2
+    drillFocus: "system", // treemap / sunburst focus node id
+    sizeMetric: "files", // files | commits
     selected: null, // {kind:'node'|'edge', id}
     keyboardFocus: null, // node id
     filters: { languages: new Set(), edgeTypes: new Set(EDGE_TYPES.filter((t) => t !== "contains")), confidences: new Set(CONFIDENCES) },
@@ -36,6 +39,8 @@
     view: { x: 0, y: 0, k: 1 },
     visibleNodeIds: [],
     positions: new Map(), // node id -> {x,y,w,h}
+    cells: new Map(), // matrix cell id -> selection record
+    matrixBands: null, // {row, col} crosshair rects of the current matrix render
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -346,7 +351,11 @@
     svg.removeAttribute("aria-activedescendant");
     state.positions = new Map();
     state.visibleNodeIds = [];
-    if (state.level <= 1) renderComponentLevel();
+    state.matrixBands = null;
+    if (state.viewMode === "matrix") renderMatrix();
+    else if (state.viewMode === "treemap") renderTreemap();
+    else if (state.viewMode === "sunburst") renderSunburst();
+    else if (state.level <= 1) renderComponentLevel();
     else renderFileLevel();
     updateChrome();
     applySelectionClasses();
@@ -576,9 +585,21 @@
     }
     for (const g of nodesLayer.querySelectorAll(".node")) {
       const id = g.getAttribute("data-id");
-      g.classList.toggle("node--selected", !!(state.selected && state.selected.kind === "node" && state.selected.id === id));
-      g.classList.toggle("node--related", related.has(id) && !(sel && sel.kind === "node" && sel.id === id));
-      g.classList.toggle("node--focus", state.keyboardFocus === id && document.activeElement === svg);
+      const selNode = state.selected && (state.selected.kind === "node" || state.selected.kind === "cell");
+      const isSelected = !!(selNode && state.selected.id === id);
+      const isRelated = related.has(id) && !(sel && sel.kind === "node" && sel.id === id);
+      const isFocused = state.keyboardFocus === id && document.activeElement === svg;
+      g.classList.toggle("node--selected", isSelected);
+      g.classList.toggle("node--related", isRelated);
+      g.classList.toggle("node--focus", isFocused);
+      // The alternate views draw their own shapes, not .node__box, so mark them directly.
+      for (const shape of g.querySelectorAll(".mx-cell, .tm-tile, .sb-arc, .sb-center")) {
+        shape.classList.toggle("mx-cell--selected", isSelected && shape.classList.contains("mx-cell"));
+        shape.classList.toggle("tm-tile--selected", isSelected && shape.classList.contains("tm-tile"));
+        shape.classList.toggle("sb-arc--selected", isSelected && (shape.classList.contains("sb-arc") || shape.classList.contains("sb-center")));
+        shape.classList.toggle("shape--related", isRelated);
+        shape.classList.toggle("shape--focus", isFocused);
+      }
     }
     for (const path of edgesLayer.querySelectorAll("path.edge")) {
       const id = path.getAttribute("data-id");
@@ -615,6 +636,7 @@
     if (!sel) { empty.hidden = false; body.hidden = true; return; }
     empty.hidden = true; body.hidden = false;
     if (sel.kind === "node") renderNodeDetail(state.nodes.get(sel.id), body);
+    else if (sel.kind === "cell") renderCellDetail(sel, body);
     else renderEdgeDetail(state.edgesById.get(sel.id), sel.members || [], body);
   }
 
@@ -755,6 +777,7 @@
 
   // ------------------------------------------------------------------ navigation
   function setLevel(level) {
+    state.viewMode = "graph";
     state.level = level;
     if (level < 2) state.focusComponent = null;
     render();
@@ -763,6 +786,7 @@
   function openComponent(id) {
     const n = state.nodes.get(id);
     if (!n || n.kind !== "component") return;
+    state.viewMode = "graph";
     state.focusComponent = id;
     state.level = 2;
     render();
@@ -772,6 +796,17 @@
   function navigateTo(id) {
     const n = state.nodes.get(id);
     if (!n) return;
+    if (state.viewMode === "treemap" || state.viewMode === "sunburst") {
+      const parent = n.kind === "file" ? n.parent_id : id;
+      setDrillFocus(n.kind === "file" ? parent : id);
+      select({ kind: "node", id });
+      return;
+    }
+    if (state.viewMode === "matrix") {
+      if (n.kind === "component") { select({ kind: "node", id }); return; }
+      state.viewMode = "graph"; // setLevel/openComponent below render once in graph mode
+      if (state.selected && state.selected.kind === "cell") state.selected = null;
+    }
     if (n.kind === "system") { setLevel(0); select({ kind: "node", id }); return; }
     if (n.kind === "component") {
       if (state.level === 2 && state.focusComponent !== id) openComponent(id);
@@ -787,6 +822,7 @@
     centerOn(id);
   }
   function navigateToEdge(e) {
+    if (state.viewMode !== "graph") setViewMode("graph");
     const sc = componentOf(e.source), tc = componentOf(e.target);
     if (e.level === "component") { if (state.level !== 1) setLevel(1); select({ kind: "edge", id: e.id }); centerOnEdge(e); return; }
     if (e.level === "structure") {
@@ -800,6 +836,13 @@
     select({ kind: "edge", id: e.id });
   }
   function goUp() {
+    if (state.viewMode === "treemap" || state.viewMode === "sunburst") {
+      if (state.selected) { select(null); return; }
+      const cur = state.nodes.get(state.drillFocus);
+      if (cur && cur.parent_id) { setDrillFocus(cur.parent_id); return; }
+      return;
+    }
+    if (state.viewMode === "matrix") { select(null); return; }
     if (state.selected && state.selected.kind === "edge") { select(null); return; }
     if (state.level === 2) { const c = state.focusComponent; setLevel(1); select({ kind: "node", id: c }); return; }
     if (state.level === 1) { setLevel(0); select(null); return; }
@@ -807,19 +850,37 @@
   }
 
   function updateChrome() {
+    for (const b of document.querySelectorAll(".viewtab")) {
+      const on = b.dataset.view === state.viewMode;
+      b.setAttribute("aria-selected", String(on));
+      b.tabIndex = on ? 0 : -1; // roving tabindex: Tab enters the tablist once
+    }
+    const graphMode = state.viewMode === "graph";
+    $("#level-switch").hidden = !graphMode;
+    $("#metric-wrap").hidden = !(state.viewMode === "treemap" || state.viewMode === "sunburst");
     for (const b of document.querySelectorAll(".chip[data-level]")) {
       const lv = Number(b.dataset.level);
-      b.setAttribute("aria-pressed", String(lv === state.level));
+      b.setAttribute("aria-pressed", String(graphMode && lv === state.level));
       if (lv === 2) b.disabled = !state.focusComponent;
     }
     const bc = $("#breadcrumb");
     clear(bc);
-    const root = h("button", { class: "crumb crumb--root", type: "button", text: "System overview", onclick: () => setLevel(0) });
-    bc.appendChild(root);
-    if (state.level >= 1) bc.appendChild(h("button", { class: "crumb", type: "button", text: "Components", onclick: () => setLevel(1) }));
-    if (state.level === 2) bc.appendChild(h("button", { class: "crumb", type: "button", text: state.nodes.get(state.focusComponent).label }));
+    if (state.viewMode === "treemap" || state.viewMode === "sunburst") {
+      const chain = [];
+      for (let id = state.drillFocus; id; id = state.nodes.get(id).parent_id) chain.unshift(id);
+      for (const id of chain) {
+        const n = state.nodes.get(id);
+        bc.appendChild(h("button", { class: "crumb", type: "button", text: n.kind === "system" ? "System" : n.label, onclick: () => setDrillFocus(id) }));
+      }
+    } else if (state.viewMode === "matrix") {
+      bc.appendChild(h("button", { class: "crumb crumb--root", type: "button", text: "관계 행렬" }));
+    } else {
+      bc.appendChild(h("button", { class: "crumb crumb--root", type: "button", text: "System overview", onclick: () => setLevel(0) }));
+      if (state.level >= 1) bc.appendChild(h("button", { class: "crumb", type: "button", text: "Components", onclick: () => setLevel(1) }));
+      if (state.level === 2) bc.appendChild(h("button", { class: "crumb", type: "button", text: state.nodes.get(state.focusComponent).label }));
+    }
     bc.lastChild.setAttribute("aria-current", "page");
-    if (state.level < 2) {
+    if (graphMode && state.level < 2) {
       const comps = componentNodes().length;
       const shown = edgesLayer.querySelectorAll("path.edge").length;
       $("#canvas-status").textContent = state.level === 0
@@ -828,11 +889,312 @@
     }
   }
 
+  // ------------------------------------------------------------------ shared helpers for the alternate views
+  function setViewMode(mode) {
+    if (state.viewMode === mode) return;
+    state.viewMode = mode;
+    state.keyboardFocus = null;
+    // A matrix cell has no meaning outside the matrix; an edge is only drawn in the graph view.
+    if (state.selected && state.selected.kind === "cell" && mode !== "matrix") state.selected = null;
+    if (state.selected && state.selected.kind === "edge" && mode !== "graph") state.selected = null;
+    render();
+    fitView();
+    renderDetail();
+  }
+  function setDrillFocus(id) {
+    const n = state.nodes.get(id);
+    if (!n || n.kind === "file") return;
+    state.drillFocus = id;
+    render();
+    fitView();
+  }
+  function metricValue(node) {
+    if (state.sizeMetric === "commits") return Math.max(node.commit_count || 0, node.kind === "file" ? 1 : 0);
+    return node.kind === "file" ? 1 : (node.file_count || 0);
+  }
+  function metricLabel() { return state.sizeMetric === "commits" ? "커밋" : "파일"; }
+  function maxFor(kind) { return kind === "file" ? state.maxFileCommits : state.maxComponentCommits; }
+  function tint(node) {
+    const t = intensity(node.commit_count, maxFor(node.kind));
+    return { t, fill: `color-mix(in srgb, var(--graphite) ${Math.round(12 + t * 55)}%, var(--panel))`, text: t > 0.55 ? "var(--bg)" : "var(--text)" };
+  }
+  function activate(id, deep) {
+    if (id && id.startsWith("cell:")) { const c = state.cells.get(id); if (c) select(c); return; }
+    const n = state.nodes.get(id);
+    if (!n) return;
+    if (state.viewMode === "treemap" || state.viewMode === "sunburst") {
+      if (deep && n.kind !== "file" && id !== state.drillFocus) { setDrillFocus(id); select({ kind: "node", id }); return; }
+      select({ kind: "node", id });
+      return;
+    }
+    if (deep && state.selected && state.selected.kind === "node" && state.selected.id === id && n.kind === "component") { openComponent(id); return; }
+    if (deep && n.kind === "system") { setLevel(1); return; }
+    select({ kind: "node", id });
+  }
+
+  // ------------------------------------------------------------------ matrix view
+  function matrixOrder() {
+    return componentNodes().slice().sort((a, b) => {
+      const la = a.layout || {}, lb = b.layout || {};
+      return (la.row ?? 9) - (lb.row ?? 9) || (la.col ?? 9) - (lb.col ?? 9) || a.label.localeCompare(b.label);
+    });
+  }
+  function renderMatrix() {
+    const comps = matrixOrder();
+    const n = comps.length;
+    const CELL = 40, LEFT = 190, TOP = 150;
+    state.cells = new Map();
+    state.matrixBands = null;
+    const pairs = new Map();
+    let maxCount = 1;
+    for (const e of componentEdges()) {
+      if (!edgeVisible(e)) continue;
+      const key = `${e.source}|${e.target}`;
+      if (!pairs.has(key)) pairs.set(key, []);
+      pairs.get(key).push(e);
+    }
+    for (const list of pairs.values()) maxCount = Math.max(maxCount, list.reduce((a, e) => a + (e.member_edge_count || 1), 0));
+
+    labelsLayer.appendChild(el("text", { x: LEFT, y: 30, class: "mx-axis" }, ["열 = 대상 (target)"]));
+    labelsLayer.appendChild(el("text", { x: 20, y: TOP - 12, class: "mx-axis" }, ["행 = 출발 (source)"]));
+    const bandRow = el("rect", { x: LEFT, y: 0, width: n * CELL, height: CELL, class: "mx-band", id: "mx-band-row" });
+    const bandCol = el("rect", { x: 0, y: TOP, width: CELL, height: n * CELL, class: "mx-band", id: "mx-band-col" });
+    nodesLayer.appendChild(bandRow); nodesLayer.appendChild(bandCol);
+    const clearBands = () => { bandRow.classList.remove("mx-band--on"); bandCol.classList.remove("mx-band--on"); };
+    const hover = (r, c) => {
+      bandRow.setAttribute("y", TOP + r * CELL); bandRow.setAttribute("x", 0); bandRow.setAttribute("width", LEFT + n * CELL);
+      bandCol.setAttribute("x", LEFT + c * CELL); bandCol.setAttribute("y", 0); bandCol.setAttribute("height", TOP + n * CELL);
+      bandRow.classList.toggle("mx-band--on", r >= 0); bandCol.classList.toggle("mx-band--on", c >= 0);
+    };
+    state.matrixBands = { row: bandRow, col: bandCol };
+
+    comps.forEach((c, i) => {
+      const dim = !nodeMatchesLanguage(c);
+      const g = el("g", { class: `node node--component${dim ? " node--dimmed" : ""}`, "data-id": c.id, tabindex: -1, role: "button",
+        "aria-label": `${c.label} 행과 열, 파일 ${c.file_count}개, 커밋 ${c.commit_count}회` });
+      g.appendChild(el("rect", { x: 0, y: TOP + i * CELL, width: LEFT - 6, height: CELL, class: "mx-cell mx-headbox", fill: "transparent" }));
+      g.appendChild(el("text", { x: LEFT - 10, y: TOP + i * CELL + CELL / 2 + 4, class: "mx-head", "text-anchor": "end" }, [fitText(c.label, 12, LEFT - 20)]));
+      g.appendChild(el("rect", { x: LEFT + i * CELL, y: 0, width: CELL, height: TOP - 6, class: "mx-cell mx-headbox", fill: "transparent" }));
+      const tx = LEFT + i * CELL + CELL / 2 + 4, ty = TOP - 10;
+      g.appendChild(el("text", { x: tx, y: ty, class: "mx-head", transform: `rotate(-60 ${tx} ${ty})` }, [fitText(c.label, 12, TOP - 24)]));
+      g.addEventListener("click", () => select({ kind: "node", id: c.id }));
+      nodesLayer.appendChild(g);
+      state.positions.set(c.id, { x: LEFT - 10, y: TOP + i * CELL, w: CELL, h: CELL });
+      state.visibleNodeIds.push(c.id);
+    });
+
+    comps.forEach((src, r) => comps.forEach((dst, c) => {
+      const x = LEFT + c * CELL, y = TOP + r * CELL;
+      if (r === c) { nodesLayer.appendChild(el("rect", { x, y, width: CELL, height: CELL, class: "mx-cell mx-cell--self" })); return; }
+      const list = pairs.get(`${src.id}|${dst.id}`) || [];
+      if (!list.length) { nodesLayer.appendChild(el("rect", { x, y, width: CELL, height: CELL, class: "mx-cell mx-cell--empty" })); return; }
+      const count = list.reduce((a, e) => a + (e.member_edge_count || 1), 0);
+      const t = Math.log1p(count) / Math.log1p(maxCount);
+      const id = `cell:${src.id}->${dst.id}`;
+      state.cells.set(id, { kind: "cell", id, source: src.id, target: dst.id, edges: list.map((e) => e.id) });
+      const g = el("g", { class: "node node--cell", "data-id": id, tabindex: -1, role: "button",
+        "aria-label": `${src.label}에서 ${dst.label}로, ${list.map((e) => `${e.type} ${e.member_edge_count || 1}개`).join(", ")}` });
+      g.appendChild(el("rect", { x, y, width: CELL, height: CELL, class: "mx-cell", fill: `color-mix(in srgb, var(--graphite) ${Math.round(8 + t * 62)}%, var(--panel))` }));
+      const tw = CELL / list.length;
+      list.forEach((e, k) => g.appendChild(el("rect", { x: x + k * tw, y: y + CELL - 4, width: tw, height: 4, class: "mx-type", fill: `var(--edge-${e.type})` })));
+      g.appendChild(el("text", { x: x + CELL / 2, y: y + CELL / 2 + 1, class: `mx-count${t > 0.55 ? " mx-count--strong" : ""}`, "text-anchor": "middle" }, [String(count)]));
+      g.addEventListener("click", (ev) => { ev.stopPropagation(); select(state.cells.get(id)); });
+      g.addEventListener("pointerenter", () => hover(r, c));
+      g.addEventListener("pointerleave", clearBands);
+      nodesLayer.appendChild(g);
+      state.positions.set(id, { x, y, w: CELL, h: CELL });
+      state.visibleNodeIds.push(id);
+    }));
+
+    setBounds(0, 0, LEFT + n * CELL + 30, TOP + n * CELL + 30);
+    const filled = state.cells.size;
+    $("#canvas-status").textContent = `관계 행렬 · component ${n}개 · 관계가 있는 칸 ${filled}개 / ${n * (n - 1)}칸. 숫자는 원본 파일 관계 수, 아래 색 띠는 관계 종류.`;
+  }
+
+  function renderCellDetail(cell, body) {
+    const src = state.nodes.get(cell.source), dst = state.nodes.get(cell.target);
+    body.appendChild(h("div", { class: "detail__kind", text: "Matrix cell" }));
+    body.appendChild(h("div", { class: "detail__title", text: `${src.label} → ${dst.label}` }));
+    const dl = h("dl");
+    dl.appendChild(h("dt", { text: "source" })); dl.appendChild(h("dd", null, [nodeLink(cell.source)]));
+    dl.appendChild(h("dt", { text: "target" })); dl.appendChild(h("dd", null, [nodeLink(cell.target)]));
+    body.appendChild(dl);
+    body.appendChild(h("h3", { text: `이 칸의 관계 (${cell.edges.length})` }));
+    const ul = h("ul");
+    for (const id of cell.edges) {
+      const e = state.edgesById.get(id);
+      if (!e) continue;
+      ul.appendChild(h("li", { class: "edge-row" }, [
+        h("span", { class: `type type--${e.type}`, text: e.type }),
+        h("span", null, [h("span", { class: "pill pill--" + e.confidence, text: e.confidence }), " ", h("span", { class: "help", text: `원본 ${e.member_edge_count || 1}개` }), " ",
+          h("button", { class: "link-btn", type: "button", text: "근거", onclick: () => select({ kind: "edge", id: e.id }) })]),
+      ]));
+    }
+    body.appendChild(ul);
+    const first = state.edgesById.get(cell.edges[0]);
+    if (first) { body.appendChild(h("h3", { text: "대표 근거" })); body.appendChild(evidenceList(first.evidence || [])); }
+  }
+
+  // ------------------------------------------------------------------ treemap view
+  function worstRatio(row, sum, side, scale) {
+    const area = sum * scale;
+    let max = 0, min = Infinity;
+    for (const it of row) { const a = it.value * scale; max = Math.max(max, a); min = Math.min(min, a); }
+    return Math.max((side * side * max) / (area * area), (area * area) / (side * side * min));
+  }
+  function squarify(items, rect, out) {
+    const queue = items.filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
+    let { x, y, w, h } = rect;
+    while (queue.length) {
+      const total = queue.reduce((a, c) => a + c.value, 0);
+      const scale = (w * h) / (total || 1);
+      const side = Math.min(w, h);
+      const row = [];
+      let sum = 0, best = Infinity;
+      while (queue.length) {
+        const next = queue[0];
+        const ratio = worstRatio(row.concat(next), sum + next.value, side, scale);
+        if (row.length && ratio > best) break;
+        row.push(queue.shift()); sum += next.value; best = ratio;
+      }
+      const area = sum * scale;
+      if (w >= h) {
+        const rw = area / h;
+        let cy = y;
+        for (const it of row) { const ih = (it.value * scale) / rw; out.push({ id: it.id, x, y: cy, w: rw, h: ih }); cy += ih; }
+        x += rw; w -= rw;
+      } else {
+        const rh = area / w;
+        let cx = x;
+        for (const it of row) { const iw = (it.value * scale) / rh; out.push({ id: it.id, x: cx, y, w: iw, h: rh }); cx += iw; }
+        y += rh; h -= rh;
+      }
+      if (w < 0.5 || h < 0.5) break;
+    }
+  }
+  function renderTreemap() {
+    const focus = state.nodes.get(state.drillFocus) || state.nodes.get("system");
+    const kids = (state.children.get(focus.id) || []).map((id) => state.nodes.get(id));
+    const items = kids.map((n) => ({ id: n.id, value: metricValue(n) })).filter((i) => i.value > 0);
+    const W = 1080, H = 660, X = 40, Y = 60;
+    const out = [];
+    squarify(items, { x: X, y: Y, w: W, h: H }, out);
+    labelsLayer.appendChild(el("text", { x: X, y: Y - 22, class: "section-title" }, [
+      `${focus.kind === "system" ? focus.label : focus.path || focus.label} · ${metricLabel()} 기준 면적 · 색 진하기 = 커밋 수`,
+    ]));
+    for (const t of out) {
+      const node = state.nodes.get(t.id);
+      const dim = !nodeMatchesLanguage(node);
+      const { fill, text } = tint(node);
+      const g = el("g", { class: `node node--tile${dim ? " node--dimmed" : ""}`, "data-id": t.id, tabindex: -1, role: "button",
+        "aria-label": `${node.label}, ${metricLabel()} ${metricValue(node)}, 커밋 ${node.commit_count}회` });
+      g.appendChild(el("rect", { x: t.x, y: t.y, width: t.w, height: t.h, class: "tm-tile", fill, rx: 3 }));
+      if (t.w > 62 && t.h > 26) {
+        g.appendChild(el("text", { x: t.x + 8, y: t.y + 18, class: "tm-label", fill: text }, [fitText(node.label, 12, t.w - 16)]));
+        if (t.h > 42) g.appendChild(el("text", { x: t.x + 8, y: t.y + 33, class: "tm-sub", fill: text, opacity: .8 }, [fitText(`${node.kind === "file" ? "파일" : `${node.file_count}개 파일`} · ${node.commit_count} 커밋`, 10, t.w - 16)]));
+      }
+      g.addEventListener("click", (ev) => { ev.stopPropagation(); select({ kind: "node", id: t.id }); });
+      g.addEventListener("dblclick", (ev) => { ev.stopPropagation(); if (node.kind !== "file") setDrillFocus(t.id); });
+      nodesLayer.appendChild(g);
+      state.positions.set(t.id, t);
+      state.visibleNodeIds.push(t.id);
+    }
+    setBounds(X - 20, Y - 44, W + 40, H + 64);
+    const zeroValued = kids.filter((k) => metricValue(k) === 0).length;
+    const tooSmall = kids.length - out.length - zeroValued;
+    const why = [];
+    if (zeroValued) why.push(`${metricLabel()} 0이라 ${zeroValued}개`);
+    if (tooSmall > 0) why.push(`너무 얇아 ${tooSmall}개`);
+    $("#canvas-status").textContent = `면적 뷰 · ${focus.kind === "system" ? "전체" : focus.label} 아래 ${out.length}개`
+      + (why.length ? ` (안 그림: ${why.join(", ")})` : "")
+      + ` · 더블클릭/Enter로 내려가고 Esc로 올라온다`;
+  }
+
+  // ------------------------------------------------------------------ sunburst view
+  function arcPath(cx, cy, r0, r1, a0, a1) {
+    const large = a1 - a0 > Math.PI ? 1 : 0;
+    const pt = (r, a) => `${(cx + r * Math.cos(a)).toFixed(2)},${(cy + r * Math.sin(a)).toFixed(2)}`;
+    if (a1 - a0 >= Math.PI * 2 - 1e-6) {
+      return `M${pt(r1, 0)} A${r1},${r1} 0 1 1 ${pt(r1, Math.PI)} A${r1},${r1} 0 1 1 ${pt(r1, 0)} M${pt(r0, 0)} A${r0},${r0} 0 1 0 ${pt(r0, Math.PI)} A${r0},${r0} 0 1 0 ${pt(r0, 0)} Z`;
+    }
+    return `M${pt(r1, a0)} A${r1},${r1} 0 ${large} 1 ${pt(r1, a1)} L${pt(r0, a1)} A${r0},${r0} 0 ${large} 0 ${pt(r0, a0)} Z`;
+  }
+  function renderSunburst() {
+    const focus = state.nodes.get(state.drillFocus) || state.nodes.get("system");
+    const CX = 560, CY = 420, R0 = 90, RING = 78, MAX_RING = 4;
+    const MIN_ANGLE = 0.012;
+    let drawn = 0, omitted = 0, cappedByDepth = 0;
+
+    const centerG = el("g", { class: "node node--center", "data-id": focus.id, tabindex: -1, role: "button",
+      "aria-label": `${focus.label}, ${metricLabel()} ${metricValue(focus)}, 가운데. 상위로 올라가려면 Esc` });
+    centerG.appendChild(el("circle", { cx: CX, cy: CY, r: R0 - 6, class: "sb-center" }));
+    centerG.appendChild(el("text", { x: CX, y: CY - 4, class: "sb-title", "text-anchor": "middle" }, [fitText(focus.kind === "system" ? focus.label : focus.label, 12, R0 * 1.6)]));
+    centerG.appendChild(el("text", { x: CX, y: CY + 12, class: "sb-sub", "text-anchor": "middle" }, [`${metricValue(focus)} ${metricLabel()}`]));
+    centerG.addEventListener("click", () => select({ kind: "node", id: focus.id }));
+    centerG.addEventListener("dblclick", () => { if (focus.parent_id) setDrillFocus(focus.parent_id); });
+    nodesLayer.appendChild(centerG);
+    state.positions.set(focus.id, { x: CX - R0, y: CY - R0, w: R0 * 2, h: R0 * 2 });
+    state.visibleNodeIds.push(focus.id);
+
+    const countDescendants = (nodeId) => {
+      let total = 0;
+      for (const kid of state.children.get(nodeId) || []) total += 1 + countDescendants(kid);
+      return total;
+    };
+    const walk = (nodeId, depth, a0, a1) => {
+      if (depth > MAX_RING) { cappedByDepth += countDescendants(nodeId); return; }
+      const kids = (state.children.get(nodeId) || []).map((id) => state.nodes.get(id)).filter((n) => metricValue(n) > 0);
+      const total = kids.reduce((a, n) => a + metricValue(n), 0);
+      if (!total) return;
+      let a = a0;
+      for (const kid of kids) {
+        const span = ((a1 - a0) * metricValue(kid)) / total;
+        const b = a + span;
+        if (span < MIN_ANGLE) { omitted += 1 + countDescendants(kid.id); a = b; continue; }
+        const r0 = R0 + (depth - 1) * RING, r1 = r0 + RING - 3;
+        const { fill, text } = tint(kid);
+        const dim = !nodeMatchesLanguage(kid);
+        const g = el("g", { class: `node node--arc${dim ? " node--dimmed" : ""}`, "data-id": kid.id, tabindex: -1, role: "button",
+          "aria-label": `${kid.path || kid.label}, ${KIND_LABEL[kid.kind]}, ${metricLabel()} ${metricValue(kid)}, 커밋 ${kid.commit_count}회` });
+        g.appendChild(el("path", { d: arcPath(CX, CY, r0, r1, a, b), class: "sb-arc", fill }));
+        const mid = (a + b) / 2, rm = (r0 + r1) / 2;
+        if (span > 0.09) {
+          const deg = (mid * 180) / Math.PI;
+          const flip = deg > 90 && deg < 270;
+          const lx = CX + rm * Math.cos(mid), ly = CY + rm * Math.sin(mid);
+          g.appendChild(el("text", {
+            x: lx, y: ly + 3, class: "sb-label", fill: text, "text-anchor": "middle",
+            transform: `rotate(${flip ? deg + 180 : deg} ${lx} ${ly})`,
+          }, [fitText(kid.label, 10, Math.min(RING - 14, span * rm * 1.1))]));
+        }
+        g.addEventListener("click", (ev) => { ev.stopPropagation(); select({ kind: "node", id: kid.id }); });
+        g.addEventListener("dblclick", (ev) => { ev.stopPropagation(); if (kid.kind !== "file") setDrillFocus(kid.id); });
+        nodesLayer.appendChild(g);
+        state.positions.set(kid.id, { x: CX + rm * Math.cos(mid) - 8, y: CY + rm * Math.sin(mid) - 8, w: 16, h: 16 });
+        state.visibleNodeIds.push(kid.id);
+        drawn += 1;
+        walk(kid.id, depth + 1, a, b);
+        a = b;
+      }
+    };
+    walk(focus.id, 1, -Math.PI / 2, Math.PI * 1.5);
+    const R = R0 + MAX_RING * RING + 16;
+    setBounds(CX - R, CY - R, R * 2, R * 2);
+    const hidden = omitted + cappedByDepth;
+    const why = [];
+    if (cappedByDepth) why.push(`${MAX_RING}겹 밖 ${cappedByDepth}개`);
+    if (omitted) why.push(`각이 얇아 ${omitted}개`);
+    $("#canvas-status").textContent = `방사형 뷰 · ${focus.kind === "system" ? "전체" : focus.label} 기준 ${drawn}개 표시`
+      + (hidden ? `, 안 그린 것 ${hidden}개 (${why.join(", ")}) — 더 보려면 조각을 열어라` : "")
+      + ` · 각도 = ${metricLabel()} 비율 · 더블클릭/Enter로 내려간다`;
+  }
+
   // ------------------------------------------------------------------ view transform
   function applyView(animate) {
     viewport.classList.toggle("viewport--animate", !!animate);
     viewport.setAttribute("transform", `translate(${state.view.x},${state.view.y}) scale(${state.view.k})`);
   }
+  function setBounds(x, y, w, h) { state.positions.set("__bounds__", { x, y, w, h }); }
   function contentBounds() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of state.positions.values()) {
@@ -913,12 +1275,18 @@
       zoomBy(ev.deltaY < 0 ? 1.12 : 1 / 1.12, ev.clientX - rect.left, ev.clientY - rect.top);
     }, { passive: false });
     svg.addEventListener("dblclick", (ev) => {
+      if (state.viewMode !== "graph") return;
       const g = ev.target.closest && ev.target.closest(".node");
       if (!g) return;
       const id = g.getAttribute("data-id");
       const n = state.nodes.get(id);
       if (n.kind === "component") openComponent(id);
       else if (n.kind === "system") setLevel(1);
+    });
+    svg.addEventListener("pointerleave", () => {
+      if (!state.matrixBands) return;
+      state.matrixBands.row.classList.remove("mx-band--on");
+      state.matrixBands.col.classList.remove("mx-band--on");
     });
     svg.addEventListener("keydown", onKey);
     svg.addEventListener("focus", () => {
@@ -944,13 +1312,10 @@
       case "Enter": {
         ev.preventDefault();
         const id = state.keyboardFocus || ids[0];
-        const n = state.nodes.get(id);
-        if (state.selected && state.selected.kind === "node" && state.selected.id === id && n.kind === "component") openComponent(id);
-        else if (n.kind === "system") setLevel(1);
-        else select({ kind: "node", id });
+        activate(id, true);
         break;
       }
-      case " ": ev.preventDefault(); if (state.keyboardFocus) select({ kind: "node", id: state.keyboardFocus }); break;
+      case " ": ev.preventDefault(); if (state.keyboardFocus) activate(state.keyboardFocus, false); break;
       case "Escape": ev.preventDefault(); goUp(); break;
       case "+": case "=": zoomBy(1.2); break;
       case "-": case "_": zoomBy(1 / 1.2); break;
@@ -959,10 +1324,10 @@
     }
   }
   function announce(id) {
-    const n = state.nodes.get(id);
-    if (!n) return;
     const g = setActiveDescendant(id);
-    $("#canvas-status").textContent = g ? g.getAttribute("aria-label") : `포커스: ${n.path || n.label} (${KIND_LABEL[n.kind]})`;
+    if (g) { $("#canvas-status").textContent = g.getAttribute("aria-label"); return; }
+    const n = state.nodes.get(id);
+    if (n) $("#canvas-status").textContent = `포커스: ${n.path || n.label} (${KIND_LABEL[n.kind]})`;
   }
 
   function wireSidebar() {
@@ -976,6 +1341,19 @@
         case "zoom-fit": fitView(); break;
       }
     });
+    const tabs = [...document.querySelectorAll(".viewtab")];
+    tabs.forEach((tab, i) => {
+      tab.addEventListener("click", () => setViewMode(tab.dataset.view));
+      tab.addEventListener("keydown", (ev) => {
+        const step = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : ev.key === "Home" ? -i : ev.key === "End" ? tabs.length - 1 - i : 0;
+        if (!step && ev.key !== "Home") return;
+        ev.preventDefault();
+        const next = tabs[(i + step + tabs.length) % tabs.length];
+        next.focus();
+        setViewMode(next.dataset.view);
+      });
+    });
+    $("#metric").addEventListener("change", (ev) => { state.sizeMetric = ev.target.value; render(); fitView(); });
     for (const chip of document.querySelectorAll(".chip[data-level]")) {
       chip.addEventListener("click", () => {
         const lv = Number(chip.dataset.level);

@@ -327,12 +327,48 @@ class RealRepositoryTests(unittest.TestCase):
                 ok = p in self.tracked or p == "." or "*" in p or self.repo.joinpath(p).is_dir()
                 self.assertTrue(ok, f"{e['id']} evidence {p}")
 
-    def test_source_commit_matches_head(self):
-        head = git(self.repo, "rev-parse", "HEAD").strip()
-        self.assertEqual(
-            self.graph["meta"]["source_commit"], head,
-            "public/graph.json was generated at a different commit; re-run analyze.py",
+    def test_source_commit_is_a_real_ancestor_of_head(self):
+        """graph.json must describe a commit that is actually in this history.
+
+        It is normally HEAD. Right after the prototype itself is committed the
+        recorded commit is HEAD's parent until analyze.py is run again, so the
+        assertion is "reachable from HEAD", which still fails for a fabricated,
+        foreign or future commit id.
+
+        This checks provenance, not freshness: a graph.json generated many
+        commits ago still passes. Freshness is a manual step (re-run analyze.py)
+        documented in README.md.
+        """
+        commit = self.graph["meta"]["source_commit"]
+        self.assertRegex(commit, r"^[0-9a-f]{40}$")
+        if git(self.repo, "rev-parse", "--is-shallow-repository").strip() == "true":
+            self.skipTest("shallow clone: the recorded commit object is not present")
+        kind = subprocess.run(
+            ["git", "-C", str(self.repo), "cat-file", "-t", commit],
+            capture_output=True, encoding="utf-8",
         )
+        self.assertEqual(kind.returncode, 0, f"{commit} is not an object in this repository")
+        self.assertEqual(kind.stdout.strip(), "commit")
+        reachable = subprocess.run(
+            ["git", "-C", str(self.repo), "merge-base", "--is-ancestor", commit, "HEAD"],
+            capture_output=True,
+        )
+        self.assertEqual(reachable.returncode, 0, f"{commit} is not reachable from HEAD; re-run analyze.py")
+
+    def test_every_file_node_exists_in_the_recorded_commit(self):
+        """Node paths are checked against the tree of meta.source_commit, not just today's checkout."""
+        commit = self.graph["meta"]["source_commit"]
+        if git(self.repo, "rev-parse", "--is-shallow-repository").strip() == "true":
+            self.skipTest("shallow clone: the recorded commit tree is not present")
+        tree = set(git(self.repo, "ls-tree", "-r", "--name-only", "-z", commit).split("\0")) - {""}
+        self.assertTrue(tree, "recorded commit has no tree")
+        expected = {p for p in tree if not analyze.is_private_path(p)}
+        actual = {n["path"] for n in self.graph["nodes"] if n["kind"] == "file"}
+        missing = sorted(expected - actual)[:5]
+        extra = sorted(actual - expected)[:5]
+        self.assertFalse(missing, f"graph.json is stale: {len(expected - actual)} file(s) of {commit[:12]} are absent, e.g. {missing}")
+        self.assertFalse(extra, f"graph.json has file(s) not in {commit[:12]}: {extra}")
+        self.assertEqual(self.graph["meta"]["tracked_file_count"], len(actual))
 
     def test_expected_components_exist(self):
         labels = {n["label"] for n in self.graph["nodes"] if n["kind"] == "component"}

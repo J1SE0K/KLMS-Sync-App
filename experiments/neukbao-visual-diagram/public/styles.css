@@ -50,6 +50,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { height: 100%; margin: 0; }
 body {
   font-family: var(--font);
@@ -83,6 +84,7 @@ button { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
   background: var(--panel);
   min-height: 56px;
+  flex: none;
 }
 .eyebrow { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .topbar h1 { font-size: 16px; }
@@ -98,6 +100,63 @@ button { font: inherit; color: inherit; }
 .meta-label { text-transform: uppercase; font-size: 10px; letter-spacing: .04em; margin-right: 4px; }
 .meta-item code { color: var(--text); }
 .meta-item .dirty { color: var(--warn); }
+
+/* ---------- view tabs ---------- */
+.viewtabs {
+  display: flex; align-items: stretch; gap: 2px; padding: 0 12px;
+  background: var(--panel-soft); border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden;
+  flex: none; min-height: 50px;
+}
+.viewtabs__spacer { flex: 1 1 auto; }
+.viewtab {
+  background: none; border: 0; border-bottom: 2px solid transparent; padding: 7px 14px 6px; cursor: pointer;
+  display: grid; gap: 1px; text-align: left; white-space: nowrap; color: var(--muted); font-weight: 500;
+}
+.viewtab:hover { background: var(--panel); }
+.viewtab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--graphite); background: var(--panel); }
+.viewtab__hint { font-size: 11px; font-weight: 400; color: var(--muted); }
+.viewtab[aria-selected="true"] .viewtab__hint { color: var(--muted); }
+.metric { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); padding: 0 4px; }
+.metric select {
+  font: inherit; font-size: 12px; color: var(--text); background: var(--input-bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px;
+}
+
+/* ---------- matrix ---------- */
+.mx-cell { stroke: var(--line); stroke-width: 1; cursor: pointer; }
+.mx-cell--empty { fill: var(--bg); cursor: default; }
+.mx-cell--self { fill: var(--panel-soft); cursor: default; }
+.mx-fill { pointer-events: none; }
+.mx-count { font-family: var(--mono); font-size: 10px; fill: var(--text); pointer-events: none; }
+.mx-count--strong { fill: var(--bg); }
+.mx-head { font-family: var(--font); font-size: 12px; fill: var(--text); cursor: pointer; }
+.mx-head--muted { fill: var(--muted); }
+.mx-axis { font-family: var(--font); font-size: 10px; fill: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+.mx-band { fill: var(--focus); opacity: 0; pointer-events: none; }
+.mx-band--on { opacity: .1; }
+.mx-headbox { stroke: none; }
+.mx-type { pointer-events: none; }
+
+/* ---------- treemap / sunburst ---------- */
+.tm-tile { stroke: var(--panel); stroke-width: 2; cursor: pointer; }
+.tm-tile--selected { stroke: var(--focus); stroke-width: 3; }
+.tm-label { font-family: var(--font); font-size: 12px; font-weight: 600; pointer-events: none; }
+.tm-sub { font-family: var(--font); font-size: 10px; pointer-events: none; }
+.sb-arc { stroke: var(--panel); stroke-width: 1; cursor: pointer; }
+.sb-arc--selected { stroke: var(--focus); stroke-width: 2.5; }
+.sb-center { fill: var(--panel); stroke: var(--line-strong); cursor: pointer; }
+.sb-label { font-family: var(--font); font-size: 10px; pointer-events: none; }
+.sb-title { font-family: var(--font); font-size: 12px; font-weight: 600; fill: var(--text); pointer-events: none; }
+.sb-sub { font-family: var(--font); font-size: 10px; fill: var(--muted); pointer-events: none; }
+
+/* Selection / focus state for the alternate views. Declared after the base shape rules
+   and with an extra class so they win the cascade over .tm-tile, .sb-arc and .sb-center. */
+.node .mx-cell--selected,
+.node .tm-tile--selected,
+.node .sb-arc--selected { stroke: var(--focus); stroke-width: 3; }
+.node--selected .mx-headbox { stroke: var(--focus); stroke-width: 2; }
+.node .shape--related { stroke: var(--graphite); stroke-width: 2.5; }
+.node .shape--focus { stroke: var(--focus); stroke-width: 3; stroke-dasharray: 5 3; }
 
 /* ---------- workspace ---------- */
 .workspace {
@@ -278,6 +337,11 @@ button { font: inherit; color: inherit; }
   * { transition: none !important; animation: none !important; }
 }
 @media (forced-colors: active) {
+  .viewtab[aria-selected="true"] { border-bottom-color: Highlight; }
+  .mx-cell, .tm-tile, .sb-arc { fill: Canvas; stroke: CanvasText; }
+  .node .mx-cell--selected, .node .tm-tile--selected, .node .sb-arc--selected,
+  .node .shape--focus, .node--selected .mx-headbox { stroke: Highlight; }
+  .node .shape--related { stroke: LinkText; }
   .node__box { fill: Canvas; stroke: CanvasText; }
   .edge { stroke: CanvasText; }
   .node--selected .node__box, .edge--selected { stroke: Highlight; }
