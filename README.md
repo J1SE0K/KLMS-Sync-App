@@ -21,11 +21,49 @@ experiments/neukbao-storytelling/
 ├── story.override.json     ← 발표용 수동 큐레이션 (8개 Episode)
 ├── tests/test_build_story.py
 ├── docs/screenshots/       ← 브라우저 검증 스크린샷
+├── film/                   ← 다큐멘터리형 필름 대본·렌더러·나레이션 생성기
 └── public/
     ├── index.html, app.js, styles.css   ← 정적 웹 UI (외부 CDN 없음)
     ├── commits.json                     ← 분석된 commit 1184개
-    └── story.json                       ← Episode, claim, evidence excerpt
+    ├── story.json                       ← Episode, claim, evidence excerpt
+    ├── storytelling-demo.mp4            ← UI 데모 녹화 (43초)
+    └── storytelling-film.mp4            ← 내레이션 필름 (3분 9초, 1600x900)
 ```
+
+## 영상 두 편
+
+| 파일 | 길이 | 내용 |
+| --- | --- | --- |
+| `public/storytelling-film.mp4` | 3분 9초 | 내레이션이 있는 다큐멘터리형 필름. story.json을 대본으로 개발 이야기를 처음부터 끝까지 들려준다 |
+| `public/storytelling-demo.mp4` | 43초 | UI 화면 녹화. PRESENTATION.md의 60초 데모 흐름을 그대로 조작한 기록 |
+
+정적 서버를 띄우면 `http://127.0.0.1:4174/storytelling-film.mp4`로 열 수 있다.
+
+### 필름 구성 (`film/`)
+
+```
+film/
+├── script.json          ← 장면 대본과 나레이션 문장
+├── make_narration.ps1   ← Windows 한국어 음성(Heami)으로 장면별 wav + timings.json
+├── film.html/.css/.js   ← 결정적 렌더러. filmRender(t)가 t초의 화면을 그린다
+└── build_film.mjs       ← 프레임 캡처 → 나레이션 결합 → mp4
+```
+
+```sh
+cd film
+pwsh ./make_narration.ps1        # 나레이션 생성 (약 172초 분량)
+node build_film.mjs --probe      # 장면별 샘플 프레임만 확인
+node build_film.mjs              # 전체 렌더 (20fps, 3775 프레임, 약 100초 소요)
+```
+
+프레임을 실시간 녹화하지 않고 `filmRender(t)`로 한 장씩 그려 저장하기 때문에,
+프레임 드랍 없이 나레이션과 화면이 정확히 맞는다. 두 트랙 모두 `timings.json`의
+같은 장면 길이에서 나온다.
+
+장면 순서는 콜드 오픈(commit 1184개) → 질문 → 타이틀 → Episode 1~8 → 근거 등급
+(observed 38 / supported 13 / inferred 8) → inferred 예시와 한계 → 클로징이다.
+나레이션 문장은 story.json의 Episode·claim 텍스트와 Git 통계에서만 가져왔고,
+추정은 영상에서도 "추정된다"로만 말한다.
 
 ## 실행
 
