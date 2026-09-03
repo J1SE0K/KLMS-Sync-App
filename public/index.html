@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KLMS-Sync-App Development Storytelling</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#episode-panel">본문으로 건너뛰기</a>
+
+  <header class="masthead">
+    <div class="masthead-inner">
+      <p class="eyebrow">Neukbao prototype 2 · Development Storytelling</p>
+      <h1 id="story-title">이야기를 불러오는 중…</h1>
+      <dl class="source-meta" id="source-meta" aria-label="분석 대상">
+        <div><dt>repository</dt><dd id="source-repo">—</dd></div>
+        <div><dt>source commit</dt><dd><code id="source-head">—</code></dd></div>
+        <div><dt>commit 수</dt><dd id="source-count">—</dd></div>
+        <div><dt>기간</dt><dd id="source-span">—</dd></div>
+        <div><dt>생성 방식</dt><dd id="source-curation">—</dd></div>
+      </dl>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="arc" aria-labelledby="arc-heading">
+      <h2 id="arc-heading">전체 개발 arc</h2>
+      <p id="arc-summary" class="arc-summary"></p>
+      <ol id="arc-points" class="arc-points"></ol>
+    </section>
+
+    <section class="timeline-section" aria-labelledby="timeline-heading">
+      <div class="section-head">
+        <h2 id="timeline-heading">Episode timeline</h2>
+        <p class="hint">←/→ 로 이전·다음 Episode, Space 로 재생/정지, Esc 로 목록 복귀</p>
+      </div>
+
+      <div class="transport" role="group" aria-label="재생 제어">
+        <button type="button" id="btn-prev" class="btn" aria-label="이전 Episode">← 이전</button>
+        <button type="button" id="btn-play" class="btn btn-primary" aria-pressed="false">▶ 재생</button>
+        <button type="button" id="btn-next" class="btn" aria-label="다음 Episode">다음 →</button>
+        <label class="scrub-label" for="scrubber">
+          <span class="visually-hidden">Episode 위치</span>
+          <input type="range" id="scrubber" min="1" max="1" value="1" step="1" aria-valuetext="Episode 1">
+        </label>
+        <output id="position" class="position" for="scrubber">1 / 1</output>
+        <label class="interval-label">간격
+          <select id="interval" aria-label="재생 간격(초)">
+            <option value="6000">6초</option>
+            <option value="10000" selected>10초</option>
+            <option value="15000">15초</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="track-wrap">
+        <div class="track" id="track" role="list" aria-label="Episode 순서"></div>
+        <div class="progress" aria-hidden="true"><div class="progress-fill" id="progress-fill"></div></div>
+      </div>
+    </section>
+
+    <section class="episode-section" aria-live="polite">
+      <div class="section-head">
+        <h2 id="episode-heading">Episode</h2>
+        <button type="button" id="btn-list" class="btn btn-ghost">전체 Episode 목록</button>
+      </div>
+      <article id="episode-panel" class="episode-card" tabindex="-1"></article>
+    </section>
+
+    <section class="list-section" id="list-section" aria-labelledby="list-heading">
+      <h2 id="list-heading">전체 Episode 목록</h2>
+      <p class="hint">모든 내용은 재생 없이도 아래 목록에서 읽을 수 있다.</p>
+      <ol id="episode-list" class="episode-list"></ol>
+    </section>
+
+    <section class="auto-section" aria-labelledby="auto-heading">
+      <details>
+        <summary id="auto-heading">자동 clustering 결과 (큐레이션 전)</summary>
+        <p class="hint" id="auto-hint"></p>
+        <ol id="auto-list" class="auto-list"></ol>
+      </details>
+    </section>
+  </main>
+
+  <aside id="drawer" class="drawer" aria-hidden="true" role="dialog" aria-labelledby="drawer-title">
+    <div class="drawer-head">
+      <h2 id="drawer-title">근거</h2>
+      <button type="button" id="drawer-close" class="btn btn-ghost" aria-label="근거 서랍 닫기">닫기 ✕</button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </aside>
+  <div id="drawer-backdrop" class="drawer-backdrop" hidden></div>
+
+  <footer class="footer">
+    <p>Storytelling의 모든 문장은 commit, diff, changed file 중 하나 이상의 Git 근거를 가진다. 근거가 없는 의도는 “추정”으로만 표시된다.</p>
+  </footer>
+
+  <template id="tpl-empty"><p class="empty">story.json 을 불러올 수 없다. <code>python3 build_story.py</code> 실행 후 정적 서버로 여는지 확인.</p></template>
+
+  <script src="app.js"></script>
+</body>
+</html>
