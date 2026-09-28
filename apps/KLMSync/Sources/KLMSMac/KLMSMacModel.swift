@@ -4175,22 +4175,8 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func visibleCalendarChangeCounts(from changes: [CalendarChange]) -> (created: Int, updated: Int, deleted: Int) {
-        var created = 0
-        var updated = 0
-        var deleted = 0
-        for change in changes {
-            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            case "created", "mail":
-                created += 1
-            case "updated":
-                updated += 1
-            case "deleted":
-                deleted += 1
-            default:
-                break
-            }
-        }
-        return (created, updated, deleted)
+        let counts = KLMSCalendarChangeCounts(changes: changes)
+        return (counts.created, counts.updated, counts.deleted)
     }
 
     private func serverRelayCalendarChange(_ change: CalendarChange) -> CalendarChange {
