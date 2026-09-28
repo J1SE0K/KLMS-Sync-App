@@ -6819,22 +6819,18 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(mac.contains("TimeInterval(Self.authDigitsMinimumVisibleNanoseconds) / 1_000_000_000"))
         XCTAssertTrue(mac.contains("try? await Task.sleep(nanoseconds: Self.authStatusDisplayTimeoutNanoseconds)"))
         XCTAssertTrue(mac.contains("notifiedAlreadyLoggedInForCurrentRun = false"))
-        XCTAssertTrue(ios.contains("authStatusDisplayTitle"))
-        XCTAssertTrue(ios.contains("isAlreadyLoggedInMessage"))
+        // iOS 쪽 판정은 KLMSShared 의 KLMSAuthStatusPolicy 로 옮겼고 동작은 AuthStatusPolicyTests 가 검사한다.
+        // 여기서는 iOS 앱이 그 규칙을 쓰는지만 확인한다.
         XCTAssertTrue(ios.contains("let previousStatus = status"))
         XCTAssertTrue(ios.contains("let incomingStatus = statusCommand?.summary ?? response.status"))
         XCTAssertTrue(ios.contains("shouldNotifyAuthSuccess(from: previousStatus, to: incomingStatus)"))
-        XCTAssertTrue(ios.contains("previousStatus.authDigits != nil"))
-        XCTAssertTrue(ios.contains("return !Self.isAlreadyLoggedInMessage(message)"))
-        XCTAssertTrue(ios.contains("var shouldShowAuthCompletion: Bool"))
-        XCTAssertTrue(ios.contains("case .failed, .cancelled, .macUnavailable:"))
-        XCTAssertTrue(ios.contains("case .pending, .running, .completed, .none:"))
-        XCTAssertFalse(ios.contains("status.phase == \"running\" else"))
-        XCTAssertTrue(ios.contains("private static func authSuccessDeduplicationKey(_ message: String) -> String"))
-        XCTAssertTrue(ios.contains("return \"already-logged-in\""))
-        XCTAssertTrue(ios.contains("return \"auth-completed\""))
-        XCTAssertTrue(ios.contains("let deduplicationKey = Self.authSuccessDeduplicationKey(normalized)"))
+        XCTAssertTrue(ios.contains("KLMSAuthStatusPolicy.shouldNotifyAuthSuccess(from: previousStatus, to: status)"))
+        XCTAssertTrue(ios.contains("KLMSAuthStatusPolicy.displayTitle(for: status)"))
+        XCTAssertTrue(ios.contains("KLMSAuthStatusPolicy.shouldShowAuthCompletion("))
+        XCTAssertTrue(ios.contains("KLMSAuthStatusPolicy.successDeduplicationKey(normalized)"))
+        XCTAssertTrue(ios.contains("KLMSAuthStatusPolicy.shouldPresentSuccessAlert("))
         XCTAssertFalse(ios.contains("lastAuthSuccessAlertMessage = normalized"))
+        XCTAssertFalse(ios.contains("status.phase == \"running\" else"))
     }
 
     func testMacMailDashboardDerivedDataIsCachedOffRenderPath() throws {

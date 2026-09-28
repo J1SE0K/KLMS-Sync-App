@@ -1799,30 +1799,19 @@ final class CompanionModel: ObservableObject {
     }
 
     var shouldShowAuthCompletion: Bool {
-        guard hasAuthCompletionStatus,
-              errorMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return false
-        }
-        switch latestDisplayStatus {
-        case .failed, .cancelled, .macUnavailable:
-            return false
-        case .pending, .running, .completed, .none:
-            return true
-        }
+        KLMSAuthStatusPolicy.shouldShowAuthCompletion(
+            status: status,
+            errorMessage: errorMessage,
+            latestDisplayStatus: latestDisplayStatus
+        )
     }
 
     var hasAuthCompletionStatus: Bool {
-        status.authStatusMessage != nil
-            && status.authDigits == nil
-            && !status.loginRequired
+        KLMSAuthStatusPolicy.hasAuthCompletionStatus(status)
     }
 
     var authStatusDisplayTitle: String {
-        guard let message = status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !message.isEmpty else {
-            return "인증 완료"
-        }
-        return Self.isAlreadyLoggedInMessage(message) ? "이미 로그인됨" : "인증 완료"
+        KLMSAuthStatusPolicy.displayTitle(for: status)
     }
 
     var statusLine: String {
@@ -5701,42 +5690,22 @@ final class CompanionModel: ObservableObject {
     }
 
     private func shouldNotifyAuthSuccess(from previousStatus: SanitizedRemoteStatus, to status: SanitizedRemoteStatus) -> Bool {
-        guard let message = status.authStatusMessage?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !message.isEmpty,
-              previousStatus.authDigits != nil,
-              status.authDigits == nil,
-              !status.loginRequired else {
-            return false
-        }
-        return !Self.isAlreadyLoggedInMessage(message)
-    }
-
-    private static func isAlreadyLoggedInMessage(_ message: String) -> Bool {
-        let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized.contains("이미 로그인") || normalized.contains("already")
+        KLMSAuthStatusPolicy.shouldNotifyAuthSuccess(from: previousStatus, to: status)
     }
 
     private func shouldPresentAuthSuccessAlert(message: String, now: Date = Date()) -> Bool {
         let normalized = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        let deduplicationKey = Self.authSuccessDeduplicationKey(normalized)
+        let deduplicationKey = KLMSAuthStatusPolicy.successDeduplicationKey(normalized)
         defer {
             lastAuthSuccessAlertMessage = deduplicationKey
             lastAuthSuccessAlertAt = now
         }
-        guard deduplicationKey != lastAuthSuccessAlertMessage else {
-            guard let lastAuthSuccessAlertAt else {
-                return true
-            }
-            return now.timeIntervalSince(lastAuthSuccessAlertAt) > 90
-        }
-        return true
-    }
-
-    private static func authSuccessDeduplicationKey(_ message: String) -> String {
-        if isAlreadyLoggedInMessage(message) {
-            return "already-logged-in"
-        }
-        return "auth-completed"
+        return KLMSAuthStatusPolicy.shouldPresentSuccessAlert(
+            deduplicationKey: deduplicationKey,
+            lastDeduplicationKey: lastAuthSuccessAlertMessage,
+            lastPresentedAt: lastAuthSuccessAlertAt,
+            now: now
+        )
     }
 
     private func shouldFetchSyncData(includeSyncData: Bool?) -> Bool {

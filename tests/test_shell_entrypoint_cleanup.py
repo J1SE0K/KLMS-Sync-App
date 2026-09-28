@@ -1908,7 +1908,12 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         ).read_text(encoding="utf-8")
         self.assertIn("status.authStatusMessage", ios_app)
         self.assertIn("shouldShowAuthCompletion", ios_app)
-        self.assertIn('return "인증 완료"', ios_app)
+        # 인증 완료 제목 규칙은 KLMSShared 의 KLMSAuthStatusPolicy 로 옮겼다(동작은 AuthStatusPolicyTests).
+        auth_policy = (
+            PROJECT_DIR / "apps" / "KLMSync" / "Sources" / "KLMSShared" / "AuthStatusPolicy.swift"
+        ).read_text(encoding="utf-8")
+        self.assertIn('return "인증 완료"', auth_policy)
+        self.assertIn("KLMSAuthStatusPolicy.displayTitle(for: status)", ios_app)
         self.assertIn("AuthSuccessBanner", ios_app)
         self.assertIn('UserAlert(title: "인증 완료", message: authStatusMessage)', ios_app)
         self.assertNotIn("if let authStatusMessage = status.authStatusMessage {\n            return authStatusMessage\n        }\n        if status.loginRequired", ios_app)
