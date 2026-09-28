@@ -10,6 +10,7 @@
 		3A268377EE4DD927AC953A87 /* KLMSiOSApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */; };
 		C2EF411E78CE8BF6A1A0C96A /* AcademicTerm.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */; };
 		FD136E2B31A26FBADD52879B /* AuthStatusPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3C4768DCDA22143010D4F72 /* AuthStatusPolicy.swift */; };
+		95BB32E738BEB7CB329E3D3B /* CompanionItemActionRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = C727D3438E368DC2E9C75A76 /* CompanionItemActionRules.swift */; };
 		26FEAD8F6D791853A980234E /* CredentialPersistence.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B7B47BD46A1090B99DBC79F /* CredentialPersistence.swift */; };
 		D29FF8D94FC5E72F267755D7 /* DashboardDataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */; };
 		842C06BA3AF23C0E13C98B50 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7638201FDEE9ECB0BA9D75 /* DesignTokens.swift */; };
@@ -24,6 +25,7 @@
 		D5E9A8B1D8E9AEC945A3128B /* RelaySnapshotStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAEE97F90B31176E03977F08 /* RelaySnapshotStream.swift */; };
 		64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */; };
 		A1EBDD4F7A1616839ECDB7B4 /* RemoteSyncControlRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0ED74594219881D78FDB3E /* RemoteSyncControlRules.swift */; };
+		B98E617629173C732967E1EA /* SharedDisplayRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = E060555FD8A0AF03E541E48B /* SharedDisplayRules.swift */; };
 		0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6709D4B7C4D5248C468873FD /* StateModels.swift */; };
 		FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C3A8268D3376FED887FD75 /* StatusModels.swift */; };
 		8C008ECF6427B421D48ABBC8 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = BD43412BD4EE806E31C12F0E /* Assets.xcassets */; };
@@ -46,6 +48,7 @@
 		332BD617AE436D7B8C5D4B83 /* KLMSiOSApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "KLMSiOSApp.swift"; path = "../../Sources/KLMSiOS/KLMSiOSApp.swift"; sourceTree = "<group>"; };
 		C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AcademicTerm.swift"; path = "../../Sources/KLMSShared/AcademicTerm.swift"; sourceTree = "<group>"; };
 		A3C4768DCDA22143010D4F72 /* AuthStatusPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "AuthStatusPolicy.swift"; path = "../../Sources/KLMSShared/AuthStatusPolicy.swift"; sourceTree = "<group>"; };
+		C727D3438E368DC2E9C75A76 /* CompanionItemActionRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CompanionItemActionRules.swift"; path = "../../Sources/KLMSShared/CompanionItemActionRules.swift"; sourceTree = "<group>"; };
 		9B7B47BD46A1090B99DBC79F /* CredentialPersistence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "CredentialPersistence.swift"; path = "../../Sources/KLMSShared/CredentialPersistence.swift"; sourceTree = "<group>"; };
 		AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DashboardDataModels.swift"; path = "../../Sources/KLMSShared/DashboardDataModels.swift"; sourceTree = "<group>"; };
 		4E7638201FDEE9ECB0BA9D75 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "DesignTokens.swift"; path = "../../Sources/KLMSShared/DesignTokens.swift"; sourceTree = "<group>"; };
@@ -60,6 +63,7 @@
 		FAEE97F90B31176E03977F08 /* RelaySnapshotStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelaySnapshotStream.swift"; path = "../../Sources/KLMSShared/RelaySnapshotStream.swift"; sourceTree = "<group>"; };
 		6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteCommandModels.swift"; path = "../../Sources/KLMSShared/RemoteCommandModels.swift"; sourceTree = "<group>"; };
 		1D0ED74594219881D78FDB3E /* RemoteSyncControlRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteSyncControlRules.swift"; path = "../../Sources/KLMSShared/RemoteSyncControlRules.swift"; sourceTree = "<group>"; };
+		E060555FD8A0AF03E541E48B /* SharedDisplayRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SharedDisplayRules.swift"; path = "../../Sources/KLMSShared/SharedDisplayRules.swift"; sourceTree = "<group>"; };
 		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
 		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
 		908E68E53E00995AEEE297DB /* KLMSiOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = KLMSiOSUITests.swift; path = "KLMSiOSUITests/KLMSiOSUITests.swift"; sourceTree = "<group>"; };
@@ -98,6 +102,7 @@
 			children = (
 				C6CE14CF0FD1B53838A57DD0 /* AcademicTerm.swift */,
 				A3C4768DCDA22143010D4F72 /* AuthStatusPolicy.swift */,
+				C727D3438E368DC2E9C75A76 /* CompanionItemActionRules.swift */,
 				9B7B47BD46A1090B99DBC79F /* CredentialPersistence.swift */,
 				AD72EBF76DC2AF51C5E1190F /* DashboardDataModels.swift */,
 				4E7638201FDEE9ECB0BA9D75 /* DesignTokens.swift */,
@@ -112,6 +117,7 @@
 				FAEE97F90B31176E03977F08 /* RelaySnapshotStream.swift */,
 				6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */,
 				1D0ED74594219881D78FDB3E /* RemoteSyncControlRules.swift */,
+				E060555FD8A0AF03E541E48B /* SharedDisplayRules.swift */,
 				6709D4B7C4D5248C468873FD /* StateModels.swift */,
 				11C3A8268D3376FED887FD75 /* StatusModels.swift */,
 			);
@@ -222,6 +228,7 @@
 				3A268377EE4DD927AC953A87 /* KLMSiOSApp.swift in Sources */,
 				C2EF411E78CE8BF6A1A0C96A /* AcademicTerm.swift in Sources */,
 				FD136E2B31A26FBADD52879B /* AuthStatusPolicy.swift in Sources */,
+				95BB32E738BEB7CB329E3D3B /* CompanionItemActionRules.swift in Sources */,
 				26FEAD8F6D791853A980234E /* CredentialPersistence.swift in Sources */,
 				D29FF8D94FC5E72F267755D7 /* DashboardDataModels.swift in Sources */,
 				842C06BA3AF23C0E13C98B50 /* DesignTokens.swift in Sources */,
@@ -236,6 +243,7 @@
 				D5E9A8B1D8E9AEC945A3128B /* RelaySnapshotStream.swift in Sources */,
 				64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */,
 				A1EBDD4F7A1616839ECDB7B4 /* RemoteSyncControlRules.swift in Sources */,
+				B98E617629173C732967E1EA /* SharedDisplayRules.swift in Sources */,
 				0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */,
 				FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */,
 			);

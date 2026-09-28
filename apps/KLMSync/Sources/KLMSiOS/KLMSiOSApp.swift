@@ -1119,16 +1119,7 @@ final class CompanionModel: ObservableObject {
     }
 
     private static func serverRelayBootstrapTokenFingerprint(_ token: String) -> String {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "missing-token"
-        }
-        var hash: UInt64 = 1_469_598_103_934_665_603
-        for byte in trimmed.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1_099_511_628_211
-        }
-        return "token-\(trimmed.count)-\(String(hash, radix: 16))"
+        KLMSRelayTokenFingerprint.make(token)
     }
 
     var hasClearableRemoteLogs: Bool {
@@ -2312,59 +2303,7 @@ final class CompanionModel: ObservableObject {
         var didChange = false
 
         func mutate(_ item: inout ServerRelaySyncItem) {
-            item.updatedAt = updatedAt
-            switch actionKind {
-            case .assignmentComplete:
-                item.kind = "completedAssignment"
-                item.status = "완료"
-                item.isHidden = false
-            case .assignmentRestore, .assignmentUnhide:
-                if item.kind == "completedAssignment" {
-                    item.kind = "assignment"
-                }
-                item.status = ""
-                item.isHidden = false
-            case .assignmentHide:
-                item.status = "숨김"
-                item.isHidden = true
-            case .examPromote:
-                item.kind = "exam"
-                item.status = "시험"
-                item.isHidden = false
-            case .examIgnore:
-                item.status = "시험 아님"
-                item.isHidden = true
-            case .examRestore:
-                item.status = ""
-                item.isHidden = false
-            case .noticeRead:
-                item.isRead = true
-            case .noticeUnread:
-                item.isRead = false
-            case .noticeImportant:
-                item.isImportant = true
-            case .noticeUnimportant:
-                item.isImportant = false
-            case .noticeHide, .fileHide:
-                item.isHidden = true
-            case .noticeUnhide, .fileUnhide:
-                item.isHidden = false
-            case .mailDashboardRemove:
-                break
-            case .mailDashboardAdd:
-                item.isHidden = false
-            case .fileTrash,
-                 .calendarVerify,
-                 .calendarApply,
-                 .calendarCreate,
-                 .calendarEdit,
-                 .calendarDelete:
-                item.status = "삭제 요청"
-                item.isHidden = true
-                break
-            case .calendarOpen:
-                break
-            }
+            item.applyCompanionDisplayAction(actionKind, updatedAt: updatedAt)
         }
 
         var nextSyncItems = syncItems
@@ -5524,49 +5463,6 @@ final class CompanionModel: ObservableObject {
         rebuildRemoteLogDerivedState()
     }
 
-    private static func relayRefreshScope(for reason: String) -> RelayRefreshScope {
-        if reason == "state" || reason == "updated" {
-            return .state
-        }
-        if reason == "cancel:requested" {
-            return .state
-        }
-        if reason.hasPrefix("commands:") {
-            return reason == "commands:pending" ? .commandRequest : .commandUpdate
-        }
-        if reason == "item-actions:server-state" {
-            return .itemActionServerState
-        }
-        if reason.hasPrefix("item-actions:") {
-            return .itemActions
-        }
-        if reason.hasPrefix("setting-actions:") {
-            return .settingActions
-        }
-        if reason == "sync-data" || reason.hasPrefix("sync-data:") {
-            return .syncData
-        }
-        if reason == "shared-settings" {
-            return .settings
-        }
-        if reason.hasPrefix("file-access:") {
-            return .fileAccess
-        }
-        if reason.hasPrefix("logs-display:") || reason.hasPrefix("logs:") {
-            if reason.contains("fileAccess") || reason.contains("file-access") {
-                return .fileAccess
-            }
-            if reason.contains("requestLog") || reason.contains("request-log") {
-                return .requestLog
-            }
-            if reason.contains("command") {
-                return .state
-            }
-            return .displayLogs
-        }
-        return .full
-    }
-
     private static func relayEvent(for message: URLSessionWebSocketTask.Message) -> RelayEventEnvelope? {
         let data: Data?
         switch message {
@@ -5865,58 +5761,7 @@ final class CompanionModel: ObservableObject {
         var didChange = false
 
         func mutate(_ item: inout ServerRelaySyncItem, action: ServerRelayItemAction) {
-            item.updatedAt = ServerRelaySyncItem.isoTimestamp(date: action.updatedAt)
-            switch action.action {
-            case .assignmentComplete:
-                item.kind = "completedAssignment"
-                item.status = "완료"
-                item.isHidden = false
-            case .assignmentRestore, .assignmentUnhide:
-                if item.kind == "completedAssignment" {
-                    item.kind = "assignment"
-                }
-                item.status = ""
-                item.isHidden = false
-            case .assignmentHide:
-                item.status = "숨김"
-                item.isHidden = true
-            case .examPromote:
-                item.kind = "exam"
-                item.status = "시험"
-                item.isHidden = false
-            case .examIgnore:
-                item.status = "시험 아님"
-                item.isHidden = true
-            case .examRestore:
-                item.status = ""
-                item.isHidden = false
-            case .noticeRead:
-                item.isRead = true
-            case .noticeUnread:
-                item.isRead = false
-            case .noticeImportant:
-                item.isImportant = true
-            case .noticeUnimportant:
-                item.isImportant = false
-            case .noticeHide, .fileHide:
-                item.isHidden = true
-            case .noticeUnhide, .fileUnhide:
-                item.isHidden = false
-            case .mailDashboardRemove:
-                break
-            case .mailDashboardAdd:
-                item.isHidden = false
-            case .fileTrash,
-                 .calendarVerify,
-                 .calendarApply,
-                 .calendarCreate,
-                 .calendarEdit,
-                 .calendarDelete:
-                item.status = "삭제 요청"
-                item.isHidden = true
-            case .calendarOpen:
-                break
-            }
+            item.applyCompanionDisplayAction(action.action, updatedAt: ServerRelaySyncItem.isoTimestamp(date: action.updatedAt))
         }
 
         for action in actions {
@@ -8152,23 +7997,10 @@ private struct CompanionDashboardScopedStatus {
         selectedYear: String,
         selectedSemester: String
     ) -> CalendarCounts {
-        var counts = CalendarCounts()
-        for change in model.visibleCalendarChanges() {
-            guard CompanionItemListFilter.matches(change.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester) else {
-                continue
-            }
-            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            case "created", "mail":
-                counts.created += 1
-            case "updated":
-                counts.updated += 1
-            case "deleted":
-                counts.deleted += 1
-            default:
-                continue
-            }
-        }
-        return counts
+        let counts = KLMSCalendarChangeCounts(changes: model.visibleCalendarChanges().filter {
+            CompanionItemListFilter.matches($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        })
+        return CalendarCounts(created: counts.created, updated: counts.updated, deleted: counts.deleted)
     }
 }
 
@@ -11351,9 +11183,7 @@ private struct RemoteDashboardSyncCardContent: View, Equatable {
     }
 
     private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
-        if isRunning { return "stop.fill" }
-        if isDisabled { return "lock.fill" }
-        return nil
+        KLMSCommandButtonIcon.secondary(isRunning: isRunning, isDisabled: isDisabled)
     }
 
     private func secondaryCommandForeground(isDisabled: Bool) -> Color {
@@ -17834,72 +17664,6 @@ private extension ServerRelaySettingAction {
 }
 
 private extension ServerRelayItemActionKind {
-    var isCompanionImmediateDisplayAction: Bool {
-        isServerDisplayOnlyAction || self == .fileTrash
-    }
-
-    var suppressesImmediateSuccessFeedback: Bool {
-        switch self {
-        case .assignmentComplete,
-             .assignmentHide,
-             .examIgnore,
-             .noticeHide,
-             .fileHide,
-             .fileTrash,
-             .mailDashboardRemove:
-            true
-        case .assignmentRestore,
-             .assignmentUnhide,
-             .examPromote,
-             .examRestore,
-             .noticeRead,
-             .noticeUnread,
-             .noticeImportant,
-             .noticeUnimportant,
-             .noticeUnhide,
-             .fileUnhide,
-             .calendarVerify,
-             .calendarApply,
-             .calendarCreate,
-             .calendarEdit,
-             .calendarDelete,
-             .calendarOpen,
-             .mailDashboardAdd:
-            false
-        }
-    }
-
-    var isServerDisplayOnlyAction: Bool {
-        switch self {
-        case .assignmentComplete,
-             .assignmentRestore,
-             .assignmentHide,
-             .assignmentUnhide,
-             .examPromote,
-             .examIgnore,
-             .examRestore,
-             .noticeRead,
-             .noticeUnread,
-             .noticeImportant,
-             .noticeUnimportant,
-             .noticeHide,
-             .noticeUnhide,
-             .fileHide,
-             .fileUnhide,
-             .mailDashboardAdd,
-             .mailDashboardRemove:
-            true
-        case .fileTrash,
-             .calendarVerify,
-             .calendarApply,
-             .calendarCreate,
-             .calendarEdit,
-             .calendarDelete,
-             .calendarOpen:
-            false
-        }
-    }
-
     var companionActionTitle: String {
         switch self {
         case .assignmentComplete:
@@ -20084,20 +19848,11 @@ private struct CompanionInlineLogBlock: View {
     }
 
     private static func boundedText(_ text: String) -> String {
-        let maxCharacters = 6_000
-        guard text.count > maxCharacters else {
-            return text
-        }
-        let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
-        return prefix + String(text.suffix(maxCharacters - prefix.count))
+        KLMSLogTruncation.bounded(text, maxCharacters: 6_000)
     }
 
     private static func boundedHighlightSourceText(_ text: String) -> String {
-        let maxCharacters = 3_000
-        guard text.count > maxCharacters else {
-            return text
-        }
-        return String(text.suffix(maxCharacters))
+        KLMSLogTruncation.highlightSource(text, maxCharacters: 3_000)
     }
 
     @MainActor
@@ -20385,35 +20140,11 @@ private struct RemoteSettingRow: View {
     }
 
     private func settingChoiceTitle(_ value: String) -> String {
-        switch value {
-        case "auto":
-            return "자동"
-        case "quick":
-            return "빠른 모드"
-        case "full":
-            return "전체 다시 읽기"
-        case "manual-digits":
-            return "인증번호 직접 선택"
-        case "minimize":
-            return "창 최소화"
-        case "none":
-            return "그대로 두기"
-        case "":
-            return "선택"
-        default:
-            return compactSettingValueSummary(value)
-        }
+        KLMSSettingValueSummary.choiceTitle(value)
     }
 
     private func compactSettingValueSummary(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "비어 있음"
-        }
-        if trimmed.contains("/") || trimmed.contains("\\") || trimmed.count > 18 {
-            return "저장됨"
-        }
-        return trimmed
+        KLMSSettingValueSummary.compact(value)
     }
 }
 
@@ -21404,20 +21135,8 @@ private extension SanitizedRemoteStatus {
     }
 
     private static func calendarCounts(in changes: [CalendarChange]) -> CalendarChangeCounts {
-        var counts = CalendarChangeCounts()
-        for change in changes {
-            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            case "created", "mail":
-                counts.created += 1
-            case "updated":
-                counts.updated += 1
-            case "deleted":
-                counts.deleted += 1
-            default:
-                continue
-            }
-        }
-        return counts
+        let counts = KLMSCalendarChangeCounts(changes: changes)
+        return CalendarChangeCounts(created: counts.created, updated: counts.updated, deleted: counts.deleted)
     }
 
     var hasCompanionChangeSummary: Bool {
