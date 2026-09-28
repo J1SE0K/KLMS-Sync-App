@@ -28,6 +28,7 @@ DEFAULT_XCCONFIG = APP_ROOT / "Config" / "KLMSiOS.defaults.xcconfig"
 SHARED_SOURCES = [
     "AcademicTerm.swift",
     "AuthStatusPolicy.swift",
+    "CompanionItemActionRules.swift",
     "CredentialPersistence.swift",
     "DashboardDataModels.swift",
     "DesignTokens.swift",
