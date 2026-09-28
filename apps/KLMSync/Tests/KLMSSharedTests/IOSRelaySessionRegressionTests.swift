@@ -407,7 +407,7 @@ final class IOSRelaySessionRegressionTests: XCTestCase {
         XCTAssertTrue(dashboardCard.contains("isSubmitting: model.isSubmitting"))
         XCTAssertTrue(dashboardCard.contains("guard !model.isSubmitting else { return }"))
         // 제출 중 차단 규칙은 KLMSRemoteSyncControls 로 옮겼고 동작은 RemoteSyncControlRulesTests 가 검사한다.
-        XCTAssertTrue(dashboardCard.contains("isSubmitting: isSubmitting,"))
+        XCTAssertTrue(dashboardCard.contains("isCommandActive: isCommandActive(kind)"))
 
         var currentSession: UInt64 = 2
         var currentOperation: UInt64 = 2
