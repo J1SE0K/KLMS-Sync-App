@@ -3214,27 +3214,6 @@ final class KLMSMacModel: ObservableObject {
         serverRelayEventBatchIsRefreshingDashboard = false
     }
 
-    private static func serverRelayEventNeedsWorkerRefresh(_ reason: String) -> Bool {
-        if reason == "state"
-            || reason == "updated"
-            || reason == "cancel:requested"
-            || reason == "shared-settings" {
-            return true
-        }
-        if reason == "sync-data" || reason.hasPrefix("sync-data:") {
-            return true
-        }
-        if reason.hasPrefix("commands:")
-            || reason.hasPrefix("item-actions:")
-            || reason.hasPrefix("setting-actions:")
-            || reason.hasPrefix("file-access:")
-            || reason.hasPrefix("logs-display:")
-            || reason.hasPrefix("logs:") {
-            return true
-        }
-        return false
-    }
-
     private static func serverRelayEventShouldRefreshSyncData(_ reason: String) -> Bool {
         reason == "state"
             || reason == "updated"

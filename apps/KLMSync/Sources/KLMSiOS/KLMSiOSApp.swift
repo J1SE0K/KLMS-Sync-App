@@ -5524,49 +5524,6 @@ final class CompanionModel: ObservableObject {
         rebuildRemoteLogDerivedState()
     }
 
-    private static func relayRefreshScope(for reason: String) -> RelayRefreshScope {
-        if reason == "state" || reason == "updated" {
-            return .state
-        }
-        if reason == "cancel:requested" {
-            return .state
-        }
-        if reason.hasPrefix("commands:") {
-            return reason == "commands:pending" ? .commandRequest : .commandUpdate
-        }
-        if reason == "item-actions:server-state" {
-            return .itemActionServerState
-        }
-        if reason.hasPrefix("item-actions:") {
-            return .itemActions
-        }
-        if reason.hasPrefix("setting-actions:") {
-            return .settingActions
-        }
-        if reason == "sync-data" || reason.hasPrefix("sync-data:") {
-            return .syncData
-        }
-        if reason == "shared-settings" {
-            return .settings
-        }
-        if reason.hasPrefix("file-access:") {
-            return .fileAccess
-        }
-        if reason.hasPrefix("logs-display:") || reason.hasPrefix("logs:") {
-            if reason.contains("fileAccess") || reason.contains("file-access") {
-                return .fileAccess
-            }
-            if reason.contains("requestLog") || reason.contains("request-log") {
-                return .requestLog
-            }
-            if reason.contains("command") {
-                return .state
-            }
-            return .displayLogs
-        }
-        return .full
-    }
-
     private static func relayEvent(for message: URLSessionWebSocketTask.Message) -> RelayEventEnvelope? {
         let data: Data?
         switch message {
