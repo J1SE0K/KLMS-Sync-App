@@ -1119,16 +1119,7 @@ final class CompanionModel: ObservableObject {
     }
 
     private static func serverRelayBootstrapTokenFingerprint(_ token: String) -> String {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "missing-token"
-        }
-        var hash: UInt64 = 1_469_598_103_934_665_603
-        for byte in trimmed.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1_099_511_628_211
-        }
-        return "token-\(trimmed.count)-\(String(hash, radix: 16))"
+        KLMSRelayTokenFingerprint.make(token)
     }
 
     var hasClearableRemoteLogs: Bool {
@@ -11188,9 +11179,7 @@ private struct RemoteDashboardSyncCardContent: View, Equatable {
     }
 
     private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
-        if isRunning { return "stop.fill" }
-        if isDisabled { return "lock.fill" }
-        return nil
+        KLMSCommandButtonIcon.secondary(isRunning: isRunning, isDisabled: isDisabled)
     }
 
     private func secondaryCommandForeground(isDisabled: Bool) -> Color {
@@ -19855,20 +19844,11 @@ private struct CompanionInlineLogBlock: View {
     }
 
     private static func boundedText(_ text: String) -> String {
-        let maxCharacters = 6_000
-        guard text.count > maxCharacters else {
-            return text
-        }
-        let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
-        return prefix + String(text.suffix(maxCharacters - prefix.count))
+        KLMSLogTruncation.bounded(text, maxCharacters: 6_000)
     }
 
     private static func boundedHighlightSourceText(_ text: String) -> String {
-        let maxCharacters = 3_000
-        guard text.count > maxCharacters else {
-            return text
-        }
-        return String(text.suffix(maxCharacters))
+        KLMSLogTruncation.highlightSource(text, maxCharacters: 3_000)
     }
 
     @MainActor
@@ -20156,35 +20136,11 @@ private struct RemoteSettingRow: View {
     }
 
     private func settingChoiceTitle(_ value: String) -> String {
-        switch value {
-        case "auto":
-            return "자동"
-        case "quick":
-            return "빠른 모드"
-        case "full":
-            return "전체 다시 읽기"
-        case "manual-digits":
-            return "인증번호 직접 선택"
-        case "minimize":
-            return "창 최소화"
-        case "none":
-            return "그대로 두기"
-        case "":
-            return "선택"
-        default:
-            return compactSettingValueSummary(value)
-        }
+        KLMSSettingValueSummary.choiceTitle(value)
     }
 
     private func compactSettingValueSummary(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "비어 있음"
-        }
-        if trimmed.contains("/") || trimmed.contains("\\") || trimmed.count > 18 {
-            return "저장됨"
-        }
-        return trimmed
+        KLMSSettingValueSummary.compact(value)
     }
 }
 
