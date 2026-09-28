@@ -2312,59 +2312,7 @@ final class CompanionModel: ObservableObject {
         var didChange = false
 
         func mutate(_ item: inout ServerRelaySyncItem) {
-            item.updatedAt = updatedAt
-            switch actionKind {
-            case .assignmentComplete:
-                item.kind = "completedAssignment"
-                item.status = "완료"
-                item.isHidden = false
-            case .assignmentRestore, .assignmentUnhide:
-                if item.kind == "completedAssignment" {
-                    item.kind = "assignment"
-                }
-                item.status = ""
-                item.isHidden = false
-            case .assignmentHide:
-                item.status = "숨김"
-                item.isHidden = true
-            case .examPromote:
-                item.kind = "exam"
-                item.status = "시험"
-                item.isHidden = false
-            case .examIgnore:
-                item.status = "시험 아님"
-                item.isHidden = true
-            case .examRestore:
-                item.status = ""
-                item.isHidden = false
-            case .noticeRead:
-                item.isRead = true
-            case .noticeUnread:
-                item.isRead = false
-            case .noticeImportant:
-                item.isImportant = true
-            case .noticeUnimportant:
-                item.isImportant = false
-            case .noticeHide, .fileHide:
-                item.isHidden = true
-            case .noticeUnhide, .fileUnhide:
-                item.isHidden = false
-            case .mailDashboardRemove:
-                break
-            case .mailDashboardAdd:
-                item.isHidden = false
-            case .fileTrash,
-                 .calendarVerify,
-                 .calendarApply,
-                 .calendarCreate,
-                 .calendarEdit,
-                 .calendarDelete:
-                item.status = "삭제 요청"
-                item.isHidden = true
-                break
-            case .calendarOpen:
-                break
-            }
+            item.applyCompanionDisplayAction(actionKind, updatedAt: updatedAt)
         }
 
         var nextSyncItems = syncItems
@@ -5865,58 +5813,7 @@ final class CompanionModel: ObservableObject {
         var didChange = false
 
         func mutate(_ item: inout ServerRelaySyncItem, action: ServerRelayItemAction) {
-            item.updatedAt = ServerRelaySyncItem.isoTimestamp(date: action.updatedAt)
-            switch action.action {
-            case .assignmentComplete:
-                item.kind = "completedAssignment"
-                item.status = "완료"
-                item.isHidden = false
-            case .assignmentRestore, .assignmentUnhide:
-                if item.kind == "completedAssignment" {
-                    item.kind = "assignment"
-                }
-                item.status = ""
-                item.isHidden = false
-            case .assignmentHide:
-                item.status = "숨김"
-                item.isHidden = true
-            case .examPromote:
-                item.kind = "exam"
-                item.status = "시험"
-                item.isHidden = false
-            case .examIgnore:
-                item.status = "시험 아님"
-                item.isHidden = true
-            case .examRestore:
-                item.status = ""
-                item.isHidden = false
-            case .noticeRead:
-                item.isRead = true
-            case .noticeUnread:
-                item.isRead = false
-            case .noticeImportant:
-                item.isImportant = true
-            case .noticeUnimportant:
-                item.isImportant = false
-            case .noticeHide, .fileHide:
-                item.isHidden = true
-            case .noticeUnhide, .fileUnhide:
-                item.isHidden = false
-            case .mailDashboardRemove:
-                break
-            case .mailDashboardAdd:
-                item.isHidden = false
-            case .fileTrash,
-                 .calendarVerify,
-                 .calendarApply,
-                 .calendarCreate,
-                 .calendarEdit,
-                 .calendarDelete:
-                item.status = "삭제 요청"
-                item.isHidden = true
-            case .calendarOpen:
-                break
-            }
+            item.applyCompanionDisplayAction(action.action, updatedAt: ServerRelaySyncItem.isoTimestamp(date: action.updatedAt))
         }
 
         for action in actions {
@@ -17830,72 +17727,6 @@ private extension ServerRelaySettingAction {
 }
 
 private extension ServerRelayItemActionKind {
-    var isCompanionImmediateDisplayAction: Bool {
-        isServerDisplayOnlyAction || self == .fileTrash
-    }
-
-    var suppressesImmediateSuccessFeedback: Bool {
-        switch self {
-        case .assignmentComplete,
-             .assignmentHide,
-             .examIgnore,
-             .noticeHide,
-             .fileHide,
-             .fileTrash,
-             .mailDashboardRemove:
-            true
-        case .assignmentRestore,
-             .assignmentUnhide,
-             .examPromote,
-             .examRestore,
-             .noticeRead,
-             .noticeUnread,
-             .noticeImportant,
-             .noticeUnimportant,
-             .noticeUnhide,
-             .fileUnhide,
-             .calendarVerify,
-             .calendarApply,
-             .calendarCreate,
-             .calendarEdit,
-             .calendarDelete,
-             .calendarOpen,
-             .mailDashboardAdd:
-            false
-        }
-    }
-
-    var isServerDisplayOnlyAction: Bool {
-        switch self {
-        case .assignmentComplete,
-             .assignmentRestore,
-             .assignmentHide,
-             .assignmentUnhide,
-             .examPromote,
-             .examIgnore,
-             .examRestore,
-             .noticeRead,
-             .noticeUnread,
-             .noticeImportant,
-             .noticeUnimportant,
-             .noticeHide,
-             .noticeUnhide,
-             .fileHide,
-             .fileUnhide,
-             .mailDashboardAdd,
-             .mailDashboardRemove:
-            true
-        case .fileTrash,
-             .calendarVerify,
-             .calendarApply,
-             .calendarCreate,
-             .calendarEdit,
-             .calendarDelete,
-             .calendarOpen:
-            false
-        }
-    }
-
     var companionActionTitle: String {
         switch self {
         case .assignmentComplete:
