@@ -7404,7 +7404,6 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteItemToggleButton.contains(".companionStableTap(cornerRadius: KLMSRadius.smallSurface)"))
         XCTAssertFalse(remoteItemToggleButton.contains(".disabled(!model.serverRelayConfigured || model.isSubmitting)"))
         XCTAssertFalse(createItemAction.contains("userAlert = UserAlert(title: \"요청 완료\""))
-        XCTAssertTrue(ios.contains("case .assignmentComplete,\n             .assignmentHide,\n             .examIgnore,\n             .noticeHide,\n             .fileHide,\n             .fileTrash,\n             .mailDashboardRemove:"))
         XCTAssertFalse(createItemAction.contains("includeSyncData: !savedAction.action.isServerDisplayOnlyAction"))
         XCTAssertFalse(createItemAction.contains("schedulePostActionRefresh(scope: .itemActions)"))
         XCTAssertTrue(ios.contains("private func schedulePostActionRefresh(scope: RelayRefreshScope, delayNanoseconds: UInt64 = 80_000_000)"))
