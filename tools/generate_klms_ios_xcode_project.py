@@ -41,6 +41,7 @@ SHARED_SOURCES = [
     "RelayFileDownloadPolicy.swift",
     "RelaySnapshotStream.swift",
     "RemoteCommandModels.swift",
+    "RemoteSyncControlRules.swift",
     "StateModels.swift",
     "StatusModels.swift",
 ]
