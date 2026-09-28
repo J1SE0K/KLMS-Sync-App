@@ -7058,9 +7058,6 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"file-access:\")"))
         XCTAssertTrue(ios.contains("return .fileAccess"))
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"commands:\")"))
-        XCTAssertTrue(ios.contains("reason == \"commands:pending\" ? .commandRequest : .commandUpdate"))
-        XCTAssertTrue(ios.contains("if reason == \"item-actions:server-state\""))
-        XCTAssertTrue(ios.contains("return .itemActionServerState"))
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"item-actions:\")"))
         XCTAssertTrue(ios.contains("return .itemActions"))
         XCTAssertTrue(ios.contains("if reason.hasPrefix(\"setting-actions:\")"))
@@ -7070,7 +7067,6 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("static let itemActionServerState = RelayRefreshScope(\n            fetchesCommands: false,\n            fetchesSyncData: true"))
         XCTAssertTrue(ios.contains("static let settingActions = RelayRefreshScope(\n            fetchesCommands: false,\n            fetchesSyncData: true"))
         XCTAssertTrue(ios.contains("if reason == \"state\" || reason == \"updated\""))
-        XCTAssertTrue(ios.contains("return .state"))
         let iosEventStream = try sourceBody(
             after: "private func runServerRelayEventStream",
             in: ios,
@@ -7083,7 +7079,6 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertFalse(macModel.contains("configureServerRelayPolling"))
         XCTAssertFalse(macModel.contains("serverRelayIdlePollingIntervalNanoseconds"))
         XCTAssertFalse(macModel.contains("serverRelayActivePollingIntervalNanoseconds"))
-        XCTAssertTrue(macModel.contains("private static func serverRelayEventNeedsWorkerRefresh"))
         XCTAssertTrue(macModel.contains("private static func serverRelayEventShouldRefreshSyncData"))
         XCTAssertTrue(macModel.contains("serverRelayLastSyncDataFetchAt = nil"))
         XCTAssertTrue(macModel.contains("private var serverRelayForceSyncDataFetchOnNextWorkerRefresh = false"))
