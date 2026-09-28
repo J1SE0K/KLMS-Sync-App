@@ -10958,28 +10958,32 @@ private struct RemoteDashboardSyncSnapshot: Equatable {
     var latestCommandKind: RemoteCommandKind?
 
     var isRunning: Bool {
-        hasInFlightRequest || phase == "running"
+        KLMSRemoteSyncControls.isRunning(hasInFlightRequest: hasInFlightRequest, phase: phase)
     }
 
     var syncStateTitle: String {
-        if isRunning {
-            return activeRequestLabel
-        }
-        return isRemoteAvailable ? "준비됨" : "설정 필요"
+        KLMSRemoteSyncControls.stateTitle(
+            isRunning: isRunning,
+            activeRequestLabel: activeRequestLabel,
+            isRemoteAvailable: isRemoteAvailable
+        )
     }
 
     func commandDisabled(for kind: RemoteCommandKind) -> Bool {
-        if !isRemoteAvailable {
-            return true
-        }
-        if isSubmitting {
-            return true
-        }
-        return hasInFlightRequest && !isCommandActive(kind)
+        KLMSRemoteSyncControls.commandDisabled(
+            isRemoteAvailable: isRemoteAvailable,
+            isSubmitting: isSubmitting,
+            hasInFlightRequest: hasInFlightRequest,
+            isCommandActive: isCommandActive(kind)
+        )
     }
 
     func isCommandActive(_ kind: RemoteCommandKind) -> Bool {
-        latestDisplayStatusIsInFlight && latestCommandKind == kind
+        KLMSRemoteSyncControls.isCommandActive(
+            kind,
+            latestDisplayStatusIsInFlight: latestDisplayStatusIsInFlight,
+            latestCommandKind: latestCommandKind
+        )
     }
 }
 

@@ -24,6 +24,7 @@
 		895CFA2A9BC79E56AE84BF30 /* RelayFileDownloadPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CFD99ADC955BF65C8DC5B9C /* RelayFileDownloadPolicy.swift */; };
 		D5E9A8B1D8E9AEC945A3128B /* RelaySnapshotStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAEE97F90B31176E03977F08 /* RelaySnapshotStream.swift */; };
 		64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */; };
+		A1EBDD4F7A1616839ECDB7B4 /* RemoteSyncControlRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D0ED74594219881D78FDB3E /* RemoteSyncControlRules.swift */; };
 		B98E617629173C732967E1EA /* SharedDisplayRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = E060555FD8A0AF03E541E48B /* SharedDisplayRules.swift */; };
 		0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6709D4B7C4D5248C468873FD /* StateModels.swift */; };
 		FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11C3A8268D3376FED887FD75 /* StatusModels.swift */; };
@@ -61,6 +62,7 @@
 		9CFD99ADC955BF65C8DC5B9C /* RelayFileDownloadPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelayFileDownloadPolicy.swift"; path = "../../Sources/KLMSShared/RelayFileDownloadPolicy.swift"; sourceTree = "<group>"; };
 		FAEE97F90B31176E03977F08 /* RelaySnapshotStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RelaySnapshotStream.swift"; path = "../../Sources/KLMSShared/RelaySnapshotStream.swift"; sourceTree = "<group>"; };
 		6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteCommandModels.swift"; path = "../../Sources/KLMSShared/RemoteCommandModels.swift"; sourceTree = "<group>"; };
+		1D0ED74594219881D78FDB3E /* RemoteSyncControlRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "RemoteSyncControlRules.swift"; path = "../../Sources/KLMSShared/RemoteSyncControlRules.swift"; sourceTree = "<group>"; };
 		E060555FD8A0AF03E541E48B /* SharedDisplayRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "SharedDisplayRules.swift"; path = "../../Sources/KLMSShared/SharedDisplayRules.swift"; sourceTree = "<group>"; };
 		6709D4B7C4D5248C468873FD /* StateModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StateModels.swift"; path = "../../Sources/KLMSShared/StateModels.swift"; sourceTree = "<group>"; };
 		11C3A8268D3376FED887FD75 /* StatusModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = "StatusModels.swift"; path = "../../Sources/KLMSShared/StatusModels.swift"; sourceTree = "<group>"; };
@@ -114,6 +116,7 @@
 				9CFD99ADC955BF65C8DC5B9C /* RelayFileDownloadPolicy.swift */,
 				FAEE97F90B31176E03977F08 /* RelaySnapshotStream.swift */,
 				6B24B2740CC01E024085AB87 /* RemoteCommandModels.swift */,
+				1D0ED74594219881D78FDB3E /* RemoteSyncControlRules.swift */,
 				E060555FD8A0AF03E541E48B /* SharedDisplayRules.swift */,
 				6709D4B7C4D5248C468873FD /* StateModels.swift */,
 				11C3A8268D3376FED887FD75 /* StatusModels.swift */,
@@ -239,6 +242,7 @@
 				895CFA2A9BC79E56AE84BF30 /* RelayFileDownloadPolicy.swift in Sources */,
 				D5E9A8B1D8E9AEC945A3128B /* RelaySnapshotStream.swift in Sources */,
 				64147424957CACF294C32996 /* RemoteCommandModels.swift in Sources */,
+				A1EBDD4F7A1616839ECDB7B4 /* RemoteSyncControlRules.swift in Sources */,
 				B98E617629173C732967E1EA /* SharedDisplayRules.swift in Sources */,
 				0B2F8944D4F5F305F749EE35 /* StateModels.swift in Sources */,
 				FC7432F8A5E68CCC2C8120F6 /* StatusModels.swift in Sources */,
