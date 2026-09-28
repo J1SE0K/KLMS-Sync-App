@@ -152,7 +152,38 @@ private extension View {
     }
 }
 
-private enum KLMSMenuBarStatusIconState {
+/// 메뉴바 앱의 단축키. ⌘ 가 없으면 단축키가 아니다. KLMSMacTests(MenuBarRulesTests)가 동작을 검사한다.
+enum KLMSMenuShortcut: Equatable {
+    case openDashboard
+    case refreshStatus
+    case runVerify
+    case runDoctor
+    case quit
+
+    init?(key rawKey: String, hasCommand: Bool, hasShift: Bool) {
+        guard hasCommand else {
+            return nil
+        }
+        let key = rawKey.lowercased()
+        switch key {
+        case "o" where !hasShift:
+            self = .openDashboard
+        case "r" where !hasShift:
+            self = .refreshStatus
+        case "v" where hasShift:
+            self = .runVerify
+        case "d" where hasShift:
+            self = .runDoctor
+        case "q" where !hasShift:
+            self = .quit
+        default:
+            return nil
+        }
+    }
+}
+
+// 메뉴바 아이콘 상태. KLMSMacTests(MenuBarRulesTests)가 동작을 검사하도록 private 을 풀었다.
+enum KLMSMenuBarStatusIconState: Equatable {
     case authDigits(String)
     case ready
     case running
@@ -160,11 +191,20 @@ private enum KLMSMenuBarStatusIconState {
 
     @MainActor
     init(model: KLMSMacModel) {
-        if let digits = model.currentAuthDigits {
+        self.init(
+            currentAuthDigits: model.currentAuthDigits,
+            isRunning: model.runningCommand != nil,
+            needsAttention: model.needsAttention
+        )
+    }
+
+    /// 인증 번호가 가장 먼저, 그다음 실행 중, 확인 필요 순으로 보인다.
+    init(currentAuthDigits: String?, isRunning: Bool, needsAttention: Bool) {
+        if let digits = currentAuthDigits {
             self = .authDigits(digits)
-        } else if model.runningCommand != nil {
+        } else if isRunning {
             self = .running
-        } else if model.needsAttention {
+        } else if needsAttention {
             self = .attention
         } else {
             self = .ready
@@ -531,30 +571,26 @@ final class KLMSAppDelegate: NSObject, NSApplicationDelegate {
 
     private func handleKeyboardShortcut(_ event: NSEvent) -> NSEvent? {
         let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        guard modifierFlags.contains(.command) else {
+        guard let shortcut = KLMSMenuShortcut(
+            key: event.charactersIgnoringModifiers ?? "",
+            hasCommand: modifierFlags.contains(.command),
+            hasShift: modifierFlags.contains(.shift)
+        ) else {
             return event
         }
-        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        let hasShift = modifierFlags.contains(.shift)
-        switch key {
-        case "o" where !hasShift:
+        switch shortcut {
+        case .openDashboard:
             openDashboardFromMenu(nil)
-            return nil
-        case "r" where !hasShift:
+        case .refreshStatus:
             refreshStatusFromMenu(nil)
-            return nil
-        case "v" where hasShift:
+        case .runVerify:
             runVerifyFromMenu(nil)
-            return nil
-        case "d" where hasShift:
+        case .runDoctor:
             runDoctorFromMenu(nil)
-            return nil
-        case "q" where !hasShift:
+        case .quit:
             NSApp.terminate(nil)
-            return nil
-        default:
-            return event
         }
+        return nil
     }
 
     @objc private func openDashboardFromMenu(_ sender: Any?) {

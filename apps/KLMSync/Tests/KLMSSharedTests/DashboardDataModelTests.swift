@@ -1444,11 +1444,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(app.contains("configureShortcutKeyMonitor()"))
         XCTAssertTrue(app.contains("NSEvent.addLocalMonitorForEvents(matching: .keyDown)"))
         XCTAssertTrue(app.contains("private func handleKeyboardShortcut(_ event: NSEvent) -> NSEvent?"))
-        XCTAssertTrue(app.contains("case \"o\" where !hasShift:"))
-        XCTAssertTrue(app.contains("case \"r\" where !hasShift:"))
-        XCTAssertTrue(app.contains("case \"v\" where hasShift:"))
-        XCTAssertTrue(app.contains("case \"d\" where hasShift:"))
-        XCTAssertTrue(app.contains("case \"q\" where !hasShift:"))
+        // 단축키 판정은 KLMSMenuShortcut 으로 뺐고 동작은 KLMSMacTests/MenuBarRulesTests 가 검사한다.
+        XCTAssertTrue(app.contains("guard let shortcut = KLMSMenuShortcut("))
         let buildScript = try String(
             contentsOf: packageRoot
                 .deletingLastPathComponent()
@@ -1515,7 +1512,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(app.contains("updateStatusItemIcon(for: model)"))
         XCTAssertTrue(app.contains("statusIconCancellable = model.objectWillChange.sink"))
         XCTAssertTrue(app.contains("case authDigits(String)"))
-        XCTAssertTrue(app.contains("if let digits = model.currentAuthDigits"))
+        XCTAssertTrue(app.contains("currentAuthDigits: model.currentAuthDigits"))
         XCTAssertTrue(app.contains("\"인증 \\(digits)\""))
         XCTAssertTrue(app.contains("button.image = KLMSMenuBarStatusIcon.image(for: state)"))
         XCTAssertTrue(app.contains("button.title = state.menuBarTitle"))
