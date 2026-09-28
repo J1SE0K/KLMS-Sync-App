@@ -3338,20 +3338,11 @@ private struct LogTextBlock: View {
     }
 
     private static func boundedText(_ text: String, detailed: Bool) -> String {
-        let maxCharacters = detailed ? 18_000 : 8_000
-        guard text.count > maxCharacters else {
-            return text
-        }
-        let prefix = "... 화면 표시용으로 이전 로그 일부를 접었습니다 ...\n"
-        return prefix + String(text.suffix(maxCharacters - prefix.count))
+        KLMSLogTruncation.bounded(text, maxCharacters: detailed ? 18_000 : 8_000)
     }
 
     private static func boundedHighlightSourceText(_ text: String, detailed: Bool) -> String {
-        let maxCharacters = detailed ? 6_000 : 3_000
-        guard text.count > maxCharacters else {
-            return text
-        }
-        return String(text.suffix(maxCharacters))
+        KLMSLogTruncation.highlightSource(text, maxCharacters: detailed ? 6_000 : 3_000)
     }
 
     @MainActor
@@ -5275,9 +5266,7 @@ private struct CommandPanelView: View {
     }
 
     private func secondaryCommandSystemImage(isRunning: Bool, isDisabled: Bool) -> String? {
-        if isRunning { return "stop.fill" }
-        if isDisabled { return "lock.fill" }
-        return nil
+        KLMSCommandButtonIcon.secondary(isRunning: isRunning, isDisabled: isDisabled)
     }
 
     private func secondaryCommandForeground(isRunning: Bool, isDisabled: Bool) -> Color {

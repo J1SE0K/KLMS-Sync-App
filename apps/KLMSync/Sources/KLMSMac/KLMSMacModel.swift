@@ -1176,16 +1176,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private static func relayTokenFingerprint(_ token: String) -> String {
-        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "missing-token"
-        }
-        var hash: UInt64 = 1_469_598_103_934_665_603
-        for byte in trimmed.utf8 {
-            hash ^= UInt64(byte)
-            hash &*= 1_099_511_628_211
-        }
-        return "token-\(trimmed.count)-\(String(hash, radix: 16))"
+        KLMSRelayTokenFingerprint.make(token)
     }
 
     private static func loadCachedServerRelaySyncData(

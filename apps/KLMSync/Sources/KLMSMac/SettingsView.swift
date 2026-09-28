@@ -961,14 +961,7 @@ struct SettingsView: View {
     }
 
     private func settingsInlineSummary(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return "비어 있음"
-        }
-        if trimmed.contains("/") || trimmed.contains("\\") || trimmed.count > 18 {
-            return "저장됨"
-        }
-        return trimmed
+        KLMSSettingValueSummary.compact(value)
     }
 
     @ViewBuilder
