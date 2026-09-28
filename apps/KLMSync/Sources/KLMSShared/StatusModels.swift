@@ -444,6 +444,40 @@ public struct CalendarEventEdit: Codable, Sendable, Equatable {
     }
 }
 
+/// 캘린더 변경 개수. "created"와 "mail"은 새로 만든 일정으로 센다. 동작 이름은 앞뒤 공백과 대소문자를 무시한다.
+/// Mac 앱과 iOS 앱이 같은 switch 를 네 군데 따로 들고 있던 것을 모았다.
+public struct KLMSCalendarChangeCounts: Equatable, Sendable {
+    public var created = 0
+    public var updated = 0
+    public var deleted = 0
+
+    public init(created: Int = 0, updated: Int = 0, deleted: Int = 0) {
+        self.created = created
+        self.updated = updated
+        self.deleted = deleted
+    }
+
+    public init<Changes: Sequence>(changes: Changes) where Changes.Element == CalendarChange {
+        self.init()
+        for change in changes {
+            switch change.normalizedAction {
+            case "created", "mail":
+                created += 1
+            case "updated":
+                updated += 1
+            case "deleted":
+                deleted += 1
+            default:
+                continue
+            }
+        }
+    }
+
+    public var total: Int {
+        created + updated + deleted
+    }
+}
+
 public extension CalendarChange {
     var isDeletedAction: Bool {
         normalizedAction == "deleted"
@@ -491,7 +525,8 @@ public extension CalendarChange {
         )
     }
 
-    private var normalizedAction: String {
+    // KLMSCalendarChangeCounts 도 이 규칙을 쓰므로 fileprivate 다.
+    fileprivate var normalizedAction: String {
         action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 

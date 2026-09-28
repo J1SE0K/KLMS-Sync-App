@@ -3018,7 +3018,7 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(ios.contains("next.calendarUpdated = calendarCounts.updated"))
         XCTAssertTrue(ios.contains("next.calendarDeleted = calendarCounts.deleted"))
         XCTAssertFalse(ios.contains("Self.calendarCount(in: calendarChanges"))
-        XCTAssertTrue(ios.contains("case \"created\", \"mail\":\n                counts.created += 1"))
+        XCTAssertTrue(ios.contains("let counts = KLMSCalendarChangeCounts(changes: changes)"))
         XCTAssertTrue(ios.contains("private var isApplyingServerSyncData = false"))
         XCTAssertTrue(ios.contains("guard !isApplyingServerSyncData else { return }\n            rebuildVisibleCalendarChanges()\n            rebuildDashboardDerivedState()"))
         XCTAssertFalse(ios.contains("didSet { rebuildVisibleCalendarChanges(); rebuildDashboardDerivedState(); rebuildChangeSummaryItemLookup() }"))

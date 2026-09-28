@@ -8152,23 +8152,10 @@ private struct CompanionDashboardScopedStatus {
         selectedYear: String,
         selectedSemester: String
     ) -> CalendarCounts {
-        var counts = CalendarCounts()
-        for change in model.visibleCalendarChanges() {
-            guard CompanionItemListFilter.matches(change.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester) else {
-                continue
-            }
-            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            case "created", "mail":
-                counts.created += 1
-            case "updated":
-                counts.updated += 1
-            case "deleted":
-                counts.deleted += 1
-            default:
-                continue
-            }
-        }
-        return counts
+        let counts = KLMSCalendarChangeCounts(changes: model.visibleCalendarChanges().filter {
+            CompanionItemListFilter.matches($0.academicTerm, selectedYear: selectedYear, selectedSemester: selectedSemester)
+        })
+        return CalendarCounts(created: counts.created, updated: counts.updated, deleted: counts.deleted)
     }
 }
 
@@ -21400,20 +21387,8 @@ private extension SanitizedRemoteStatus {
     }
 
     private static func calendarCounts(in changes: [CalendarChange]) -> CalendarChangeCounts {
-        var counts = CalendarChangeCounts()
-        for change in changes {
-            switch change.action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
-            case "created", "mail":
-                counts.created += 1
-            case "updated":
-                counts.updated += 1
-            case "deleted":
-                counts.deleted += 1
-            default:
-                continue
-            }
-        }
-        return counts
+        let counts = KLMSCalendarChangeCounts(changes: changes)
+        return CalendarChangeCounts(created: counts.created, updated: counts.updated, deleted: counts.deleted)
     }
 
     var hasCompanionChangeSummary: Bool {
