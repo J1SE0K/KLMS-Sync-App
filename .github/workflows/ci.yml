@@ -76,7 +76,7 @@ jobs:
   swift-tests:
     name: Apple client tests
     runs-on: macos-26
-    timeout-minutes: 55
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: apps/KLMSync
