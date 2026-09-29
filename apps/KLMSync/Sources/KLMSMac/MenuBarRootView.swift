@@ -1143,7 +1143,8 @@ private enum DashboardTopBarTone: Equatable {
     }
 }
 
-private struct MacRunningProgressSnapshot: Equatable {
+// 진행률 막대의 단계와 위치를 정하는 순수 규칙. KLMSMacTests 가 동작을 직접 검사하도록 internal 로 둔다.
+struct MacRunningProgressSnapshot: Equatable {
     var command: KLMSEngineCommand
     var phaseText: String?
     var stages: [String]
@@ -1389,7 +1390,8 @@ private struct MacAlertBannerView: View {
     }
 }
 
-private struct MacAlertBannerSnapshot: Equatable {
+// 알림 배너의 표시 여부와 문구를 정하는 순수 규칙. KLMSMacTests 가 동작을 직접 검사하도록 internal 로 둔다.
+struct MacAlertBannerSnapshot: Equatable {
     var authDigits: String?
     var authStatusMessage: String?
     var runningCommandDisplayName: String?
@@ -1515,7 +1517,7 @@ private struct MacAlertBannerSnapshot: Equatable {
     }
 }
 
-private enum MacAlertBannerTone: Equatable {
+enum MacAlertBannerTone: Equatable {
     case authDigits
     case success
     case running
