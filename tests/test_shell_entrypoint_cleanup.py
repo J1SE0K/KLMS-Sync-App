@@ -2101,8 +2101,7 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("if snapshot.shouldShowCancelControl", ios_app)
         self.assertNotIn("private struct RemoteCancelControl", ios_app)
         self.assertNotIn("RemoteCancelControl(model:", ios_app)
-        self.assertIn('return "요청 중"', ios_app)
-        self.assertIn('return "중단"', ios_app)
+        self.assertIn("KLMSCompanionText.cancelButtonTitle(", ios_app)
         self.assertIn("Label(cancelButtonTitle", ios_app)
         self.assertIn("let expectedIdentity = model.runningCommandIdentity", mac_view)
         self.assertIn("await model.cancelRunningCommand(expectedIdentity: expectedIdentity)", mac_view)
@@ -2154,14 +2153,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         compact_tab_bar = ios_app.split(
             "private struct CompanionCompactTabBar", 1
         )[1].split("private struct CompanionStableSectionPane", 1)[0]
-        self.assertIn("if dynamicTypeSize.isAccessibilitySize", compact_tab_bar)
-        self.assertIn("Array(tabs.prefix(3))", compact_tab_bar)
-        self.assertIn("Array(tabs.dropFirst(3).prefix(2))", compact_tab_bar)
-        self.assertIn("Array(tabs.dropFirst(5))", compact_tab_bar)
-        self.assertIn(
-            "return [Array(tabs.prefix(4)), Array(tabs.dropFirst(4))]",
-            compact_tab_bar,
-        )
+        self.assertIn("KLMSCompanionText.compactTabRows(", compact_tab_bar)
+        self.assertIn("isAccessibilitySize: dynamicTypeSize.isAccessibilitySize", compact_tab_bar)
         self.assertIn(
             "usesAccessibilityLayout: dynamicTypeSize.isAccessibilitySize",
             ios_app,

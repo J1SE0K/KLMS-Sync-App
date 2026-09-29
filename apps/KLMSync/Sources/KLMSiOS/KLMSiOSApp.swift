@@ -1923,25 +1923,11 @@ final class CompanionModel: ObservableObject {
     }
 
     private func activeStatusText(_ status: ServerRelayItemActionStatus) -> String {
-        switch status {
-        case .pending:
-            return "대기 중입니다."
-        case .running:
-            return "처리 중입니다."
-        case .completed, .failed, .macUnavailable:
-            return "\(status.displayName) 상태입니다."
-        }
+        KLMSCompanionText.activeStatusText(status)
     }
 
     private func activeStatusText(_ status: ServerRelaySettingActionStatus) -> String {
-        switch status {
-        case .pending:
-            return "대기 중입니다."
-        case .running:
-            return "처리 중입니다."
-        case .completed, .failed, .macUnavailable:
-            return "\(status.displayName) 상태입니다."
-        }
+        KLMSCompanionText.activeStatusText(status)
     }
 
     private func replaceRecentSettingAction(
@@ -6201,32 +6187,11 @@ final class CompanionModel: ObservableObject {
     }
 
     private func userFacingMessage(for error: Error) -> String {
-        if let urlError = error as? URLError {
-            switch urlError.code {
-            case .notConnectedToInternet, .networkConnectionLost:
-                return "인터넷 연결을 확인해 주세요."
-            case .timedOut:
-                return "서버 응답 시간이 초과됐습니다. 잠시 뒤 다시 시도해 주세요."
-            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
-                return "서버 URL을 찾지 못했습니다. 연결 설정의 서버 URL을 확인해 주세요."
-            case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateNotYetValid:
-                return "서버 보안 연결을 확인하지 못했습니다. HTTPS 주소와 인증서를 확인해 주세요."
-            default:
-                break
-            }
-        }
-        let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        return message.isEmpty
-            ? "요청을 완료하지 못했습니다. 서버 연결 설정과 네트워크 상태를 확인해 주세요."
-            : message
+        KLMSCompanionText.userFacingMessage(for: error)
     }
 
     private func refreshFailureMessage(reason: String) -> String {
-        let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedReason.isEmpty else {
-            return "새로고침에 실패했습니다. 설정과 네트워크 상태를 확인해 주세요."
-        }
-        return "새로고침 실패 · \(trimmedReason)"
+        KLMSCompanionText.refreshFailureMessage(reason: reason)
     }
 
     @discardableResult
@@ -6974,15 +6939,10 @@ private struct CompanionCompactTabBar: View {
     }
 
     private var compactRows: [[CompanionAppSection]] {
-        let tabs = CompanionAppSection.compactTabs
-        if dynamicTypeSize.isAccessibilitySize {
-            return [
-                Array(tabs.prefix(3)),
-                Array(tabs.dropFirst(3).prefix(2)),
-                Array(tabs.dropFirst(5)),
-            ]
-        }
-        return [Array(tabs.prefix(4)), Array(tabs.dropFirst(4))]
+        KLMSCompanionText.compactTabRows(
+            CompanionAppSection.compactTabs,
+            isAccessibilitySize: dynamicTypeSize.isAccessibilitySize
+        )
     }
 
     private func compactTabButton(_ section: CompanionAppSection) -> some View {
@@ -9093,13 +9053,7 @@ private struct CompanionHeaderStatusSnapshot: Equatable {
     var lastRefreshAt: Date?
 
     var headerStatusText: String {
-        if isRefreshing {
-            return "갱신 중"
-        }
-        if let lastRefreshAt {
-            return lastRefreshAt.formatted(date: .omitted, time: .shortened)
-        }
-        return "갱신 전"
+        KLMSCompanionText.headerStatusText(isRefreshing: isRefreshing, lastRefreshAt: lastRefreshAt)
     }
 }
 
@@ -9316,13 +9270,10 @@ private struct RemoteRunningStatusBanner: View {
     }
 
     private var cancelButtonTitle: String {
-        if cancelAlreadyRequested {
-            return "중단 요청됨"
-        }
-        if localCancelSubmitting || snapshot.isSubmitting {
-            return "요청 중"
-        }
-        return "중단"
+        KLMSCompanionText.cancelButtonTitle(
+            cancelAlreadyRequested: cancelAlreadyRequested,
+            isSubmitting: localCancelSubmitting || snapshot.isSubmitting
+        )
     }
 
     private var statusTint: Color {
@@ -9504,9 +9455,11 @@ private struct ServerRelayConnectionPanel: View {
     }
 
     private var connectionStateText: String {
-        if recoveryRequired { return "복구 필요" }
-        if hasUnsavedChanges { return "저장 필요" }
-        return isConfigured ? "저장됨" : "미설정"
+        KLMSCompanionText.connectionStateText(
+            recoveryRequired: recoveryRequired,
+            hasUnsavedChanges: hasUnsavedChanges,
+            isConfigured: isConfigured
+        )
     }
 
     private var connectionStateDetail: String {
@@ -10175,34 +10128,6 @@ private enum CompanionItemListFilter {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
         return AcademicSemester(displayName: trimmed)?.displayName ?? trimmed
-    }
-}
-
-private struct CompanionItemListInputKey: Hashable {
-    var itemsRevision: Int
-    var category: String
-    var query: String
-    var sortOption: String
-    var visibilityFilter: String
-    var statusFilter: String
-    var selectedCourse: String
-    var selectedYear: String
-    var selectedSemester: String
-    var newOnly: Bool
-    var recentOnly: Bool
-
-    func shouldDebounceComparedTo(_ previous: CompanionItemListInputKey?) -> Bool {
-        guard let previous, query != previous.query else { return false }
-        return itemsRevision == previous.itemsRevision
-            && category == previous.category
-            && sortOption == previous.sortOption
-            && visibilityFilter == previous.visibilityFilter
-            && statusFilter == previous.statusFilter
-            && selectedCourse == previous.selectedCourse
-            && selectedYear == previous.selectedYear
-            && selectedSemester == previous.selectedSemester
-            && newOnly == previous.newOnly
-            && recentOnly == previous.recentOnly
     }
 }
 
@@ -17928,95 +17853,6 @@ private struct ServerSyncDataRow: View, Equatable {
     }
 }
 
-private struct ServerSyncRowSnapshot: Equatable {
-    var id: String
-    var kind: String
-    var kindName: String
-    var systemImage: String
-    var status: String
-    var title: String
-    var metadata: String
-    var isHidden: Bool
-    var accessibilityLabel: String
-
-    init(item: ServerRelaySyncItem) {
-        id = item.id
-        kind = item.kind
-        kindName = Self.kindName(for: item.kind)
-        systemImage = Self.systemImage(for: item.kind)
-        status = item.status
-        title = item.title.isEmpty ? "제목 없음" : item.title
-        metadata = Self.metadata(for: item)
-        isHidden = item.isHidden
-        accessibilityLabel = [kindName, title, metadata]
-            .filter { !$0.isEmpty }
-            .joined(separator: ", ")
-    }
-
-    private static func metadata(for item: ServerRelaySyncItem) -> String {
-        var parts: [String] = []
-        if !item.course.isEmpty {
-            parts.append(item.course)
-        }
-        if !item.academicTerm.isEmpty {
-            parts.append(item.academicTerm)
-        }
-        if !item.timestamp.isEmpty {
-            parts.append(item.timestamp)
-        }
-        if item.attachmentCount > 0 {
-            parts.append("첨부 \(item.attachmentCount)")
-        }
-        if item.kind == "notice" {
-            parts.append(item.isRead ? "읽음" : "안 읽음")
-            if item.isImportant {
-                parts.append("중요")
-            }
-        }
-        return parts.isEmpty ? "세부 정보 없음" : parts.joined(separator: " · ")
-    }
-
-    private static func kindName(for kind: String) -> String {
-        switch kind {
-        case "assignment":
-            "과제"
-        case "completedAssignment":
-            "완료 과제"
-        case "assignmentCandidate":
-            "과제 후보"
-        case "exam":
-            "시험"
-        case "examCandidate":
-            "시험 후보"
-        case "helpDesk":
-            "헬프데스크"
-        case "notice":
-            "공지"
-        case "file":
-            "파일"
-        default:
-            kind
-        }
-    }
-
-    private static func systemImage(for kind: String) -> String {
-        switch kind {
-        case "assignment", "completedAssignment", "assignmentCandidate":
-            "checklist"
-        case "exam", "examCandidate":
-            "calendar"
-        case "notice":
-            "note.text"
-        case "file":
-            "doc"
-        case "helpDesk":
-            "person.2"
-        default:
-            "circle"
-        }
-    }
-}
-
 private struct RemoteStageDurationSummaryView: View {
     var durations: [KLMSStageDuration]
 
@@ -19280,12 +19116,7 @@ private struct RemoteLogSummaryRow: View {
     }
 
     private func accessibilitySentence(_ text: String) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return "" }
-        if let last = trimmed.last, ".!?。！？".contains(last) {
-            return trimmed
-        }
-        return "\(trimmed)."
+        KLMSCompanionText.accessibilitySentence(text)
     }
 }
 
