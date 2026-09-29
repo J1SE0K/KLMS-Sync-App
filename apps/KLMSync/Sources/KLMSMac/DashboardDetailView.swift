@@ -837,6 +837,38 @@ extension ServerRelaySyncItem {
     }
 }
 
+/// 강의 파일 manifest 를 URL 과 상대 경로로 찾는 표.
+/// 빈 URL·빈 상대 경로는 표에 넣지 않고, 같은 키가 여러 번 나오면 manifest 에서 뒤에 있는 항목이 남는다.
+struct DashboardCourseManifestLookup: Sendable {
+    let byURL: [String: CourseFileManifestEntry]
+    let byRelativePath: [String: CourseFileManifestEntry]
+
+    init(_ manifest: [CourseFileManifestEntry]) {
+        var byURL: [String: CourseFileManifestEntry] = [:]
+        var byRelativePath: [String: CourseFileManifestEntry] = [:]
+        byURL.reserveCapacity(manifest.count)
+        byRelativePath.reserveCapacity(manifest.count)
+        for entry in manifest {
+            if !entry.url.isEmpty {
+                byURL[entry.url] = entry
+            }
+            if !entry.relativePath.isEmpty {
+                byRelativePath[entry.relativePath] = entry
+            }
+        }
+        self.byURL = byURL
+        self.byRelativePath = byRelativePath
+    }
+
+    static func table(_ manifest: [CourseFileManifestEntry]) -> (
+        byURL: [String: CourseFileManifestEntry],
+        byRelativePath: [String: CourseFileManifestEntry]
+    ) {
+        let lookup = DashboardCourseManifestLookup(manifest)
+        return (lookup.byURL, lookup.byRelativePath)
+    }
+}
+
 private struct DashboardNewFileFilterOptions: Sendable {
     var courses: [String]
     var years: [String]
@@ -869,19 +901,7 @@ private struct DashboardNewFileFilterOptions: Sendable {
         byURL: [String: CourseFileManifestEntry],
         byRelativePath: [String: CourseFileManifestEntry]
     ) {
-        var byURL: [String: CourseFileManifestEntry] = [:]
-        var byRelativePath: [String: CourseFileManifestEntry] = [:]
-        byURL.reserveCapacity(manifest.count)
-        byRelativePath.reserveCapacity(manifest.count)
-        for entry in manifest {
-            if !entry.url.isEmpty {
-                byURL[entry.url] = entry
-            }
-            if !entry.relativePath.isEmpty {
-                byRelativePath[entry.relativePath] = entry
-            }
-        }
-        return (byURL, byRelativePath)
+        DashboardCourseManifestLookup.table(manifest)
     }
 }
 
@@ -1143,17 +1163,7 @@ private struct DashboardFileData: Sendable {
         byURL: [String: CourseFileManifestEntry],
         byRelativePath: [String: CourseFileManifestEntry]
     ) {
-        var byURL: [String: CourseFileManifestEntry] = [:]
-        var byRelativePath: [String: CourseFileManifestEntry] = [:]
-        for entry in manifest {
-            if !entry.url.isEmpty {
-                byURL[entry.url] = entry
-            }
-            if !entry.relativePath.isEmpty {
-                byRelativePath[entry.relativePath] = entry
-            }
-        }
-        return (byURL, byRelativePath)
+        DashboardCourseManifestLookup.table(manifest)
     }
 
     private static func serverRelayFileSyncItemID(_ entry: CourseFileManifestEntry) -> String {
@@ -1321,19 +1331,7 @@ private enum DashboardCourseFilter {
         byURL: [String: CourseFileManifestEntry],
         byRelativePath: [String: CourseFileManifestEntry]
     ) {
-        var byURL: [String: CourseFileManifestEntry] = [:]
-        var byRelativePath: [String: CourseFileManifestEntry] = [:]
-        byURL.reserveCapacity(manifest.count)
-        byRelativePath.reserveCapacity(manifest.count)
-        for entry in manifest {
-            if !entry.url.isEmpty {
-                byURL[entry.url] = entry
-            }
-            if !entry.relativePath.isEmpty {
-                byRelativePath[entry.relativePath] = entry
-            }
-        }
-        return (byURL, byRelativePath)
+        DashboardCourseManifestLookup.table(manifest)
     }
 
     private static func hiddenCourseOptions(snapshot: EngineSnapshot) -> [String] {
@@ -1472,19 +1470,7 @@ enum DashboardTermFilter {
         byURL: [String: CourseFileManifestEntry],
         byRelativePath: [String: CourseFileManifestEntry]
     ) {
-        var byURL: [String: CourseFileManifestEntry] = [:]
-        var byRelativePath: [String: CourseFileManifestEntry] = [:]
-        byURL.reserveCapacity(manifest.count)
-        byRelativePath.reserveCapacity(manifest.count)
-        for entry in manifest {
-            if !entry.url.isEmpty {
-                byURL[entry.url] = entry
-            }
-            if !entry.relativePath.isEmpty {
-                byRelativePath[entry.relativePath] = entry
-            }
-        }
-        return (byURL, byRelativePath)
+        DashboardCourseManifestLookup.table(manifest)
     }
 
     private static func missingFileTerms(snapshot: EngineSnapshot) -> [AcademicTerm?] {
@@ -2225,6 +2211,14 @@ private struct DashboardStateItemListPresentation: Sendable {
     }
 
     private static func searchMatches(_ item: StateItem, query: String) -> Bool {
+        DashboardListFilterRules.stateItemSearchMatches(item, query: query)
+    }
+}
+
+/// 대시보드 목록의 검색·필터 판정. 뷰나 필터 상태 타입 없이 값만 받아서 KLMSMacTests 가 직접 부를 수 있다.
+enum DashboardListFilterRules {
+    /// 과제·시험 항목 검색. 빈 검색어는 모두 통과하고, 학기 이름·제목·과목·마감·장소·범위·URL 중 하나에 대소문자 구분 없이 들어 있으면 통과한다.
+    static func stateItemSearchMatches(_ item: StateItem, query: String) -> Bool {
         guard !query.isEmpty else { return true }
         return (item.academicTerm?.displayName.localizedCaseInsensitiveContains(query) == true)
             || item.title.localizedCaseInsensitiveContains(query)
@@ -2233,6 +2227,53 @@ private struct DashboardStateItemListPresentation: Sendable {
             || item.location.localizedCaseInsensitiveContains(query)
             || item.coverageSummary.localizedCaseInsensitiveContains(query)
             || item.url.localizedCaseInsensitiveContains(query)
+    }
+
+    /// 파일 항목 검색 대상 문자열. 학기 이름·제목·과목·경로·URL·원본 URL 을 공백 하나로 잇는다.
+    static func fileSearchBlob(
+        academicTerm: AcademicTerm?,
+        title: String,
+        course: String,
+        path: String,
+        url: String,
+        sourceURL: String
+    ) -> String {
+        [academicTerm?.displayName ?? "", title, course, path, url, sourceURL]
+            .joined(separator: " ")
+    }
+
+    /// 파일 항목 필터. 숨김·새 파일·최근·학기·과목 조건을 차례로 보고, 검색어가 비어 있지 않으면 searchBlob 에서 찾는다.
+    static func fileMatches(
+        isHidden: Bool,
+        isRecent: Bool,
+        academicTerm: AcademicTerm?,
+        course: String,
+        searchBlob: String,
+        showHidden: Bool,
+        hiddenOnly: Bool,
+        newOnly: Bool,
+        recentOnly: Bool,
+        selectedYear: String,
+        selectedSemester: String,
+        selectedCourse: String,
+        normalizedQuery query: String
+    ) -> Bool {
+        guard showHidden || !isHidden else { return false }
+        guard !hiddenOnly || isHidden else { return false }
+        guard !newOnly || isRecent else { return false }
+        guard !recentOnly || isRecent else { return false }
+        guard DashboardTermFilter.matches(
+            academicTerm,
+            selectedYear: selectedYear,
+            selectedSemester: selectedSemester
+        ) else {
+            return false
+        }
+        guard selectedCourse == DashboardCourseFilter.all || course == selectedCourse else {
+            return false
+        }
+        guard !query.isEmpty else { return true }
+        return searchBlob.localizedCaseInsensitiveContains(query)
     }
 }
 
@@ -3472,8 +3513,14 @@ private struct DashboardFileItem: Identifiable, Sendable {
         self.klmsTimestampEpoch = klmsTimestampEpoch
         self.pathExists = pathExists
         self.interaction = interaction
-        searchBlob = [academicTerm?.displayName ?? "", title, course, path, url, sourceURL]
-            .joined(separator: " ")
+        searchBlob = DashboardListFilterRules.fileSearchBlob(
+            academicTerm: academicTerm,
+            title: title,
+            course: course,
+            path: path,
+            url: url,
+            sourceURL: sourceURL
+        )
         courseSortKey = course.normalizedFileSortKey
         titleSortKey = title.normalizedFileSortKey
         pathSortKey = (sortPath.isEmpty ? title : sortPath).normalizedFileSortKey
@@ -3522,22 +3569,21 @@ private struct DashboardFileItem: Identifiable, Sendable {
     }
 
     func matches(filters: DashboardDetailFilters, normalizedQuery query: String) -> Bool {
-        guard filters.showHidden || !isHidden else { return false }
-        guard !filters.hiddenOnly || isHidden else { return false }
-        guard !filters.newOnly || isRecent else { return false }
-        guard !filters.recentOnly || isRecent else { return false }
-        guard DashboardTermFilter.matches(
-            academicTerm,
+        DashboardListFilterRules.fileMatches(
+            isHidden: isHidden,
+            isRecent: isRecent,
+            academicTerm: academicTerm,
+            course: course,
+            searchBlob: searchBlob,
+            showHidden: filters.showHidden,
+            hiddenOnly: filters.hiddenOnly,
+            newOnly: filters.newOnly,
+            recentOnly: filters.recentOnly,
             selectedYear: filters.selectedYear,
-            selectedSemester: filters.selectedSemester
-        ) else {
-            return false
-        }
-        guard filters.selectedCourse == DashboardCourseFilter.all || course == filters.selectedCourse else {
-            return false
-        }
-        guard !query.isEmpty else { return true }
-        return searchBlob.localizedCaseInsensitiveContains(query)
+            selectedSemester: filters.selectedSemester,
+            selectedCourse: filters.selectedCourse,
+            normalizedQuery: query
+        )
     }
 }
 
@@ -4410,70 +4456,130 @@ private struct DashboardFileKindStyle {
     var color: Color
 
     init(bucket: String, title: String = "", path: String = "", url: String = "", sourceURL: String = "") {
+        let kind = DashboardFileKind(bucket: bucket, title: title, path: path, url: url, sourceURL: sourceURL)
+        label = kind.label
+        icon = kind.icon
+        color = Self.color(for: kind)
+    }
+
+    private static func color(for kind: DashboardFileKind) -> Color {
+        switch kind {
+        case .boardAssignmentAttachment, .assignmentAttachment, .assignmentRelated:
+            Color.klmsMacSuccessForeground
+        case .boardExamAttachment, .boardAttachment, .examRelated:
+            Color.klmsMacCommandAccent
+        case .quarantine:
+            Color.klmsMacWarningForeground
+        case .resource, .folder, .pageAttachment, .deleted, .other, .unknownBucket:
+            Color.klmsMacSecondaryText
+        }
+    }
+}
+
+/// 파일 bucket·제목·경로·URL 로 고른 파일 종류. 색은 뷰 쪽 DashboardFileKindStyle 이 정한다.
+/// bucket 앞뒤 공백은 종류를 고를 때만 무시하고, 모르는 bucket 의 표시 이름은 받은 문자열을 그대로 쓴다.
+enum DashboardFileKind: Equatable, Sendable {
+    case boardAssignmentAttachment
+    case boardExamAttachment
+    case boardAttachment
+    case assignmentAttachment
+    case resource
+    case folder
+    case pageAttachment
+    case quarantine
+    case deleted
+    case assignmentRelated
+    case examRelated
+    case other
+    case unknownBucket(String)
+
+    init(bucket: String, title: String = "", path: String = "", url: String = "", sourceURL: String = "") {
         let normalizedBucket = bucket.trimmingCharacters(in: .whitespacesAndNewlines)
         let context = Self.normalizedKindText(bucket: normalizedBucket, title: title, path: path, url: url, sourceURL: sourceURL)
 
         switch normalizedBucket {
         case "board-attachments":
             if Self.hasAssignmentSignal(in: context) {
-                label = "과제 공지 첨부"
-                icon = "checklist"
-                color = Color.klmsMacSuccessForeground
-                return
+                self = .boardAssignmentAttachment
+            } else if Self.hasExamSignal(in: context) {
+                self = .boardExamAttachment
+            } else {
+                self = .boardAttachment
             }
-            if Self.hasExamSignal(in: context) {
-                label = "시험/퀴즈 공지 첨부"
-                icon = "calendar.badge.clock"
-                color = Color.klmsMacCommandAccent
-                return
-            }
-            label = "공지 첨부"
-            icon = "megaphone"
-            color = Color.klmsMacCommandAccent
         case "assignment-attachments":
-            label = "과제 첨부"
-            icon = "checklist"
-            color = Color.klmsMacSuccessForeground
+            self = .assignmentAttachment
         case "resources":
-            label = "강의 자료"
-            icon = "books.vertical"
-            color = Color.klmsMacSecondaryText
+            self = .resource
         case "folders":
-            label = "폴더 자료"
-            icon = "folder"
-            color = Color.klmsMacSecondaryText
+            self = .folder
         case "page-attachments":
-            label = "페이지 첨부"
-            icon = "doc"
-            color = Color.klmsMacSecondaryText
+            self = .pageAttachment
         case "quarantine":
-            label = "격리"
-            icon = "exclamationmark.triangle"
-            color = Color.klmsMacWarningForeground
+            self = .quarantine
         case "deleted":
-            label = "삭제 기록"
-            icon = "trash"
-            color = Color.klmsMacSecondaryText
+            self = .deleted
         case "":
             if Self.hasAssignmentSignal(in: context) {
-                label = "과제 관련"
-                icon = "checklist"
-                color = Color.klmsMacSuccessForeground
-                return
+                self = .assignmentRelated
+            } else if Self.hasExamSignal(in: context) {
+                self = .examRelated
+            } else {
+                self = .other
             }
-            if Self.hasExamSignal(in: context) {
-                label = "시험/퀴즈"
-                icon = "calendar.badge.clock"
-                color = Color.klmsMacCommandAccent
-                return
-            }
-            label = "기타 파일"
-            icon = "doc"
-            color = Color.klmsMacSecondaryText
         default:
-            label = bucket
-            icon = "doc"
-            color = Color.klmsMacSecondaryText
+            self = .unknownBucket(bucket)
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .boardAssignmentAttachment:
+            "과제 공지 첨부"
+        case .boardExamAttachment:
+            "시험/퀴즈 공지 첨부"
+        case .boardAttachment:
+            "공지 첨부"
+        case .assignmentAttachment:
+            "과제 첨부"
+        case .resource:
+            "강의 자료"
+        case .folder:
+            "폴더 자료"
+        case .pageAttachment:
+            "페이지 첨부"
+        case .quarantine:
+            "격리"
+        case .deleted:
+            "삭제 기록"
+        case .assignmentRelated:
+            "과제 관련"
+        case .examRelated:
+            "시험/퀴즈"
+        case .other:
+            "기타 파일"
+        case .unknownBucket(let bucket):
+            bucket
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .boardAssignmentAttachment, .assignmentAttachment, .assignmentRelated:
+            "checklist"
+        case .boardExamAttachment, .examRelated:
+            "calendar.badge.clock"
+        case .boardAttachment:
+            "megaphone"
+        case .resource:
+            "books.vertical"
+        case .folder:
+            "folder"
+        case .pageAttachment, .other, .unknownBucket:
+            "doc"
+        case .quarantine:
+            "exclamationmark.triangle"
+        case .deleted:
+            "trash"
         }
     }
 
