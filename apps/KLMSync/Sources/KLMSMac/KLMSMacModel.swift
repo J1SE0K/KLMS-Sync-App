@@ -7656,13 +7656,12 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private func appendLiveCommandOutput(_ text: String, forcePublish: Bool = false) {
-        if liveCommandOutputBuffer.isEmpty {
-            liveCommandOutputBuffer = Self.trimLiveCommandOutput(text)
-        } else if liveCommandOutputBuffer.count + text.count > Self.liveCommandOutputMaxCharacters {
-            liveCommandOutputBuffer = Self.trimLiveCommandOutput(liveCommandOutputBuffer + text)
-        } else {
-            liveCommandOutputBuffer += text
-        }
+        liveCommandOutputBuffer = KLMSLiveCommandOutputRules.appending(
+            text,
+            to: liveCommandOutputBuffer,
+            maxCharacters: Self.liveCommandOutputMaxCharacters,
+            omissionPrefix: Self.trimmedLiveCommandOutputPrefix
+        )
         if forcePublish {
             flushLiveCommandOutput()
             return
@@ -7728,14 +7727,6 @@ final class KLMSMacModel: ObservableObject {
         }
     }
 
-    private static func trimLiveCommandOutput(_ text: String) -> String {
-        guard text.count > liveCommandOutputMaxCharacters else {
-            return text
-        }
-        let suffixLength = max(0, liveCommandOutputMaxCharacters - trimmedLiveCommandOutputPrefix.count)
-        return trimmedLiveCommandOutputPrefix + String(text.suffix(suffixLength))
-    }
-
     private static func lastCommandDisplayOutput(from result: KLMSCommandResult?) -> String {
         guard let result else {
             return ""
@@ -7758,12 +7749,7 @@ final class KLMSMacModel: ObservableObject {
     }
 
     private static func extractLiveProgressLine(from text: String) -> String? {
-        text
-            .split(whereSeparator: \.isNewline)
-            .reversed()
-            .lazy
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
+        KLMSLiveCommandOutputRules.lastNonEmptyLine(in: text)
     }
 
     private func notifyAuthDigitsIfNeeded(_ digits: String) async {
@@ -7818,26 +7804,26 @@ final class KLMSMacModel: ObservableObject {
         if respectMinimumVisibleDuration,
            showAuthenticatedMessage,
            liveAuthDigits != nil,
-           let lastAuthDigitsRecordedAt {
-            let elapsed = Date().timeIntervalSince(lastAuthDigitsRecordedAt)
-            let minimum = TimeInterval(Self.authDigitsMinimumVisibleNanoseconds) / 1_000_000_000
-            if elapsed < minimum {
-                let remainingNanoseconds = UInt64((minimum - elapsed) * 1_000_000_000)
-                authDigitsClearTask?.cancel()
-                authDigitsClearTask = Task { @MainActor [weak self] in
-                    try? await Task.sleep(nanoseconds: remainingNanoseconds)
-                    guard !Task.isCancelled, let self else {
-                        return
-                    }
-                    await self.clearAuthDigitsState(
-                        showAuthenticatedMessage: showAuthenticatedMessage,
-                        confirmedAuthChallenge: confirmedAuthChallenge,
-                        respectMinimumVisibleDuration: false
-                    )
-                    self.authDigitsClearTask = nil
+           let lastAuthDigitsRecordedAt,
+           let remainingNanoseconds = KLMSAuthDigitsDisplayRules.remainingMinimumVisibleNanoseconds(
+               recordedAt: lastAuthDigitsRecordedAt,
+               now: Date(),
+               minimumVisibleNanoseconds: Self.authDigitsMinimumVisibleNanoseconds
+           ) {
+            authDigitsClearTask?.cancel()
+            authDigitsClearTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: remainingNanoseconds)
+                guard !Task.isCancelled, let self else {
+                    return
                 }
-                return
+                await self.clearAuthDigitsState(
+                    showAuthenticatedMessage: showAuthenticatedMessage,
+                    confirmedAuthChallenge: confirmedAuthChallenge,
+                    respectMinimumVisibleDuration: false
+                )
+                self.authDigitsClearTask = nil
             }
+            return
         }
         authDigitsClearTask?.cancel()
         authDigitsClearTask = nil
@@ -7917,6 +7903,62 @@ final class KLMSMacModel: ObservableObject {
         }
         let suffix = identifier.dropFirst(prefix.count)
         return suffix.count == 2 && suffix.allSatisfy(\.isNumber)
+    }
+}
+
+/// 실시간 명령 출력 버퍼 자르기와 진행 줄 추출 규칙.
+/// KLMSMacModel 상태와 무관한 순수 계산이라 MainActor 밖에 두고 KLMSMacTests 가 직접 부른다.
+enum KLMSLiveCommandOutputRules {
+    /// 최대 글자 수를 넘으면 생략 표시를 앞에 붙이고 뒤쪽만 남긴다.
+    static func trimmed(_ text: String, maxCharacters: Int, omissionPrefix: String) -> String {
+        guard text.count > maxCharacters else {
+            return text
+        }
+        let suffixLength = max(0, maxCharacters - omissionPrefix.count)
+        return omissionPrefix + String(text.suffix(suffixLength))
+    }
+
+    /// 버퍼에 새 출력을 붙인다. 비어 있거나 두 길이의 합이 최대를 넘을 때만 자른다.
+    static func appending(
+        _ text: String,
+        to buffer: String,
+        maxCharacters: Int,
+        omissionPrefix: String
+    ) -> String {
+        if buffer.isEmpty {
+            return trimmed(text, maxCharacters: maxCharacters, omissionPrefix: omissionPrefix)
+        }
+        if buffer.count + text.count > maxCharacters {
+            return trimmed(buffer + text, maxCharacters: maxCharacters, omissionPrefix: omissionPrefix)
+        }
+        return buffer + text
+    }
+
+    /// 마지막으로 비어 있지 않은 줄을 앞뒤 공백을 걷어 돌려준다.
+    static func lastNonEmptyLine(in text: String) -> String? {
+        text
+            .split(whereSeparator: \.isNewline)
+            .reversed()
+            .lazy
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+}
+
+/// 인증번호를 최소 시간만큼 보여 주기 위한 남은 시간 계산.
+enum KLMSAuthDigitsDisplayRules {
+    /// 최소 표시 시간이 아직 남았으면 남은 나노초를, 이미 지났으면 nil 을 돌려준다.
+    static func remainingMinimumVisibleNanoseconds(
+        recordedAt: Date,
+        now: Date,
+        minimumVisibleNanoseconds: UInt64
+    ) -> UInt64? {
+        let elapsed = now.timeIntervalSince(recordedAt)
+        let minimum = TimeInterval(minimumVisibleNanoseconds) / 1_000_000_000
+        guard elapsed < minimum else {
+            return nil
+        }
+        return UInt64((minimum - elapsed) * 1_000_000_000)
     }
 }
 
