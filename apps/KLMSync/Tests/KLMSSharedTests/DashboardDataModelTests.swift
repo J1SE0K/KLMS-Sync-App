@@ -3370,17 +3370,22 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(remoteDiagnosticPanel.contains("companionPerformWithoutAnimation {\n                    isPanelExpanded.toggle()"))
         XCTAssertFalse(remoteDiagnosticPanel.contains("Button {\n                isPanelExpanded.toggle()"))
         XCTAssertTrue(remoteSettingsPanelContent.contains("Color.klmsCardBackground, in: RoundedRectangle(cornerRadius: KLMSRadius.panel)"))
-        XCTAssertTrue(ios.contains("동기화 범위를 정합니다."))
-        XCTAssertTrue(ios.contains("파일 탐색, 주차별 폴더, 보존 방식을 정합니다."))
-        XCTAssertTrue(ios.contains("공지 메모의 접기, 양식, 상태 반영 방식을 정합니다."))
-        XCTAssertTrue(ios.contains("같은 일정은 건너뛰고 변경이 있을 때만 반영합니다."))
-        XCTAssertTrue(ios.contains("Safari 창 동작처럼 자주 바꾸지 않는 설정입니다."))
-        XCTAssertFalse(ios.contains("var expandedDetail: String"))
-        XCTAssertFalse(ios.contains("var hasExpandedDetail: Bool"))
-        XCTAssertFalse(ios.contains("동기화 범위와 캘린더 반영 기준을 정합니다."))
-        XCTAssertFalse(ios.contains("동기화 범위와 Calendar 반영 방식을 정합니다."))
-        XCTAssertFalse(ios.contains("파일 탐색, 다운로드 건너뛰기, 폴더 정리 방식을 정합니다."))
-        XCTAssertFalse(ios.contains("Notes 메모에 숨긴 공지를 쓸지, 변경 없는 메모를 다시 쓸지 정합니다."))
+        // 설정 묶음 문구는 KLMSShared/RemoteSettingGroupRules.swift 로 옮겼다. iOS 앱과 함께 본다.
+        let iosSettingCopy = ios + "\n" + (try String(
+            contentsOf: packageRoot.appendingPathComponent("Sources/KLMSShared/RemoteSettingGroupRules.swift"),
+            encoding: .utf8
+        ))
+        XCTAssertTrue(iosSettingCopy.contains("동기화 범위를 정합니다."))
+        XCTAssertTrue(iosSettingCopy.contains("파일 탐색, 주차별 폴더, 보존 방식을 정합니다."))
+        XCTAssertTrue(iosSettingCopy.contains("공지 메모의 접기, 양식, 상태 반영 방식을 정합니다."))
+        XCTAssertTrue(iosSettingCopy.contains("같은 일정은 건너뛰고 변경이 있을 때만 반영합니다."))
+        XCTAssertTrue(iosSettingCopy.contains("Safari 창 동작처럼 자주 바꾸지 않는 설정입니다."))
+        XCTAssertFalse(iosSettingCopy.contains("var expandedDetail: String"))
+        XCTAssertFalse(iosSettingCopy.contains("var hasExpandedDetail: Bool"))
+        XCTAssertFalse(iosSettingCopy.contains("동기화 범위와 캘린더 반영 기준을 정합니다."))
+        XCTAssertFalse(iosSettingCopy.contains("동기화 범위와 Calendar 반영 방식을 정합니다."))
+        XCTAssertFalse(iosSettingCopy.contains("파일 탐색, 다운로드 건너뛰기, 폴더 정리 방식을 정합니다."))
+        XCTAssertFalse(iosSettingCopy.contains("Notes 메모에 숨긴 공지를 쓸지, 변경 없는 메모를 다시 쓸지 정합니다."))
         XCTAssertTrue(remoteSettingGroupSection.contains("RoundedRectangle(cornerRadius: KLMSRadius.card)"))
         XCTAssertFalse(remoteSettingGroupSection.contains("@State private var showsDetail"))
         XCTAssertFalse(remoteSettingGroupSection.contains("showsDetail.toggle()"))
@@ -3853,10 +3858,14 @@ final class DashboardDataModelTests: XCTestCase {
         let macModelRoot = packageRoot.appendingPathComponent("Sources/KLMSMac/KLMSMacModel.swift")
         let iosRoot = packageRoot.appendingPathComponent("Sources/KLMSiOS/KLMSiOSApp.swift")
         let envDocumentRoot = packageRoot.appendingPathComponent("Sources/KLMSShared/EnvDocument.swift")
+        let remoteSettingGroupRulesRoot = packageRoot.appendingPathComponent("Sources/KLMSShared/RemoteSettingGroupRules.swift")
         let mac = try String(contentsOf: macRoot, encoding: .utf8)
         let macSettings = try String(contentsOf: macSettingsRoot, encoding: .utf8)
         let macModel = try String(contentsOf: macModelRoot, encoding: .utf8)
-        let ios = try String(contentsOf: iosRoot, encoding: .utf8)
+        let iosApp = try String(contentsOf: iosRoot, encoding: .utf8)
+        let remoteSettingGroupRules = try String(contentsOf: remoteSettingGroupRulesRoot, encoding: .utf8)
+        // 설정 묶기 규칙은 KLMSShared 로 옮겼다(RemoteSettingGroupRulesTests). 문구 검사는 두 파일을 함께 본다.
+        let ios = iosApp + "\n" + remoteSettingGroupRules
         let envDocument = try String(contentsOf: envDocumentRoot, encoding: .utf8)
         let settingsForm = try sourceBody(
             after: "private func settingsForm",
@@ -3884,8 +3893,8 @@ final class DashboardDataModelTests: XCTestCase {
             description: "Mac settings action group box"
         )
         let remoteSettingGroup = try sourceBody(
-            after: "private struct RemoteSettingGroup: Identifiable",
-            in: ios,
+            after: "public struct RemoteSettingGroup: Identifiable",
+            in: remoteSettingGroupRules,
             description: "iPhone/iPad remote setting group"
         )
         let macRemoteSettingKeys = try macServerRelayEditableSettingKeys(
@@ -4074,7 +4083,8 @@ final class DashboardDataModelTests: XCTestCase {
         XCTAssertTrue(macAppearanceUpdate.contains("화면 모드는 이 기기에 바로 적용됩니다."))
         XCTAssertFalse(macAppearanceUpdate.contains("await updateServerRelaySharedSetting"))
 
-        XCTAssertTrue(ios.contains("private struct RemoteSettingGroup"))
+        XCTAssertTrue(remoteSettingGroupRules.contains("public struct RemoteSettingGroup"))
+        XCTAssertFalse(iosApp.contains("struct RemoteSettingGroup:"))
         XCTAssertTrue(ios.contains("RemoteSettingGroupSection"))
         XCTAssertTrue(ios.contains("@Published private(set) var hasLoadedServerSyncData = false"))
         XCTAssertTrue(ios.contains("private var dashboardMailItems: [ServerRelaySyncItem]"))
