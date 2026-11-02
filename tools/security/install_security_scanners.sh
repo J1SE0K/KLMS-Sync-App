@@ -137,17 +137,38 @@ fi
   --upgrade --no-deps --require-hashes --only-binary=:all: -r "$scanner_lock"
 
 pip_check_output="$("$venv_dir/bin/python" -m pip check 2>&1 | LC_ALL=C sort || true)"
-expected_click_mismatch="semgrep $SEMGREP_VERSION has requirement click~=8.1.8, but you have click $CLICK_VERSION."
-expected_mcp_mismatch="semgrep $SEMGREP_VERSION has requirement mcp==1.23.3, but you have mcp $MCP_VERSION."
-expected_dependency_mismatches="$(printf '%s\n' "$expected_click_mismatch" "$expected_mcp_mismatch" | LC_ALL=C sort)"
+expected_dependency_mismatches="$(printf '%s\n' \
+  "semgrep $SEMGREP_VERSION has requirement mcp==1.29.0, but you have mcp $MCP_VERSION." \
+  "semgrep $SEMGREP_VERSION has requirement opentelemetry-api~=1.37.0, but you have opentelemetry-api $OPENTELEMETRY_VERSION." \
+  "semgrep $SEMGREP_VERSION has requirement opentelemetry-exporter-otlp-proto-http~=1.37.0, but you have opentelemetry-exporter-otlp-proto-http $OPENTELEMETRY_VERSION." \
+  "semgrep $SEMGREP_VERSION has requirement opentelemetry-sdk~=1.37.0, but you have opentelemetry-sdk $OPENTELEMETRY_VERSION." \
+  | LC_ALL=C sort)"
 if [[ "$pip_check_output" != "$expected_dependency_mismatches" ]]; then
   printf 'unexpected Python scanner dependency state:\n%s\n' "$pip_check_output" >&2
   exit 1
 fi
 
 scanner_site_packages="$("$venv_dir/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+scanner_audit_exit=0
 "$venv_dir/bin/pip-audit" --path "$scanner_site_packages" --format=json \
-  --output "$install_root/scanner-python-audit.json" >/dev/null
+  --output "$install_root/scanner-python-audit.json" >/dev/null || scanner_audit_exit=$?
+if [[ "$scanner_audit_exit" -ne 0 ]]; then
+  # Package metadata only: keep failures actionable without publishing scan output.
+  "$venv_dir/bin/python" - "$install_root/scanner-python-audit.json" <<'PY_AUDIT'
+import json
+import sys
+from pathlib import Path
+
+report = Path(sys.argv[1])
+if report.is_file():
+    for dependency in json.loads(report.read_text()).get("dependencies", []):
+        for finding in dependency.get("vulns", []):
+            fixes = ",".join(finding.get("fix_versions", [])) or "none"
+            print(f"scanner-audit {dependency['name']}=={dependency['version']} "
+                  f"{finding['id']} fixed={fixes}", file=sys.stderr)
+PY_AUDIT
+  exit "$scanner_audit_exit"
+fi
 
 smoke_dir="$(mktemp -d "$install_root/semgrep-smoke.XXXXXX")"
 cleanup_smoke() {

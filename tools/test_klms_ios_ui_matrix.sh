@@ -90,6 +90,7 @@ run_ui_test() {
   if [[ -e "$result_bundle" ]]; then
     find "$result_bundle" -depth -delete
   fi
+  local test_exit=0
   xcodebuild test \
     -quiet \
     -project "$PROJECT_PATH" \
@@ -100,7 +101,12 @@ run_ui_test() {
     -resultBundlePath "$result_bundle" \
     "${test_arguments[@]}" \
     CODE_SIGNING_ALLOWED=NO \
-    CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_ROOT/$family"
+    CLANG_MODULE_CACHE_PATH="$MODULE_CACHE_ROOT/$family" || test_exit=$?
+  if [[ "$test_exit" -ne 0 ]]; then
+    # Preserve the original failure while surfacing assertions hidden by -quiet.
+    xcrun xcresulttool get test-results summary --path "$result_bundle" || true
+    return "$test_exit"
+  fi
   xcrun xcresulttool get test-results tests --path "$result_bundle" > "$result_json"
   chmod 600 "$result_json"
   python3 - "$family" "$result_json" "$summary_json" "${TEST_IDENTIFIERS[@]}" <<'PY'
