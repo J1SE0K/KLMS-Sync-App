@@ -103,9 +103,12 @@ runtime_python_actual="$(
 [[ "$runtime_python_actual" == "$runtime_python_expected" ]] || fail runtime-python-manifest
 
 pip_check_output="$(python -m pip check 2>&1 | LC_ALL=C sort || true)"
-expected_click_mismatch="semgrep $SEMGREP_VERSION has requirement click~=8.1.8, but you have click $CLICK_VERSION."
-expected_mcp_mismatch="semgrep $SEMGREP_VERSION has requirement mcp==1.23.3, but you have mcp $MCP_VERSION."
-expected_dependency_mismatches="$(printf '%s\n' "$expected_click_mismatch" "$expected_mcp_mismatch" | LC_ALL=C sort)"
+expected_dependency_mismatches="$(printf '%s\n' \
+  "semgrep $SEMGREP_VERSION has requirement mcp==1.29.0, but you have mcp $MCP_VERSION." \
+  "semgrep $SEMGREP_VERSION has requirement opentelemetry-api~=1.37.0, but you have opentelemetry-api $OPENTELEMETRY_VERSION." \
+  "semgrep $SEMGREP_VERSION has requirement opentelemetry-exporter-otlp-proto-http~=1.37.0, but you have opentelemetry-exporter-otlp-proto-http $OPENTELEMETRY_VERSION." \
+  "semgrep $SEMGREP_VERSION has requirement opentelemetry-sdk~=1.37.0, but you have opentelemetry-sdk $OPENTELEMETRY_VERSION." \
+  | LC_ALL=C sort)"
 [[ "$pip_check_output" == "$expected_dependency_mismatches" ]] || fail scanner-dependency-state
 scanner_site_packages="$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 pip-audit --path "$scanner_site_packages" --format=json \

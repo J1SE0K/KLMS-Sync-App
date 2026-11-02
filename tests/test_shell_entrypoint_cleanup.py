@@ -2302,8 +2302,8 @@ assert.ok(distinctCourseboardDesired.active.some((item) => item.aliasIdentifiers
         self.assertIn("--only-binary=:all:", installer)
         self.assertIn("--no-deps", installer)
         self.assertIn('sys.version_info[:2] == (3, 12)', installer)
-        self.assertIn("MCP_VERSION=1.28.1", versions)
-        self.assertIn("mcp==1.28.1 --hash=sha256:", scanner_lock)
+        self.assertIn("MCP_VERSION=1.30.0", versions)
+        self.assertIn("mcp==1.30.0 --hash=sha256:", scanner_lock)
         self.assertIn("click==8.4.2 --hash=sha256:", scanner_lock)
 
     def test_ios_project_has_app_icon_asset_catalog(self) -> None:
